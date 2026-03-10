@@ -1,0 +1,20 @@
+.DS_Store
+.idea
+.vscode
+
+# Backend
+/backend/bin
+/backend/tmp
+/backend/.cache
+/backend/main
+/backend/backend
+/backend/test_*
+*.db
+
+# Frontend
+/frontend/node_modules
+/frontend/dist
+
+# Env files
+.env
+.env.*
