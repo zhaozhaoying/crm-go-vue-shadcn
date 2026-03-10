@@ -118,19 +118,23 @@ func (s *externalCompanySearchService) CreateTasks(ctx context.Context, input mo
 }
 
 func (s *externalCompanySearchService) ListTasks(ctx context.Context, filter model.ExternalCompanySearchTaskListFilter, actorRole string) (model.ExternalCompanySearchTaskListResult, error) {
-	_ = actorRole
+	filter = applyExternalCompanySearchTaskListScope(filter, actorRole)
 	return s.repo.ListTasks(ctx, filter)
 }
 
 func (s *externalCompanySearchService) GetTask(ctx context.Context, taskID, viewerID int64, actorRole string) (*model.ExternalCompanySearchTask, error) {
-	_ = viewerID
-	_ = actorRole
-	return s.repo.GetTaskByID(ctx, taskID)
+	task, err := s.repo.GetTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if !canViewExternalCompanySearchTask(task, viewerID, actorRole) {
+		return nil, ErrExternalCompanySearchTaskForbidden
+	}
+	return task, nil
 }
 
 func (s *externalCompanySearchService) ListResults(ctx context.Context, viewerID int64, actorRole string, filter model.ExternalCompanySearchResultListFilter) (model.ExternalCompanySearchResultListResult, error) {
-	_ = viewerID
-	_ = actorRole
+	filter = applyExternalCompanySearchResultListScope(filter, viewerID, actorRole)
 	return s.repo.ListTaskResults(ctx, filter)
 }
 
@@ -233,4 +237,41 @@ func canManageExternalCompanySearchTask(task *model.ExternalCompanySearchTask, v
 		return true
 	}
 	return viewerID > 0 && task.CreatedBy == viewerID
+}
+
+func canViewExternalCompanySearchSharedData(actorRole string) bool {
+	return isRole(actorRole,
+		"admin", "管理员",
+		"sales_director", "sales_manager", "sales_staff",
+		"销售总监", "销售经理", "销售员工", "销售",
+	)
+}
+
+func canViewExternalCompanySearchTask(task *model.ExternalCompanySearchTask, viewerID int64, actorRole string) bool {
+	if task == nil {
+		return false
+	}
+	if canViewExternalCompanySearchSharedData(actorRole) {
+		return true
+	}
+	return viewerID > 0 && task.CreatedBy == viewerID
+}
+
+func applyExternalCompanySearchTaskListScope(filter model.ExternalCompanySearchTaskListFilter, actorRole string) model.ExternalCompanySearchTaskListFilter {
+	if canViewExternalCompanySearchSharedData(actorRole) {
+		filter.RestrictToCreator = false
+		return filter
+	}
+	filter.RestrictToCreator = filter.CreatedBy > 0
+	return filter
+}
+
+func applyExternalCompanySearchResultListScope(filter model.ExternalCompanySearchResultListFilter, viewerID int64, actorRole string) model.ExternalCompanySearchResultListFilter {
+	if canViewExternalCompanySearchSharedData(actorRole) {
+		filter.RestrictToCreator = false
+		return filter
+	}
+	filter.CreatedBy = viewerID
+	filter.RestrictToCreator = viewerID > 0
+	return filter
 }
