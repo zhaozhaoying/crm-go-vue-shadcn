@@ -48,8 +48,21 @@ const totalPages = computed(() =>
   Math.max(1, Math.ceil(totalCount.value / pageSize.value)),
 );
 
-const renderOwner = (_customer: Customer) => {
-  return "*";
+const renderOwner = (customer: Customer) => {
+  if (customer.ownerUserName === "*") return "*";
+  if (customer.isInPool === true) return "公海";
+  if (
+    customer.ownerUserId === null ||
+    customer.ownerUserId === undefined ||
+    customer.status === "pool" ||
+    customer.status === "公海"
+  ) {
+    return "公海";
+  }
+  return (
+    customer.ownerUserName ||
+    (customer.ownerUserId ? `用户 #${customer.ownerUserId}` : "未分配")
+  );
 }
 
 const getPrimaryPhone = (customer: Customer) => {

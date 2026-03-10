@@ -130,7 +130,6 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 		fallthrough
 	default:
 		if isAdmin {
-			filter.IncludePoolInMyScope = true
 			filter.SkipViewerOwnerLimit = true
 			filter.AllowedOwnerUserIDs = nil
 			return filter, nil

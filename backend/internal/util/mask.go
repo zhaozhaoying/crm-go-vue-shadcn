@@ -59,6 +59,30 @@ func MaskCompanyName(name string) string {
 	return result.String()
 }
 
+// MaskPersonName masks the middle part of a person's name
+// Example: 张三丰 -> 张*丰, 李四 -> 李*, 王 -> 王
+func MaskPersonName(name string) string {
+	if name == "" {
+		return name
+	}
+
+	runeCount := utf8.RuneCountInString(name)
+	if runeCount <= 1 {
+		return name
+	}
+
+	runes := []rune(name)
+	if runeCount == 2 {
+		return string(runes[0]) + "*"
+	}
+
+	var result strings.Builder
+	result.WriteRune(runes[0])
+	result.WriteString("*")
+	result.WriteRune(runes[runeCount-1])
+	return result.String()
+}
+
 // MaskEmail masks the account part of an email
 // Example: hello@example.com -> he***@example.com
 func MaskEmail(email string) string {

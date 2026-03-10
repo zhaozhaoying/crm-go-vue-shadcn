@@ -229,7 +229,7 @@ func (h *CustomerHandler) listByCategory(c *gin.Context, category string) {
 
 	// Apply masking for search category
 	if category == "search" {
-		result.Items = maskCustomerData(result.Items)
+		result.Items = maskCustomerData(result.Items, viewerID, hasViewer, filter.ActorRole)
 	}
 
 	Success(c, result)
@@ -901,26 +901,84 @@ func toCustomerPhoneInputs(phones []CustomerPhoneInputRequest) []model.CustomerP
 	return items
 }
 
-func maskCustomerData(customers []model.Customer) []model.Customer {
+func maskCustomerData(customers []model.Customer, viewerID int64, hasViewer bool, actorRole string) []model.Customer {
+	if len(customers) == 0 {
+		return customers
+	}
+	if isMaskBypassRole(actorRole) {
+		return customers
+	}
+
+	if !isSalesOrOperationRole(actorRole) || !hasViewer || viewerID <= 0 {
+		return maskAllCustomers(customers)
+	}
+
 	masked := make([]model.Customer, len(customers))
 	for i, customer := range customers {
 		masked[i] = customer
-		// Mask company name
-		masked[i].Name = util.MaskCompanyName(customer.Name)
-		// Mask email and owner fields
-		masked[i].Email = util.MaskEmail(customer.Email)
-		masked[i].OwnerUserName = "*"
-		masked[i].OwnerUserID = nil
-
-		// Mask phone numbers
-		if len(customer.Phones) > 0 {
-			maskedPhones := make([]model.CustomerPhone, len(customer.Phones))
-			for j, phone := range customer.Phones {
-				maskedPhones[j] = phone
-				maskedPhones[j].Phone = util.MaskPhone(phone.Phone)
-			}
-			masked[i].Phones = maskedPhones
+		if shouldMaskCustomerForViewer(customer, viewerID) {
+			applyCustomerMask(&masked[i])
 		}
 	}
 	return masked
+}
+
+func maskAllCustomers(customers []model.Customer) []model.Customer {
+	masked := make([]model.Customer, len(customers))
+	for i, customer := range customers {
+		masked[i] = customer
+		applyCustomerMask(&masked[i])
+	}
+	return masked
+}
+
+func applyCustomerMask(customer *model.Customer) {
+	// Mask company name and personal names
+	customer.Name = util.MaskCompanyName(customer.Name)
+	customer.LegalName = util.MaskPersonName(customer.LegalName)
+	customer.ContactName = util.MaskPersonName(customer.ContactName)
+	// Mask email and owner fields
+	customer.Email = util.MaskEmail(customer.Email)
+	customer.OwnerUserName = "*"
+	customer.OwnerUserID = nil
+
+	// Mask phone numbers
+	if len(customer.Phones) > 0 {
+		maskedPhones := make([]model.CustomerPhone, len(customer.Phones))
+		for j, phone := range customer.Phones {
+			maskedPhones[j] = phone
+			maskedPhones[j].Phone = util.MaskPhone(phone.Phone)
+		}
+		customer.Phones = maskedPhones
+	}
+}
+
+func shouldMaskCustomerForViewer(customer model.Customer, viewerID int64) bool {
+	if customer.IsInPool || customer.Status == "pool" || customer.Status == "公海" {
+		return false
+	}
+	if customer.OwnerUserID == nil {
+		return false
+	}
+	return *customer.OwnerUserID != viewerID
+}
+
+func isMaskBypassRole(role string) bool {
+	switch strings.TrimSpace(strings.ToLower(role)) {
+	case "admin", "管理员", "finance", "finance_manager", "财务", "财务经理":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSalesOrOperationRole(role string) bool {
+	switch strings.TrimSpace(strings.ToLower(role)) {
+	case "sales_director", "sales_manager", "sales_staff", "销售总监", "销售经理", "销售员工", "销售":
+		return true
+	case "ops_manager", "operation_manager", "ops_staff", "operation_staff", "运营经理", "运营员工", "运营":
+		return true
+	default:
+		return false
+	}
 }
