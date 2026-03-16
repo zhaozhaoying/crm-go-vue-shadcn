@@ -7,7 +7,10 @@ import (
 	"errors"
 )
 
-var ErrRoleNotFound = errors.New("role not found")
+var (
+	ErrRoleNotFound = errors.New("role not found")
+	ErrRoleExists   = errors.New("role already exists")
+)
 
 type RoleService interface {
 	List(ctx context.Context) ([]model.Role, error)
@@ -31,6 +34,9 @@ func (s *roleService) List(ctx context.Context) ([]model.Role, error) {
 func (s *roleService) Create(ctx context.Context, name, label string, sort int) (*model.Role, error) {
 	role := &model.Role{Name: name, Label: label, Sort: sort}
 	if err := s.repo.Create(ctx, role); err != nil {
+		if errors.Is(err, repository.ErrRoleNameExists) {
+			return nil, ErrRoleExists
+		}
 		return nil, err
 	}
 	return role, nil
@@ -45,6 +51,9 @@ func (s *roleService) Update(ctx context.Context, id int64, name, label string, 
 	role.Label = label
 	role.Sort = sort
 	if err := s.repo.Update(ctx, role); err != nil {
+		if errors.Is(err, repository.ErrRoleNameExists) {
+			return nil, ErrRoleExists
+		}
 		return nil, err
 	}
 	return role, nil

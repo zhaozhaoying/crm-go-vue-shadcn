@@ -49,7 +49,7 @@ const docTemplate = `{
         },
         "/api/v1/auth/captcha": {
             "get": {
-                "description": "获取一次性验证码 challenge，用于登录前校验",
+                "description": "获取一次性验证码挑战，用于登录前校验",
                 "produces": [
                     "application/json"
                 ],
@@ -77,7 +77,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "服务器内部错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -87,7 +87,7 @@ const docTemplate = `{
         },
         "/api/v1/auth/login": {
             "post": {
-                "description": "使用用户名和密码登录，返回JWT token",
+                "description": "使用用户名和密码登录，返回访问令牌和刷新令牌",
                 "consumes": [
                     "application/json"
                 ],
@@ -129,13 +129,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -150,7 +150,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "将当前 access token 拉黑，可选作废 refresh token",
+                "description": "将当前访问令牌拉黑，并可选作废刷新令牌",
                 "consumes": [
                     "application/json"
                 ],
@@ -163,7 +163,7 @@ const docTemplate = `{
                 "summary": "退出登录",
                 "parameters": [
                     {
-                        "description": "可选 refresh token",
+                        "description": "可选刷新令牌",
                         "name": "body",
                         "in": "body",
                         "schema": {
@@ -179,7 +179,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -194,7 +194,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "根据当前 access token 返回完整用户资料",
+                "description": "根据当前访问令牌返回完整用户资料",
                 "produces": [
                     "application/json"
                 ],
@@ -222,7 +222,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -232,7 +232,7 @@ const docTemplate = `{
         },
         "/api/v1/auth/refresh": {
             "post": {
-                "description": "使用 refresh token 换取新的 access token 和 refresh token",
+                "description": "使用刷新令牌换取新的访问令牌和刷新令牌",
                 "consumes": [
                     "application/json"
                 ],
@@ -274,13 +274,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -378,7 +378,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -432,19 +432,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "409": {
-                        "description": "Conflict",
+                        "description": "请求冲突",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -489,13 +489,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -546,19 +546,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -619,19 +619,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -668,19 +668,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -743,19 +743,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -860,7 +860,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -915,19 +915,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "409": {
-                        "description": "Conflict",
+                        "description": "请求冲突",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -942,7 +942,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "上传CSV文件导入客户，支持十万级数据批量处理；支持dryRun预演",
+                "description": "上传 CSV 文件导入客户，支持十万级数据批量处理；支持仅校验不入库预演",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -952,11 +952,11 @@ const docTemplate = `{
                 "tags": [
                     "customers"
                 ],
-                "summary": "批量导入客户(CSV)",
+                "summary": "批量导入客户（CSV）",
                 "parameters": [
                     {
                         "type": "file",
-                        "description": "CSV文件(需包含表头，至少: name, phone)",
+                        "description": "CSV 文件（需包含表头，至少包含 name、phone 列）",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -969,13 +969,13 @@ const docTemplate = `{
                     },
                     {
                         "type": "boolean",
-                        "description": "是否仅校验不入库，默认false",
+                        "description": "是否仅校验不入库，默认否",
                         "name": "dryRun",
                         "in": "formData"
                     },
                     {
                         "type": "string",
-                        "description": "默认客户状态(owned/pool)，默认owned",
+                        "description": "默认客户状态（传值使用 owned/pool，对应私有/公海，默认 owned）",
                         "name": "defaultStatus",
                         "in": "formData"
                     },
@@ -1026,7 +1026,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "查看范围(all/mine/subordinates/sales)",
+                        "description": "查看范围（全部/我的/下属/销售）",
                         "name": "ownershipScope",
                         "in": "query"
                     },
@@ -1069,7 +1069,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -1126,7 +1126,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -1158,7 +1158,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "排序字段(dropTime/followTime/updatedAt)",
+                        "description": "排序字段（掉库时间/跟进时间/更新时间）",
                         "name": "sortBy",
                         "in": "query"
                     },
@@ -1195,7 +1195,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -1252,7 +1252,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -1315,7 +1315,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -1372,13 +1372,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -1442,19 +1442,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -1963,7 +1963,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2037,7 +2037,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2111,7 +2111,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2165,13 +2165,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2222,19 +2222,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2285,19 +2285,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2360,19 +2360,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2453,19 +2453,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2510,19 +2510,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2712,7 +2712,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2756,13 +2756,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2792,7 +2792,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -2822,7 +2822,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -3026,7 +3026,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -3083,13 +3083,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -3146,13 +3146,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -3204,19 +3204,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "资源不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -3915,7 +3915,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "服务器内部错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -4031,7 +4031,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "file",
-                        "description": "头像文件(jpg/png/webp, 最大2MB)",
+                        "description": "头像文件（支持 JPG、PNG、WEBP，最大 2MB）",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -4060,19 +4060,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "未登录或登录已失效",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "服务器内部错误",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -6590,6 +6590,9 @@ const docTemplate = `{
                 "roleId": {
                     "type": "integer"
                 },
+                "salesType": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string"
                 },
@@ -6632,6 +6635,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "roleName": {
+                    "type": "string"
+                },
+                "salesType": {
                     "type": "string"
                 },
                 "status": {

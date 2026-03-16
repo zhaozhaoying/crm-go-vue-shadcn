@@ -43,54 +43,54 @@ type CreateFollowRecordRequest struct {
 func (h *FollowRecordHandler) CreateOperationFollowRecord(c *gin.Context) {
 	var req CreateFollowRecordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 400, err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 11001, "请求参数错误", err)
 		return
 	}
 
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	// 校验跟进内容
 	content := strings.TrimSpace(req.Content)
 	if len(content) < 10 {
-		Error(c, http.StatusBadRequest, 400, "跟进内容必须至少10个字")
+		Error(c, http.StatusBadRequest, 11002, "跟进内容必须至少10个字")
 		return
 	}
 	if strings.Contains(content, "跟进") {
-		Error(c, http.StatusBadRequest, 400, `跟进内容不能包含"跟进"两个字`)
+		Error(c, http.StatusBadRequest, 11003, `跟进内容不能包含"跟进"两个字`)
 		return
 	}
 	// 检查是否包含英文字母
 	for _, r := range content {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-			Error(c, http.StatusBadRequest, 400, "跟进内容不能包含英文单词")
+			Error(c, http.StatusBadRequest, 11004, "跟进内容不能包含英文单词")
 			return
 		}
 	}
 
 	if req.FollowMethodID <= 0 {
-		Error(c, http.StatusBadRequest, 400, "请选择跟进方式")
+		Error(c, http.StatusBadRequest, 11005, "请选择跟进方式")
 		return
 	}
 
 	nextFollowTime, err := parseFollowTime(req.NextFollowTime)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 400, "无效的下次跟进时间格式")
+		Error(c, http.StatusBadRequest, 11006, "无效的下次跟进时间格式")
 		return
 	}
 
 	appointmentTime, err := parseFollowTime(req.AppointmentTime)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 400, "无效的约见时间格式")
+		Error(c, http.StatusBadRequest, 11007, "无效的约见时间格式")
 		return
 	}
 
 	shootingTime, err := parseFollowTime(req.ShootingTime)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 400, "无效的拍摄时间格式")
+		Error(c, http.StatusBadRequest, 11008, "无效的拍摄时间格式")
 		return
 	}
 
@@ -108,7 +108,7 @@ func (h *FollowRecordHandler) CreateOperationFollowRecord(c *gin.Context) {
 
 	id, err := h.service.CreateOperationFollowRecord(input)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11009, "创建运营跟进记录失败", err)
 		return
 	}
 
@@ -126,42 +126,42 @@ func (h *FollowRecordHandler) CreateOperationFollowRecord(c *gin.Context) {
 func (h *FollowRecordHandler) CreateSalesFollowRecord(c *gin.Context) {
 	var req CreateFollowRecordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 400, err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 11001, "请求参数错误", err)
 		return
 	}
 
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	// 校验跟进内容
 	content := strings.TrimSpace(req.Content)
 	if len(content) < 10 {
-		Error(c, http.StatusBadRequest, 400, "跟进内容必须至少10个字")
+		Error(c, http.StatusBadRequest, 11002, "跟进内容必须至少10个字")
 		return
 	}
 	if strings.Contains(content, "跟进") {
-		Error(c, http.StatusBadRequest, 400, `跟进内容不能包含"跟进"两个字`)
+		Error(c, http.StatusBadRequest, 11003, `跟进内容不能包含"跟进"两个字`)
 		return
 	}
 	// 检查是否包含英文字母
 	for _, r := range content {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-			Error(c, http.StatusBadRequest, 400, "跟进内容不能包含英文单词")
+			Error(c, http.StatusBadRequest, 11004, "跟进内容不能包含英文单词")
 			return
 		}
 	}
 
 	if req.FollowMethodID <= 0 {
-		Error(c, http.StatusBadRequest, 400, "请选择跟进方式")
+		Error(c, http.StatusBadRequest, 11005, "请选择跟进方式")
 		return
 	}
 
 	nextFollowTime, err := parseFollowTime(req.NextFollowTime)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 400, "无效的下次跟进时间格式")
+		Error(c, http.StatusBadRequest, 11006, "无效的下次跟进时间格式")
 		return
 	}
 
@@ -177,7 +177,7 @@ func (h *FollowRecordHandler) CreateSalesFollowRecord(c *gin.Context) {
 
 	id, err := h.service.CreateSalesFollowRecord(input)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11010, "创建销售跟进记录失败", err)
 		return
 	}
 
@@ -197,7 +197,7 @@ func (h *FollowRecordHandler) CreateSalesFollowRecord(c *gin.Context) {
 func (h *FollowRecordHandler) ListOperationFollowRecords(c *gin.Context) {
 	customerID, err := strconv.ParseInt(c.Query("customerId"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 400, "无效的客户ID")
+		Error(c, http.StatusBadRequest, 11011, "无效的客户ID")
 		return
 	}
 
@@ -212,7 +212,7 @@ func (h *FollowRecordHandler) ListOperationFollowRecords(c *gin.Context) {
 
 	result, err := h.service.ListOperationFollowRecords(filter)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11012, "加载运营跟进记录失败", err)
 		return
 	}
 
@@ -234,7 +234,7 @@ func (h *FollowRecordHandler) ListAllOperationFollowRecords(c *gin.Context) {
 
 	result, err := h.service.ListAllOperationFollowRecords(page, pageSize)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11013, "加载全部运营跟进记录失败", err)
 		return
 	}
 
@@ -254,7 +254,7 @@ func (h *FollowRecordHandler) ListAllOperationFollowRecords(c *gin.Context) {
 func (h *FollowRecordHandler) ListSalesFollowRecords(c *gin.Context) {
 	customerID, err := strconv.ParseInt(c.Query("customerId"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 400, "无效的客户ID")
+		Error(c, http.StatusBadRequest, 11011, "无效的客户ID")
 		return
 	}
 
@@ -269,7 +269,7 @@ func (h *FollowRecordHandler) ListSalesFollowRecords(c *gin.Context) {
 
 	result, err := h.service.ListSalesFollowRecords(filter)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11014, "加载销售跟进记录失败", err)
 		return
 	}
 
@@ -291,7 +291,7 @@ func (h *FollowRecordHandler) ListAllSalesFollowRecords(c *gin.Context) {
 
 	result, err := h.service.ListAllSalesFollowRecords(page, pageSize)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11015, "加载全部销售跟进记录失败", err)
 		return
 	}
 
@@ -308,7 +308,7 @@ func (h *FollowRecordHandler) ListAllSalesFollowRecords(c *gin.Context) {
 func (h *FollowRecordHandler) ListFollowMethods(c *gin.Context) {
 	methods, err := h.service.ListFollowMethods()
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11016, "加载跟进方式失败", err)
 		return
 	}
 
@@ -326,13 +326,13 @@ func (h *FollowRecordHandler) ListFollowMethods(c *gin.Context) {
 func (h *FollowRecordHandler) CreateFollowMethod(c *gin.Context) {
 	var req model.FollowMethodRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 400, err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 11017, "请求参数错误", err)
 		return
 	}
 
 	id, err := h.service.CreateFollowMethod(req)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11018, "创建跟进方式失败", err)
 		return
 	}
 
@@ -351,18 +351,18 @@ func (h *FollowRecordHandler) CreateFollowMethod(c *gin.Context) {
 func (h *FollowRecordHandler) UpdateFollowMethod(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		Error(c, http.StatusBadRequest, 400, "无效的ID")
+		Error(c, http.StatusBadRequest, 11019, "无效的跟进方式ID")
 		return
 	}
 
 	var req model.FollowMethodRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 400, err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 11017, "请求参数错误", err)
 		return
 	}
 
 	if err := h.service.UpdateFollowMethod(id, req); err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11020, "更新跟进方式失败", err)
 		return
 	}
 
@@ -380,12 +380,12 @@ func (h *FollowRecordHandler) UpdateFollowMethod(c *gin.Context) {
 func (h *FollowRecordHandler) DeleteFollowMethod(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		Error(c, http.StatusBadRequest, 400, "无效的ID")
+		Error(c, http.StatusBadRequest, 11019, "无效的跟进方式ID")
 		return
 	}
 
 	if err := h.service.DeleteFollowMethod(id); err != nil {
-		Error(c, http.StatusInternalServerError, 500, err.Error())
+		ErrorWithDetail(c, http.StatusInternalServerError, 11021, "删除跟进方式失败", err)
 		return
 	}
 

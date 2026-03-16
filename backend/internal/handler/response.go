@@ -1,6 +1,11 @@
 package handler
 
-import "github.com/gin-gonic/gin"
+import (
+	"backend/internal/errmsg"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+)
 
 type APIResponse struct {
 	Code    int         `json:"code"`
@@ -22,4 +27,27 @@ func Error(c *gin.Context, statusCode int, code int, message string) {
 		Message: message,
 		Data:    nil,
 	})
+}
+
+func ErrorWithDetail(c *gin.Context, statusCode int, code int, message string, err error) {
+	if err == nil {
+		Error(c, statusCode, code, message)
+		return
+	}
+
+	detail := normalizeErrorDetail(err.Error())
+	if detail == "" || strings.Contains(message, detail) {
+		Error(c, statusCode, code, message)
+		return
+	}
+
+	Error(c, statusCode, code, message+": "+detail)
+}
+
+func normalizeErrorDetail(detail string) string {
+	detail = errmsg.Normalize(detail)
+	if len(detail) > 300 {
+		return detail[:300] + "..."
+	}
+	return detail
 }

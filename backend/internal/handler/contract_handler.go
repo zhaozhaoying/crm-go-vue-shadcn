@@ -103,8 +103,8 @@ func NewContractHandler(service service.ContractService) *ContractHandler {
 // @Param       contractNumber query string true "合同编号"
 // @Param       excludeId query int false "排除的合同ID"
 // @Success     200 {object} APIResponse
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/contracts/check-number [get]
 func (h *ContractHandler) CheckNumber(c *gin.Context) {
 	contractNumber := strings.TrimSpace(c.Query("contractNumber"))
@@ -113,10 +113,10 @@ func (h *ContractHandler) CheckNumber(c *gin.Context) {
 	available, err := h.service.IsContractNumberAvailable(c.Request.Context(), contractNumber, excludeID)
 	if err != nil {
 		if errors.Is(err, service.ErrContractContractNumberRequired) {
-			Error(c, http.StatusBadRequest, 60007, "contract number is required")
+			Error(c, http.StatusBadRequest, 60007, "合同编号不能为空")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 60001, "failed to check contract number")
+		ErrorWithDetail(c, http.StatusInternalServerError, 60006, "校验合同编号失败", err)
 		return
 	}
 
@@ -140,12 +140,12 @@ func (h *ContractHandler) CheckNumber(c *gin.Context) {
 // @Param       page query int false "页码"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.ContractListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/contracts [get]
 func (h *ContractHandler) List(c *gin.Context) {
 	actorUserID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
@@ -168,7 +168,7 @@ func (h *ContractHandler) List(c *gin.Context) {
 		PageSize:             pageSize,
 	})
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 60001, "failed to list contracts")
+		ErrorWithDetail(c, http.StatusInternalServerError, 60001, "加载合同列表失败", err)
 		return
 	}
 	Success(c, result)
@@ -181,19 +181,19 @@ func (h *ContractHandler) List(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       id path int true "合同ID"
 // @Success     200 {object} APIResponse{data=model.Contract}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/contracts/{id} [get]
 func (h *ContractHandler) GetByID(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 60002, "invalid contract id")
+		Error(c, http.StatusBadRequest, 60002, "无效的合同ID")
 		return
 	}
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	contract, err := h.service.GetContractByID(c.Request.Context(), id, userID, currentUserRole(c))
@@ -212,19 +212,19 @@ func (h *ContractHandler) GetByID(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       body body ContractCreateRequest true "合同信息"
 // @Success     200 {object} APIResponse{data=model.Contract}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     409 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     409 {object} APIResponse "请求冲突"
 // @Router      /api/v1/contracts [post]
 func (h *ContractHandler) Create(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	var req ContractCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 60005, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 60005, "请求参数错误", err)
 		return
 	}
 	contractNumber := strings.TrimSpace(req.ContractNumber)
@@ -271,24 +271,24 @@ func (h *ContractHandler) Create(c *gin.Context) {
 // @Param       id path int true "合同ID"
 // @Param       body body ContractUpdateRequest true "合同信息"
 // @Success     200 {object} APIResponse{data=model.Contract}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/contracts/{id} [put]
 func (h *ContractHandler) Update(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 60002, "invalid contract id")
+		Error(c, http.StatusBadRequest, 60002, "无效的合同ID")
 		return
 	}
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	var req ContractUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 60005, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 60005, "请求参数错误", err)
 		return
 	}
 	contractNumber := strings.TrimSpace(req.ContractNumber)
@@ -335,24 +335,24 @@ func (h *ContractHandler) Update(c *gin.Context) {
 // @Param       id path int true "合同ID"
 // @Param       body body ContractAuditRequest true "审核信息"
 // @Success     200 {object} APIResponse{data=model.Contract}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/contracts/{id}/audit [post]
 func (h *ContractHandler) Audit(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 60002, "invalid contract id")
+		Error(c, http.StatusBadRequest, 60002, "无效的合同ID")
 		return
 	}
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	var req ContractAuditRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 60005, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 60005, "请求参数错误", err)
 		return
 	}
 	contractNumber := strings.TrimSpace(req.ContractNumber)
@@ -398,19 +398,19 @@ func (h *ContractHandler) Audit(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       id path int true "合同ID"
 // @Success     200 {object} APIResponse
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/contracts/{id} [delete]
 func (h *ContractHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 60002, "invalid contract id")
+		Error(c, http.StatusBadRequest, 60002, "无效的合同ID")
 		return
 	}
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	if err := h.service.DeleteContract(c.Request.Context(), id, userID, currentUserRole(c)); err != nil {
@@ -423,43 +423,45 @@ func (h *ContractHandler) Delete(c *gin.Context) {
 func (h *ContractHandler) handleServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrContractNotFound):
-		Error(c, http.StatusNotFound, 60003, "contract not found")
+		Error(c, http.StatusNotFound, 60003, "合同不存在")
 	case errors.Is(err, service.ErrContractForbidden):
-		Error(c, http.StatusForbidden, 60004, "contract access forbidden")
+		Error(c, http.StatusForbidden, 60004, "无权访问该合同")
 	case errors.Is(err, service.ErrContractContractNumberRequired):
-		Error(c, http.StatusBadRequest, 60007, "contract number is required")
+		Error(c, http.StatusBadRequest, 60007, "合同编号不能为空")
 	case errors.Is(err, service.ErrContractNameRequired):
-		Error(c, http.StatusBadRequest, 60008, "contract name is required")
+		Error(c, http.StatusBadRequest, 60008, "合同名称不能为空")
 	case errors.Is(err, service.ErrContractInvalidCooperationType):
-		Error(c, http.StatusBadRequest, 60009, "invalid cooperation type")
+		Error(c, http.StatusBadRequest, 60009, "合作类型无效")
 	case errors.Is(err, service.ErrContractInvalidPaymentStatus):
-		Error(c, http.StatusBadRequest, 60010, "invalid payment status")
+		Error(c, http.StatusBadRequest, 60010, "付款状态无效")
 	case errors.Is(err, service.ErrContractInvalidAuditStatus):
-		Error(c, http.StatusBadRequest, 60011, "invalid audit status")
+		Error(c, http.StatusBadRequest, 60011, "审核状态无效")
 	case errors.Is(err, service.ErrContractInvalidExpiryHandlingStatus):
-		Error(c, http.StatusBadRequest, 60012, "invalid expiry handling status")
+		Error(c, http.StatusBadRequest, 60012, "到期处理状态无效")
 	case errors.Is(err, service.ErrContractInvalidAmount):
-		Error(c, http.StatusBadRequest, 60013, "invalid contract or payment amount")
+		Error(c, http.StatusBadRequest, 60013, "合同金额或回款金额无效")
 	case errors.Is(err, service.ErrContractPaymentExceedsContract):
-		Error(c, http.StatusBadRequest, 60014, "payment amount cannot exceed contract amount")
+		Error(c, http.StatusBadRequest, 60014, "回款金额不能大于合同金额")
 	case errors.Is(err, service.ErrContractInvalidDateRange):
-		Error(c, http.StatusBadRequest, 60015, "end date cannot be earlier than start date")
+		Error(c, http.StatusBadRequest, 60015, "结束日期不能早于开始日期")
 	case errors.Is(err, service.ErrContractNumberExists):
-		Error(c, http.StatusConflict, 60016, "contract number already exists")
+		Error(c, http.StatusConflict, 60016, "合同编号已存在")
 	case errors.Is(err, service.ErrContractInvalidUser):
-		Error(c, http.StatusBadRequest, 60017, "invalid user")
+		Error(c, http.StatusBadRequest, 60017, "签单人无效")
 	case errors.Is(err, service.ErrContractInvalidCustomer):
-		Error(c, http.StatusBadRequest, 60018, "invalid customer")
+		Error(c, http.StatusBadRequest, 60018, "客户无效")
 	case errors.Is(err, service.ErrContractInvalidServiceUser):
-		Error(c, http.StatusBadRequest, 60019, "invalid service user")
+		Error(c, http.StatusBadRequest, 60019, "客服人员无效")
 	case errors.Is(err, service.ErrContractAuditStatusForbidden):
-		Error(c, http.StatusForbidden, 60020, "only admin or finance manager can update audit status")
+		Error(c, http.StatusForbidden, 60020, "仅管理员或财务经理可以修改审核状态")
 	case errors.Is(err, service.ErrContractNumberForbidden):
-		Error(c, http.StatusForbidden, 60021, "only admin can update contract number")
+		Error(c, http.StatusForbidden, 60021, "仅管理员可以修改合同编号")
 	case errors.Is(err, service.ErrContractAuditedReadonly):
-		Error(c, http.StatusForbidden, 60022, "audited contract cannot be modified")
+		Error(c, http.StatusForbidden, 60022, "已审核合同不允许修改")
+	case errors.Is(err, service.ErrContractPendingForbidden):
+		Error(c, http.StatusForbidden, 60023, "合同审核通过后运营才可编辑")
 	default:
-		Error(c, http.StatusInternalServerError, 60099, "contract operation failed")
+		ErrorWithDetail(c, http.StatusInternalServerError, 60099, "合同操作失败", err)
 	}
 }
 

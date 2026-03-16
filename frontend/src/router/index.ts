@@ -1,39 +1,46 @@
-import { createRouter, createWebHistory } from "vue-router"
+import { createRouter, createWebHistory } from "vue-router";
 
-import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue"
-import Dashboard from "@/views/Dashboard.vue"
-import LoginView from "@/views/auth/Login.vue"
-import UsersView from "@/views/user/index.vue"
-import RolesView from "@/views/role/index.vue"
-import NotificationsView from "@/views/notification/index.vue"
-import NotificationDetailView from "@/views/notification/detail.vue"
-import ProfileView from "@/views/profile/index.vue"
-import SettingsView from "@/views/settings/index.vue"
-import CustomerPoolView from "@/views/customer/pool/index.vue"
-import CustomerMyView from "@/views/customer/my/index.vue"
-import CustomerSearchView from "@/views/customer/search/index.vue"
-import CustomerPotentialView from "@/views/customer/potential/index.vue"
-import CustomerPartnerView from "@/views/customer/partner/index.vue"
-import SalesFollowRecordView from "@/views/follow-record/sales/index.vue"
-import OperationFollowRecordView from "@/views/follow-record/operation/index.vue"
-import ContractView from "@/views/contract/index.vue"
-import ResourcePoolView from "@/views/resource-pool/index.vue"
-import ResourceAcquisitionView from "@/views/resource-acquisition/index.vue"
+import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
+import Dashboard from "@/views/Dashboard.vue";
+import LoginView from "@/views/auth/Login.vue";
+import ForgotPasswordView from "@/views/auth/ForgotPassword.vue";
+import UsersView from "@/views/user/index.vue";
+import RolesView from "@/views/role/index.vue";
+import NotificationsView from "@/views/notification/index.vue";
+import NotificationDetailView from "@/views/notification/detail.vue";
+import ProfileView from "@/views/profile/index.vue";
+import SettingsView from "@/views/settings/index.vue";
+import CustomerPoolView from "@/views/customer/pool/index.vue";
+import CustomerMyView from "@/views/customer/my/index.vue";
+import CustomerSearchView from "@/views/customer/search/index.vue";
+import CustomerPotentialView from "@/views/customer/potential/index.vue";
+import CustomerPartnerView from "@/views/customer/partner/index.vue";
+import SalesFollowRecordView from "@/views/follow-record/sales/index.vue";
+import OperationFollowRecordView from "@/views/follow-record/operation/index.vue";
+import ContractView from "@/views/contract/index.vue";
+import ResourcePoolView from "@/views/resource-pool/index.vue";
+import ResourceAcquisitionView from "@/views/resource-acquisition/index.vue";
 
-import { setupRouterGuards } from "./guards"
+import { setupRouterGuards } from "./guards";
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
       path: "/",
-      redirect: "/dashboard"
+      redirect: "/dashboard",
     },
     {
       path: "/login",
       name: "login",
       component: LoginView,
-      meta: { title: "登录" }
+      meta: { title: "登录" },
+    },
+    {
+      path: "/forgot-password",
+      name: "forgot-password",
+      component: ForgotPasswordView,
+      meta: { title: "重置密码" },
     },
     {
       path: "/",
@@ -44,118 +51,127 @@ const router = createRouter({
           path: "dashboard",
           name: "dashboard",
           component: Dashboard,
-          meta: { title: "仪表盘", requiresAuth: true }
+          meta: { title: "仪表盘", requiresAuth: true },
         },
         {
           path: "users",
           name: "users",
           component: UsersView,
-          meta: { title: "用户管理", requiresAuth: true, requiresRoles: ["admin", "finance_manager", "finance", "财务经理", "财务"] }
+          meta: {
+            title: "用户管理",
+            requiresAuth: true,
+            requiresRoles: [
+              "admin",
+              "finance_manager",
+              "finance",
+              "财务经理",
+              "财务",
+            ],
+          },
         },
         {
           path: "customers",
-          redirect: "/customers/my"
+          redirect: "/customers/my",
         },
         {
           path: "customers/my",
           name: "customers-my",
           component: CustomerMyView,
-          meta: { title: "我的客户", requiresAuth: true }
+          meta: { title: "我的客户", requiresAuth: true },
         },
         {
           path: "customers/pool",
           name: "customers-pool",
           component: CustomerPoolView,
-          meta: { title: "公海客户", requiresAuth: true }
+          meta: { title: "公海客户", requiresAuth: true },
         },
         {
           path: "customers/search",
           name: "customers-search",
           component: CustomerSearchView,
-          meta: { title: "查找客户", requiresAuth: true }
+          meta: { title: "查找客户", requiresAuth: true },
         },
         {
           path: "customers/potential",
           name: "customers-potential",
           component: CustomerPotentialView,
-          meta: { title: "潜在客户", requiresAuth: true }
+          meta: { title: "潜在客户", requiresAuth: true },
         },
         {
           path: "customers/partner",
           name: "customers-partner",
           component: CustomerPartnerView,
-          meta: { title: "合作客户", requiresAuth: true }
+          meta: { title: "合作客户", requiresAuth: true },
         },
         {
           path: "roles",
           name: "roles",
           component: RolesView,
-          meta: { title: "角色管理", requiresAuth: true, requiresAdmin: true }
+          meta: { title: "角色管理", requiresAuth: true, requiresAdmin: true },
         },
         {
           path: "notifications",
           name: "notifications",
           component: NotificationsView,
-          meta: { title: "通知中心", requiresAuth: true }
+          meta: { title: "通知中心", requiresAuth: true },
         },
         {
           path: "notifications/:id",
           name: "notification-detail",
           component: NotificationDetailView,
-          meta: { title: "通知详情", requiresAuth: true }
+          meta: { title: "通知详情", requiresAuth: true },
         },
         {
           path: "profile",
           name: "profile",
           component: ProfileView,
-          meta: { title: "个人资料", requiresAuth: true }
+          meta: { title: "个人资料", requiresAuth: true },
         },
         {
           path: "settings",
           name: "settings",
           component: SettingsView,
-          meta: { title: "系统设置", requiresAuth: true, requiresAdmin: true }
+          meta: { title: "系统设置", requiresAuth: true, requiresAdmin: true },
         },
         {
           path: "follow-records/sales",
           name: "follow-records-sales",
           component: SalesFollowRecordView,
-          meta: { title: "销售跟进", requiresAuth: true, requiresAdmin: true }
+          meta: { title: "销售跟进", requiresAuth: true, requiresAdmin: true },
         },
         {
           path: "follow-records/operation",
           name: "follow-records-operation",
           component: OperationFollowRecordView,
-          meta: { title: "运营跟进", requiresAuth: true, requiresAdmin: true }
+          meta: { title: "运营跟进", requiresAuth: true, requiresAdmin: true },
         },
         {
           path: "contracts",
           name: "contracts",
           component: ContractView,
-          meta: { title: "合同管理", requiresAuth: true }
+          meta: { title: "合同管理", requiresAuth: true },
         },
         {
           path: "resource-pool",
           name: "resource-pool",
           component: ResourcePoolView,
-          meta: { title: "地图资源", requiresAuth: true }
+          meta: { title: "地图资源", requiresAuth: true },
         },
         {
           path: "resource-acquisition",
           name: "resource-acquisition",
           component: ResourceAcquisitionView,
-          meta: { title: "资源获取", requiresAuth: true }
+          meta: { title: "资源获取", requiresAuth: true },
         },
-
-      ]
+      ],
     },
     {
       path: "/:pathMatch(.*)*",
-      redirect: "/dashboard"
-    }
-  ]
-})
+      redirect: "/dashboard",
+    },
+  ],
+});
 
-setupRouterGuards(router)
+setupRouterGuards(router);
 
-export default router
+export default router;

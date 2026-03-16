@@ -80,6 +80,15 @@ func main() {
 	captchaService := service.NewCaptchaService(2*time.Minute, 5)
 	externalCompanySearchHub := service.NewExternalCompanySearchHub(64)
 	externalCompanySearchHTTPClient := companysearch.NewDefaultHTTPClient()
+	madeInChinaHTTPClient := companysearch.NewHTTPClient(companysearch.HTTPClientConfig{
+		Timeout:               30 * time.Second,
+		ConnectTimeout:        15 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		RetryCount:            2,
+		RetryWait:             2 * time.Second,
+		ProxyURL:              cfg.MadeInChinaProxyURL,
+		DisableHTTP2:          true,
+	})
 	googleSearchHTTPClient := companysearch.NewHTTPClient(companysearch.HTTPClientConfig{
 		ProxyURL: cfg.GoogleProxyURL,
 	})
@@ -89,13 +98,22 @@ func main() {
 		cfg.SearchWorkerCount,
 		time.Duration(cfg.SearchPollIntervalMS)*time.Millisecond,
 		companysearch.NewAlibabaProvider(externalCompanySearchHTTPClient, cfg.AlibabaSearchBaseURL),
-		companysearch.NewMadeInChinaProvider(externalCompanySearchHTTPClient, cfg.MadeInChinaBaseURL),
+		companysearch.NewMadeInChinaProvider(madeInChinaHTTPClient, cfg.MadeInChinaBaseURL),
 		companysearch.NewGoogleProvider(googleSearchHTTPClient, cfg.GoogleAPIKey, cfg.GoogleCX, cfg.GoogleSearchNum),
 	)
 	externalCompanySearchService := service.NewExternalCompanySearchService(
 		externalCompanySearchRepo,
 		externalCompanySearchRuntime,
 		externalCompanySearchRuntime,
+	)
+	alibabaEnricher := companysearch.NewAlibabaEnricher(externalCompanySearchHTTPClient)
+	madeInChinaEnricher := companysearch.NewMadeInChinaEnricher(madeInChinaHTTPClient)
+	websiteContactExtractor := companysearch.NewWebsiteContactExtractor(externalCompanySearchHTTPClient)
+	externalCompanyEnrichService := service.NewExternalCompanyEnrichService(
+		externalCompanySearchRepo,
+		alibabaEnricher,
+		madeInChinaEnricher,
+		websiteContactExtractor,
 	)
 	uploadService, err := service.NewUploadService(cfg)
 	if err != nil {
@@ -119,6 +137,7 @@ func main() {
 	notificationHandler := handler.NewNotificationHandler(activityLogRepo, notificationRepo)
 	externalCompanySearchHandler := handler.NewExternalCompanySearchHandler(
 		externalCompanySearchService,
+		externalCompanyEnrichService,
 		externalCompanySearchHub,
 		cfg.FrontendOrigin,
 	)

@@ -21,12 +21,28 @@ func NewDashboardService(repo repository.DashboardRepository) DashboardService {
 }
 
 func (s *dashboardService) GetOverview(ctx context.Context, actorUserID int64, actorRole string) (model.DashboardOverview, error) {
-	return s.repo.GetOverview(ctx, time.Now(), actorUserID, isDashboardGlobalRole(actorRole))
+	overview, err := s.repo.GetOverview(ctx, time.Now(), actorUserID, isDashboardGlobalRole(actorRole))
+	if err != nil {
+		return model.DashboardOverview{}, err
+	}
+	if !isDashboardAdminRole(actorRole) {
+		overview.SalesAdminOverview = nil
+	}
+	return overview, nil
 }
 
 func isDashboardGlobalRole(role string) bool {
 	switch strings.TrimSpace(strings.ToLower(role)) {
 	case "admin", "管理员", "finance", "finance_manager", "财务", "财务经理":
+		return true
+	default:
+		return false
+	}
+}
+
+func isDashboardAdminRole(role string) bool {
+	switch strings.TrimSpace(strings.ToLower(role)) {
+	case "admin", "管理员":
 		return true
 	default:
 		return false

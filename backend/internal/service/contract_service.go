@@ -28,6 +28,7 @@ var (
 	ErrContractAuditStatusForbidden        = errors.New("only admin or finance manager can update audit status")
 	ErrContractNumberForbidden             = errors.New("only admin can update contract number")
 	ErrContractAuditedReadonly             = errors.New("audited contract is readonly")
+	ErrContractPendingForbidden            = errors.New("operations role can only edit contracts that have been audited")
 )
 
 type ContractService interface {
@@ -130,8 +131,8 @@ func (s *contractService) UpdateContract(ctx context.Context, id int64, input mo
 	if err != nil {
 		return nil, err
 	}
-	if existing.AuditStatus != model.ContractAuditStatusPending && !isOperationRole(actorRole) {
-		return nil, ErrContractAuditedReadonly
+	if err := checkContractUpdatePermission(existing, actorRole); err != nil {
+		return nil, err
 	}
 
 	input = applyRoleScopedUpdateInput(existing, input, actorRole)
@@ -309,6 +310,34 @@ func (s *contractService) normalizeUpdateInput(ctx context.Context, input model.
 	return normalized, nil
 }
 
+// checkContractUpdatePermission enforces per-role edit rules:
+//   - Admin:      always allowed
+//   - Operations: only when contract has already been audited (not pending)
+//   - Sales:      always allowed (field scope is narrowed in applyRoleScopedUpdateInput)
+//   - Others:     blocked once the contract leaves pending state
+func checkContractUpdatePermission(existing *model.Contract, actorRole string) error {
+	switch {
+	case isAdminRole(actorRole):
+		// Admin can edit at any time, no restriction.
+		return nil
+	case isOperationRole(actorRole):
+		// Operations may only edit after the contract has been audited.
+		if existing.AuditStatus == model.ContractAuditStatusPending {
+			return ErrContractPendingForbidden
+		}
+		return nil
+	case isSalesRole(actorRole):
+		// Sales can always edit; field scope is restricted separately.
+		return nil
+	default:
+		// All other roles follow the original rule: blocked after audit.
+		if existing.AuditStatus != model.ContractAuditStatusPending {
+			return ErrContractAuditedReadonly
+		}
+		return nil
+	}
+}
+
 func applyRoleScopedUpdateInput(existing *model.Contract, input model.ContractUpdateInput, actorRole string) model.ContractUpdateInput {
 	if existing == nil {
 		return input
@@ -343,13 +372,24 @@ func applyRoleScopedUpdateInput(existing *model.Contract, input model.ContractUp
 	}
 
 	switch {
+	case isAdminRole(actorRole):
+		// Admin: full update, no field restrictions.
+		return input
 	case isOperationRole(actorRole):
+		// Operations: only site-service fields (contract must already be audited,
+		// enforced upstream in checkContractUpdatePermission).
 		merged.WebsiteName = input.WebsiteName
 		merged.WebsiteURL = input.WebsiteURL
 		merged.WebsiteUsername = input.WebsiteUsername
 		merged.IsOnline = input.IsOnline
 		return merged
 	case isSalesRole(actorRole):
+		if existing.AuditStatus != model.ContractAuditStatusPending {
+			// After audit: sales may only update the remark field.
+			merged.Remark = input.Remark
+			return merged
+		}
+		// Before audit: sales can update their full set of fields.
 		merged.ContractImage = input.ContractImage
 		merged.PaymentImage = input.PaymentImage
 		merged.PaymentStatus = input.PaymentStatus
@@ -432,7 +472,7 @@ func (s *contractService) resolveAccessScope(ctx context.Context, actorUserID in
 		if err != nil {
 			return contractAccessScope{}, err
 		}
-		staffIDs, err := s.repo.ListDirectSubordinateUserIDsByRoleNames(ctx, managerIDs, []string{"sales_staff", "销售员工", "销售"})
+		staffIDs, err := s.repo.ListDirectSubordinateUserIDsByRoleNames(ctx, managerIDs, []string{"sales_staff", "sales_inside", "sales_outside", "销售员工", "销售", "Inside销售", "Outside销售"})
 		if err != nil {
 			return contractAccessScope{}, err
 		}
@@ -556,8 +596,8 @@ func isAdminRole(role string) bool {
 
 func isSalesRole(role string) bool {
 	return isRole(role,
-		"sales_director", "sales_manager", "sales_staff",
-		"销售总监", "销售经理", "销售员工", "销售",
+		"sales_director", "sales_manager", "sales_staff", "sales_inside", "sales_outside",
+		"销售总监", "销售经理", "销售员工", "销售", "Inside销售", "Outside销售",
 	)
 }
 

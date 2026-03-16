@@ -23,17 +23,17 @@ func NewCrontabHandler(autoDropService service.CustomerAutoDropService) *Crontab
 // @Produce     json
 // @Security    BearerAuth
 // @Success     200 {object} APIResponse{data=service.CustomerAutoDropTaskResult}
-// @Failure     500 {object} APIResponse
+// @Failure     500 {object} APIResponse "服务器内部错误"
 // @Router      /api/v1/tasks/customer-drop/run [post]
 func (h *CrontabHandler) RunAutoDropTask(c *gin.Context) {
 	if h.autoDropService == nil {
-		Error(c, http.StatusInternalServerError, 10031, "auto drop service unavailable")
+		Error(c, http.StatusInternalServerError, 10201, "自动掉库服务未配置")
 		return
 	}
 
 	result, err := h.autoDropService.Run(c.Request.Context())
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10033, "failed to execute auto drop task")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10202, "执行自动掉库任务失败", err)
 		return
 	}
 	Success(c, result)

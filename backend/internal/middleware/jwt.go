@@ -33,27 +33,27 @@ func JWTAuth(secret string, checker TokenBlacklistChecker) gin.HandlerFunc {
 			return []byte(secret), nil
 		})
 		if err != nil || !token.Valid {
-			handler.Error(c, http.StatusUnauthorized, 30003, "invalid or expired token")
+			handler.Error(c, http.StatusUnauthorized, 30003, "登录状态已失效或令牌无效")
 			c.Abort()
 			return
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			handler.Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+			handler.Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 			c.Abort()
 			return
 		}
 
 		if typ, _ := claims["typ"].(string); typ != "access" {
-			handler.Error(c, http.StatusUnauthorized, 30003, "invalid or expired token")
+			handler.Error(c, http.StatusUnauthorized, 30003, "登录状态已失效或令牌无效")
 			c.Abort()
 			return
 		}
 
 		tokenJTI, _ := claims["jti"].(string)
 		if tokenJTI == "" {
-			handler.Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+			handler.Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 			c.Abort()
 			return
 		}
@@ -61,12 +61,12 @@ func JWTAuth(secret string, checker TokenBlacklistChecker) gin.HandlerFunc {
 		if checker != nil {
 			blacklisted, err := checker.IsAccessTokenBlacklisted(c.Request.Context(), tokenJTI)
 			if err != nil {
-				handler.Error(c, http.StatusInternalServerError, 30005, "token check failed")
+				handler.ErrorWithDetail(c, http.StatusInternalServerError, 30005, "登录状态校验失败", err)
 				c.Abort()
 				return
 			}
 			if blacklisted {
-				handler.Error(c, http.StatusUnauthorized, 30003, "invalid or expired token")
+				handler.Error(c, http.StatusUnauthorized, 30003, "登录状态已失效或令牌无效")
 				c.Abort()
 				return
 			}
@@ -83,13 +83,13 @@ func JWTAuth(secret string, checker TokenBlacklistChecker) gin.HandlerFunc {
 		case string:
 			parsed, err := strconv.ParseInt(sub, 10, 64)
 			if err != nil {
-				handler.Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+				handler.Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 				c.Abort()
 				return
 			}
 			userID = parsed
 		default:
-			handler.Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+			handler.Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 			c.Abort()
 			return
 		}
@@ -128,7 +128,7 @@ func resolveBearerToken(c *gin.Context) (string, int, string) {
 	if authHeader != "" {
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			return "", 30002, "invalid authorization format"
+			return "", 30002, "认证头格式错误"
 		}
 		return strings.TrimSpace(parts[1]), 0, ""
 	}
@@ -140,5 +140,5 @@ func resolveBearerToken(c *gin.Context) (string, int, string) {
 		}
 	}
 
-	return "", 30001, "missing authorization header"
+	return "", 30001, "缺少认证信息"
 }

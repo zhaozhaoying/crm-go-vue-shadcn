@@ -24,6 +24,8 @@ type ExternalCompanySearchRepository interface {
 	MarkTaskCompleted(ctx context.Context, taskID int64, workerToken string, finishedAt time.Time) error
 	MarkTaskFailed(ctx context.Context, taskID int64, workerToken, message string, finishedAt time.Time) error
 	CancelTask(ctx context.Context, taskID int64) error
+	GetCompanyByID(ctx context.Context, id int64) (*model.ExternalCompany, error)
+	UpdateCompanyFields(ctx context.Context, id int64, fields map[string]any) (*model.ExternalCompany, error)
 	UpsertCompany(ctx context.Context, company *model.ExternalCompany) (*model.ExternalCompany, bool, error)
 	SaveSearchResult(ctx context.Context, result *model.ExternalCompanySearchResult) (bool, error)
 	AppendEvent(ctx context.Context, taskID int64, eventType, message, payload string) (*model.ExternalCompanySearchEvent, error)
@@ -298,6 +300,29 @@ func (r *gormExternalCompanySearchRepository) CancelTask(ctx context.Context, ta
 		return ErrExternalCompanySearchTaskNotFound
 	}
 	return nil
+}
+
+func (r *gormExternalCompanySearchRepository) GetCompanyByID(ctx context.Context, id int64) (*model.ExternalCompany, error) {
+	var company model.ExternalCompany
+	err := r.db.WithContext(ctx).Table(company.TableName()).Where("id = ?", id).Take(&company).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &company, nil
+}
+
+func (r *gormExternalCompanySearchRepository) UpdateCompanyFields(ctx context.Context, id int64, fields map[string]any) (*model.ExternalCompany, error) {
+	if len(fields) == 0 {
+		return r.GetCompanyByID(ctx, id)
+	}
+	tableName := (model.ExternalCompany{}).TableName()
+	if err := r.db.WithContext(ctx).Table(tableName).Where("id = ?", id).Updates(fields).Error; err != nil {
+		return nil, err
+	}
+	return r.GetCompanyByID(ctx, id)
 }
 
 func (r *gormExternalCompanySearchRepository) UpsertCompany(ctx context.Context, company *model.ExternalCompany) (*model.ExternalCompany, bool, error) {

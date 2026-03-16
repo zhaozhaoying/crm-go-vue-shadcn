@@ -100,10 +100,14 @@ const SALES_ROLE_NAMES = [
   "sales_director",
   "sales_manager",
   "sales_staff",
+  "sales_inside",
+  "sales_outside",
   "销售总监",
   "销售经理",
   "销售员工",
   "销售",
+  "Inside销售",
+  "Outside销售",
 ]
 const OPERATION_ROLE_CANDIDATES = [
   "ops_manager",
@@ -135,6 +139,15 @@ const isOperationEditRestricted = computed(
     !isAuditMode.value &&
     hasAnyRole(authStore.user, OPERATION_ROLE_CANDIDATES),
 )
+
+// 销售审核后仅可编辑备注：合同已离开 pending 状态，且当前是销售角色在编辑
+const isSalesRemarkOnlyMode = computed(
+  () =>
+    isSalesEditRestricted.value &&
+    String(props.contract?.auditStatus || "").trim() !== "pending" &&
+    String(props.contract?.auditStatus || "").trim() !== "",
+)
+
 const showBaseInfoSection = computed(() => !isOperationEditRestricted.value)
 const showBusinessSection = computed(() => !isOperationEditRestricted.value)
 const showAttachmentSection = computed(() => !isOperationEditRestricted.value)
@@ -142,15 +155,19 @@ const showSiteServiceSection = computed(
   () => !isSalesOrderMode.value && !isSalesEditRestricted.value,
 )
 const baseFieldsReadonly = computed(
-  () => formReadonly.value || isOperationEditRestricted.value,
+  () => formReadonly.value || isOperationEditRestricted.value || isSalesRemarkOnlyMode.value,
 )
 const businessFieldsReadonly = computed(
-  () => formReadonly.value || isOperationEditRestricted.value,
+  () => formReadonly.value || isOperationEditRestricted.value || isSalesRemarkOnlyMode.value,
 )
 const siteServiceReadonly = computed(
   () => formReadonly.value || isSalesEditRestricted.value,
 )
 const attachmentFieldsReadonly = computed(
+  () => formReadonly.value || isOperationEditRestricted.value || isSalesRemarkOnlyMode.value,
+)
+// 备注字段单独控制：isSalesRemarkOnlyMode 时备注仍可编辑
+const remarkReadonly = computed(
   () => formReadonly.value || isOperationEditRestricted.value,
 )
 const canEditContractNumber = computed(
@@ -207,6 +224,9 @@ const dialogDescription = computed(() => {
   if (isOperationEditRestricted.value) {
     return "运营编辑时仅可维护站点与服务区域，上线时间会在保存时自动生成。"
   }
+  if (isSalesRemarkOnlyMode.value) {
+    return "合同已审核，销售仅可修改备注字段，其余信息已锁定。"
+  }
   if (isSalesEditRestricted.value) {
     return "销售编辑时不展示站点与服务区域，其余合同信息可继续维护。"
   }
@@ -261,6 +281,22 @@ const currentCustomerLabel = computed(() => {
     return `客户 #${currentId}`
   }
   return "未选择客户"
+})
+
+const customerSelectOptions = computed(() => {
+  const currentId = Number(
+    form.value.customerId || props.contract?.customerId || props.fixedCustomerId || 0,
+  )
+  const options = [...customerOptions.value]
+
+  if (currentId > 0 && !options.some((customer) => customer.id === currentId)) {
+    options.unshift({
+      id: currentId,
+      name: currentCustomerLabel.value,
+    })
+  }
+
+  return options
 })
 
 const isOperationUser = (user: UserWithRole) =>
@@ -718,7 +754,11 @@ const submitAudit = (nextStatus: "success" | "failed") => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem v-for="customer in customerOptions" :key="customer.id" :value="String(customer.id)">
+                          <SelectItem
+                            v-for="customer in customerSelectOptions"
+                            :key="customer.id"
+                            :value="String(customer.id)"
+                          >
                             {{ customer.name || `#${customer.id}` }}
                           </SelectItem>
                         </SelectGroup>
@@ -936,12 +976,18 @@ const submitAudit = (nextStatus: "success" | "failed") => {
                   </div>
 
                   <div class="space-y-1.5">
-                    <Label>备注</Label>
+                    <Label>
+                      备注
+                      <span
+                        v-if="isSalesRemarkOnlyMode"
+                        class="ml-1.5 rounded-sm bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-700"
+                      >仅此字段可编辑</span>
+                    </Label>
                     <Textarea
                       v-model="form.remark"
                       :rows="8"
                       placeholder="补充合同背景、商务说明、注意事项等"
-                      :disabled="attachmentFieldsReadonly"
+                      :disabled="remarkReadonly"
                     />
                   </div>
                 </div>

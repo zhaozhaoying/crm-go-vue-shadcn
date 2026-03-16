@@ -9,6 +9,27 @@ import (
 	"gorm.io/gorm"
 )
 
+var (
+	dashboardSalesRoleNames = []string{
+		"sales_director",
+		"sales_manager",
+		"sales_staff",
+		"sales_inside",
+		"sale_inside",
+		"sales_outside",
+		"sale_outside",
+	}
+	dashboardSalesRoleLabels = []string{
+		"销售总监",
+		"销售经理",
+		"销售员工",
+		"销售",
+		"Inside销售",
+		"Outside销售",
+		"电销员工",
+	}
+)
+
 type DashboardRepository interface {
 	GetOverview(ctx context.Context, now time.Time, actorUserID int64, showAll bool) (model.DashboardOverview, error)
 }
@@ -23,6 +44,9 @@ func NewGormDashboardRepository(db *gorm.DB) DashboardRepository {
 
 func (r *gormDashboardRepository) GetOverview(ctx context.Context, now time.Time, actorUserID int64, showAll bool) (model.DashboardOverview, error) {
 	location := now.Location()
+	todayStart := dayStart(now, location)
+	yesterdayStart := todayStart.AddDate(0, 0, -1)
+	tomorrowStart := todayStart.AddDate(0, 0, 1)
 	currentMonthStart := monthStart(now, location)
 	nextMonthStart := currentMonthStart.AddDate(0, 1, 0)
 	lastMonthStart := currentMonthStart.AddDate(0, -1, 0)
@@ -83,6 +107,75 @@ func (r *gormDashboardRepository) GetOverview(ctx context.Context, now time.Time
 		return model.DashboardOverview{}, err
 	}
 
+	var salesAdminOverview *model.DashboardSalesAdminOverview
+	if showAll {
+		todaySalesCustomers, err := r.countSalesCustomersBetween(ctx, todayStart, tomorrowStart)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		yesterdaySalesCustomers, err := r.countSalesCustomersBetween(ctx, yesterdayStart, todayStart)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		todaySalesFollowRecords, err := r.countSalesFollowRecordsBetween(ctx, todayStart, tomorrowStart)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		yesterdaySalesFollowRecords, err := r.countSalesFollowRecordsBetween(ctx, yesterdayStart, todayStart)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		currentMonthSalesCustomers, err := r.countSalesCustomersBetween(ctx, currentMonthStart, nextMonthStart)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		lastMonthSalesCustomers, err := r.countSalesCustomersBetween(ctx, lastMonthStart, currentMonthStart)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		currentMonthSalesFollowRecords, err := r.countSalesFollowRecordsBetween(ctx, currentMonthStart, nextMonthStart)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		lastMonthSalesFollowRecords, err := r.countSalesFollowRecordsBetween(ctx, lastMonthStart, currentMonthStart)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		todayNewCustomerRanks, err := r.listSalesCustomerRanksBetween(ctx, todayStart, tomorrowStart, 10)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+		todayFollowRecordRanks, err := r.listSalesFollowRecordRanksBetween(ctx, todayStart, tomorrowStart, 10)
+		if err != nil {
+			return model.DashboardOverview{}, err
+		}
+
+		salesAdminOverview = &model.DashboardSalesAdminOverview{
+			TodayNewCustomers: model.DashboardStat{
+				Current:    float64(todaySalesCustomers),
+				Previous:   float64(yesterdaySalesCustomers),
+				ChangeRate: calcChangeRate(float64(todaySalesCustomers), float64(yesterdaySalesCustomers)),
+			},
+			TodayFollowRecords: model.DashboardStat{
+				Current:    float64(todaySalesFollowRecords),
+				Previous:   float64(yesterdaySalesFollowRecords),
+				ChangeRate: calcChangeRate(float64(todaySalesFollowRecords), float64(yesterdaySalesFollowRecords)),
+			},
+			MonthlyNewCustomers: model.DashboardStat{
+				Current:    float64(currentMonthSalesCustomers),
+				Previous:   float64(lastMonthSalesCustomers),
+				ChangeRate: calcChangeRate(float64(currentMonthSalesCustomers), float64(lastMonthSalesCustomers)),
+			},
+			MonthlyFollowRecords: model.DashboardStat{
+				Current:    float64(currentMonthSalesFollowRecords),
+				Previous:   float64(lastMonthSalesFollowRecords),
+				ChangeRate: calcChangeRate(float64(currentMonthSalesFollowRecords), float64(lastMonthSalesFollowRecords)),
+			},
+			TodayNewCustomerRanks:  todayNewCustomerRanks,
+			TodayFollowRecordRanks: todayFollowRecordRanks,
+		}
+	}
+
 	currentConversionRate := calcConversionRate(currentDoneCustomers, currentNewCustomers)
 	lastConversionRate := calcConversionRate(lastDoneCustomers, lastNewCustomers)
 
@@ -107,10 +200,11 @@ func (r *gormDashboardRepository) GetOverview(ctx context.Context, now time.Time
 			Previous:   lastConversionRate,
 			ChangeRate: calcChangeRate(currentConversionRate, lastConversionRate),
 		},
-		MonthlyRevenue:   monthlyRevenue,
-		MonthlyContracts: monthlyContracts,
-		RecentDeals:      recentDeals,
-		RecentActivities: recentActivities,
+		MonthlyRevenue:     monthlyRevenue,
+		MonthlyContracts:   monthlyContracts,
+		SalesAdminOverview: salesAdminOverview,
+		RecentDeals:        recentDeals,
+		RecentActivities:   recentActivities,
 	}, nil
 }
 
@@ -166,6 +260,116 @@ func (r *gormDashboardRepository) countContractsBetween(ctx context.Context, sta
 		return 0, err
 	}
 	return total, nil
+}
+
+func applyDashboardSalesRoleScope(query *gorm.DB) *gorm.DB {
+	return query.Where("(r.name IN ? OR r.label IN ?)", dashboardSalesRoleNames, dashboardSalesRoleLabels)
+}
+
+func (r *gormDashboardRepository) countSalesCustomersBetween(ctx context.Context, start, end time.Time) (int64, error) {
+	query := r.db.WithContext(ctx).
+		Table("customers AS c").
+		Joins("JOIN users AS u ON u.id = c.owner_user_id").
+		Joins("JOIN roles AS r ON r.id = u.role_id").
+		Where("(c.delete_time IS NULL OR c.delete_time = 0)").
+		Where("c.created_at >= ? AND c.created_at < ?", start, end)
+	query = applyDashboardSalesRoleScope(query)
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (r *gormDashboardRepository) countSalesFollowRecordsBetween(ctx context.Context, start, end time.Time) (int64, error) {
+	query := r.db.WithContext(ctx).
+		Table("sales_follow_records AS sfr").
+		Joins("JOIN users AS u ON u.id = sfr.operator_user_id").
+		Joins("JOIN roles AS r ON r.id = u.role_id").
+		Where("sfr.created_at >= ? AND sfr.created_at < ?", start, end)
+	query = applyDashboardSalesRoleScope(query)
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (r *gormDashboardRepository) listSalesCustomerRanksBetween(ctx context.Context, start, end time.Time, limit int) ([]model.DashboardRankingItem, error) {
+	if limit <= 0 {
+		return []model.DashboardRankingItem{}, nil
+	}
+
+	type rankRow struct {
+		UserID   int64  `gorm:"column:user_id"`
+		UserName string `gorm:"column:user_name"`
+		Count    int64  `gorm:"column:item_count"`
+	}
+
+	var rows []rankRow
+	query := r.db.WithContext(ctx).
+		Table("customers AS c").
+		Select("u.id AS user_id, COALESCE(NULLIF(u.nickname, ''), u.username, '') AS user_name, COUNT(*) AS item_count").
+		Joins("JOIN users AS u ON u.id = c.owner_user_id").
+		Joins("JOIN roles AS r ON r.id = u.role_id").
+		Where("(c.delete_time IS NULL OR c.delete_time = 0)").
+		Where("c.created_at >= ? AND c.created_at < ?", start, end).
+		Group("u.id, u.nickname, u.username").
+		Order("item_count DESC, u.id ASC").
+		Limit(limit)
+	query = applyDashboardSalesRoleScope(query)
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	items := make([]model.DashboardRankingItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, model.DashboardRankingItem{
+			UserID:   row.UserID,
+			UserName: row.UserName,
+			Count:    row.Count,
+		})
+	}
+	return items, nil
+}
+
+func (r *gormDashboardRepository) listSalesFollowRecordRanksBetween(ctx context.Context, start, end time.Time, limit int) ([]model.DashboardRankingItem, error) {
+	if limit <= 0 {
+		return []model.DashboardRankingItem{}, nil
+	}
+
+	type rankRow struct {
+		UserID   int64  `gorm:"column:user_id"`
+		UserName string `gorm:"column:user_name"`
+		Count    int64  `gorm:"column:item_count"`
+	}
+
+	var rows []rankRow
+	query := r.db.WithContext(ctx).
+		Table("sales_follow_records AS sfr").
+		Select("u.id AS user_id, COALESCE(NULLIF(u.nickname, ''), u.username, '') AS user_name, COUNT(*) AS item_count").
+		Joins("JOIN users AS u ON u.id = sfr.operator_user_id").
+		Joins("JOIN roles AS r ON r.id = u.role_id").
+		Where("sfr.created_at >= ? AND sfr.created_at < ?", start, end).
+		Group("u.id, u.nickname, u.username").
+		Order("item_count DESC, u.id ASC").
+		Limit(limit)
+	query = applyDashboardSalesRoleScope(query)
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	items := make([]model.DashboardRankingItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, model.DashboardRankingItem{
+			UserID:   row.UserID,
+			UserName: row.UserName,
+			Count:    row.Count,
+		})
+	}
+	return items, nil
 }
 
 func (r *gormDashboardRepository) listMonthlyRevenue(ctx context.Context, currentMonthStart time.Time, months int, actorUserID int64, showAll bool) ([]model.DashboardMonthlyRevenue, error) {
@@ -325,6 +529,14 @@ func monthStart(now time.Time, location *time.Location) time.Time {
 	}
 	year, month, _ := now.In(location).Date()
 	return time.Date(year, month, 1, 0, 0, 0, 0, location)
+}
+
+func dayStart(now time.Time, location *time.Location) time.Time {
+	if location == nil {
+		location = time.Local
+	}
+	year, month, day := now.In(location).Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, location)
 }
 
 func calcConversionRate(doneCount, totalCount int64) float64 {

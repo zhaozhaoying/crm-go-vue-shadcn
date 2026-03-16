@@ -26,7 +26,10 @@ type CustomerRepository interface {
 	List(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListResult, error)
 	FindByID(ctx context.Context, customerID int64) (*model.Customer, error)
 	ListUserIDsByRoleNames(ctx context.Context, roleNames []string) ([]int64, error)
+	ListEnabledUserIDsByRoleNames(ctx context.Context, roleNames []string) ([]int64, error)
 	ListDirectSubordinateUserIDsByRoleNames(ctx context.Context, parentIDs []int64, roleNames []string) ([]int64, error)
+	GetUserRoleName(ctx context.Context, userID int64) (string, error)
+	GetParentUserID(ctx context.Context, userID int64) (int64, error)
 	ResolveDepartmentAnchorUserID(ctx context.Context, userID int64) (int64, error)
 	CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error)
 	Create(ctx context.Context, input model.CustomerCreateInput) (*model.Customer, error)
@@ -81,10 +84,6 @@ type customerListRow struct {
 	DropTimeUnix       sql.NullInt64 `gorm:"column:drop_time_unix"`
 	DropUserID         sql.NullInt64 `gorm:"column:drop_user_id"`
 	IsInPool           bool          `gorm:"column:is_in_pool"`
-}
-
-type customerDetailRow struct {
-	customerListRow
 }
 
 type customerPhoneRow struct {
@@ -318,6 +317,56 @@ func (r *gormCustomerRepository) ListUserIDsByRoleNames(ctx context.Context, rol
 	return ids, nil
 }
 
+func (r *gormCustomerRepository) ListEnabledUserIDsByRoleNames(ctx context.Context, roleNames []string) ([]int64, error) {
+	if len(roleNames) == 0 {
+		return []int64{}, nil
+	}
+
+	cleanRoleNames := make([]string, 0, len(roleNames))
+	for _, roleName := range roleNames {
+		name := strings.TrimSpace(roleName)
+		if name == "" {
+			continue
+		}
+		cleanRoleNames = append(cleanRoleNames, name)
+	}
+	if len(cleanRoleNames) == 0 {
+		return []int64{}, nil
+	}
+
+	var ids []int64
+	err := r.db.WithContext(ctx).
+		Table("users AS u").
+		Joins("LEFT JOIN roles r ON u.role_id = r.id").
+		Where("r.name IN ?", cleanRoleNames).
+		Where("u.status = ?", model.UserStatusEnabled).
+		Order("u.id ASC").
+		Pluck("u.id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (r *gormCustomerRepository) GetUserRoleName(ctx context.Context, userID int64) (string, error) {
+	if userID <= 0 {
+		return "", nil
+	}
+
+	var roleName string
+	err := r.db.WithContext(ctx).
+		Table("users AS u").
+		Select("COALESCE(r.name, '')").
+		Joins("LEFT JOIN roles r ON u.role_id = r.id").
+		Where("u.id = ?", userID).
+		Limit(1).
+		Scan(&roleName).Error
+	if err != nil {
+		return "", err
+	}
+	return roleName, nil
+}
+
 func (r *gormCustomerRepository) ResolveDepartmentAnchorUserID(ctx context.Context, userID int64) (int64, error) {
 	if userID <= 0 {
 		return 0, nil
@@ -363,6 +412,33 @@ func (r *gormCustomerRepository) ResolveDepartmentAnchorUserID(ctx context.Conte
 	}
 
 	return 0, nil
+}
+
+func (r *gormCustomerRepository) GetParentUserID(ctx context.Context, userID int64) (int64, error) {
+	if userID <= 0 {
+		return 0, nil
+	}
+
+	type parentRow struct {
+		ParentID sql.NullInt64 `gorm:"column:parent_id"`
+	}
+
+	var row parentRow
+	if err := r.db.WithContext(ctx).
+		Table("users").
+		Select("parent_id").
+		Where("id = ?", userID).
+		Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	if !row.ParentID.Valid || row.ParentID.Int64 <= 0 {
+		return 0, nil
+	}
+	return row.ParentID.Int64, nil
 }
 
 func (r *gormCustomerRepository) CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error) {
@@ -469,11 +545,22 @@ func buildCustomerListWhere(filter model.CustomerListFilter) ([]string, []interf
 				if len(filter.AllowedOwnerUserIDs) > 0 {
 					ownerIDs := uniquePositiveInt64(filter.AllowedOwnerUserIDs)
 					if len(ownerIDs) == 0 {
-						where = append(where, "1 = 0")
+						if filter.IncludeCreatorScope && filter.ViewerID > 0 {
+							where = append(where, "c.create_user_id = ?")
+							args = append(args, filter.ViewerID)
+						} else {
+							where = append(where, "1 = 0")
+						}
+					} else if filter.IncludeCreatorScope && filter.ViewerID > 0 {
+						where = append(where, "(c.owner_user_id IN ? OR c.create_user_id = ?)")
+						args = append(args, ownerIDs, filter.ViewerID)
 					} else {
 						where = append(where, "c.owner_user_id IN ?")
 						args = append(args, ownerIDs)
 					}
+				} else if filter.IncludeCreatorScope && filter.ViewerID > 0 {
+					where = append(where, "(c.owner_user_id = ? OR c.create_user_id = ?)")
+					args = append(args, filter.ViewerID, filter.ViewerID)
 				} else {
 					where = append(where, "c.owner_user_id = ?")
 					args = append(args, filter.ViewerID)
@@ -920,7 +1007,7 @@ func (r *gormCustomerRepository) getCustomerForUpdate(tx *gorm.DB, customerID in
 }
 
 func (r *gormCustomerRepository) getCustomer(ctx context.Context, customerID int64) (*model.Customer, error) {
-	var row customerDetailRow
+	var row customerListRow
 	err := r.db.WithContext(ctx).
 		Table("customers AS c").
 		Select(`

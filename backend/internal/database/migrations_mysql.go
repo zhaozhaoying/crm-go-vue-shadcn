@@ -69,6 +69,11 @@ func getMySQLMigrations() []Migration {
 			Name:    "fix_legacy_mysql_index_lengths",
 			Up:      upFixLegacyMySQLIndexLengths,
 		},
+		{
+			Version: 2026031101,
+			Name:    "add_user_sales_type",
+			Up:      upAddUserSalesTypeMySQL,
+		},
 	}
 }
 
@@ -92,6 +97,7 @@ func upCreateBaseSchemaMySQL(tx *gorm.DB) error {
 			avatar VARCHAR(1024) NOT NULL DEFAULT '',
 			role_id BIGINT NOT NULL DEFAULT 0,
 			parent_id BIGINT NULL,
+			sales_type VARCHAR(32) NOT NULL DEFAULT '',
 			status VARCHAR(32) NOT NULL DEFAULT 'enabled',
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -781,4 +787,11 @@ func upFixLegacyMySQLIndexLengths(tx *gorm.DB) error {
 	}
 
 	return addIndexIfNotExists(tx, "resource_pool", "idx_resource_pool_name", "name(191)", false)
+}
+
+func upAddUserSalesTypeMySQL(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "users", "sales_type", "VARCHAR(32) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return addIndexIfNotExists(tx, "users", "idx_users_sales_type", "sales_type", false)
 }

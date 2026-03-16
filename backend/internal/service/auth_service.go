@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -24,12 +25,28 @@ var (
 	ErrUserDisabled        = errors.New("user is disabled")
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	ErrTokenRevoked        = errors.New("token revoked")
+	ErrUserNoContact       = errors.New("user has no email or mobile")
+	ErrContactMismatch     = errors.New("contact does not match")
+	ErrInvalidResetToken   = errors.New("invalid reset token")
+	ErrWeakPassword        = errors.New("password must contain both letters and numbers and be at least 6 characters")
 )
+
+var (
+	reHasLetter = regexp.MustCompile(`[a-zA-Z]`)
+	reHasDigit  = regexp.MustCompile(`[0-9]`)
+)
+
+func isStrongPassword(p string) bool {
+	return len(p) >= 6 && reHasLetter.MatchString(p) && reHasDigit.MatchString(p)
+}
 
 type AuthService interface {
 	Login(ctx context.Context, username, password string) (*LoginTokens, error)
 	Refresh(ctx context.Context, refreshToken string) (*LoginTokens, error)
 	Logout(ctx context.Context, accessJTI string, accessExp int64, refreshToken string) error
+	VerifyResetIdentity(ctx context.Context, username, contact string) (resetToken string, err error)
+	ResetPassword(ctx context.Context, resetToken, newPassword string) error
+	ResetPasswordDirect(ctx context.Context, username, contact, newPassword string) error
 }
 
 type authService struct {
@@ -200,6 +217,114 @@ func (s *authService) Logout(ctx context.Context, accessJTI string, accessExp in
 	}
 	tokenHash := hashToken(refreshToken)
 	return s.authTokenRepo.RevokeRefreshToken(ctx, tokenHash)
+}
+
+func (s *authService) VerifyResetIdentity(ctx context.Context, username, contact string) (string, error) {
+	user, err := s.userRepo.FindByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", ErrInvalidCredential
+		}
+		return "", err
+	}
+	if user.Status == model.UserStatusDisabled {
+		return "", ErrUserDisabled
+	}
+	if user.Email == "" && user.Mobile == "" {
+		return "", ErrUserNoContact
+	}
+	contact = strings.TrimSpace(contact)
+	emailMatch := user.Email != "" && strings.EqualFold(contact, strings.TrimSpace(user.Email))
+	mobileMatch := user.Mobile != "" && contact == strings.TrimSpace(user.Mobile)
+	if !emailMatch && !mobileMatch {
+		return "", ErrContactMismatch
+	}
+	resetToken, _, _, err := s.issueToken(user, "", "reset", 15*time.Minute)
+	if err != nil {
+		return "", err
+	}
+	return resetToken, nil
+}
+
+func (s *authService) ResetPassword(ctx context.Context, resetToken, newPassword string) error {
+	resetToken = strings.TrimSpace(resetToken)
+	if resetToken == "" {
+		return ErrInvalidResetToken
+	}
+	claims, err := s.parseAndValidateToken(resetToken, "reset")
+	if err != nil {
+		return ErrInvalidResetToken
+	}
+	jti, _ := claims["jti"].(string)
+	expFloat, _ := claims["exp"].(float64)
+	expInt := int64(expFloat)
+
+	if jti != "" {
+		blacklisted, err := s.authTokenRepo.IsAccessTokenBlacklisted(ctx, jti)
+		if err != nil {
+			return err
+		}
+		if blacklisted {
+			return ErrInvalidResetToken
+		}
+	}
+	userID, err := extractUserIDFromClaims(claims)
+	if err != nil {
+		return ErrInvalidResetToken
+	}
+	if len(newPassword) < 6 {
+		return ErrInvalidPassword
+	}
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return ErrInvalidResetToken
+	}
+	if user.Status == model.UserStatusDisabled {
+		return ErrUserDisabled
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.Password = string(hashed)
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
+	if jti != "" {
+		_ = s.authTokenRepo.BlacklistAccessToken(ctx, jti, expInt, "reset-used")
+	}
+	return nil
+}
+
+func (s *authService) ResetPasswordDirect(ctx context.Context, username, contact, newPassword string) error {
+	if !isStrongPassword(newPassword) {
+		return ErrWeakPassword
+	}
+	user, err := s.userRepo.FindByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrInvalidCredential
+		}
+		return err
+	}
+	if user.Status == model.UserStatusDisabled {
+		return ErrUserDisabled
+	}
+	if user.Email == "" && user.Mobile == "" {
+		return ErrUserNoContact
+	}
+	contact = strings.TrimSpace(contact)
+	emailMatch := user.Email != "" && strings.EqualFold(contact, strings.TrimSpace(user.Email))
+	mobileMatch := user.Mobile != "" && contact == strings.TrimSpace(user.Mobile)
+	if !emailMatch && !mobileMatch {
+		return ErrContactMismatch
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.Password = string(hashed)
+	return s.userRepo.Update(ctx, user)
 }
 
 func (s *authService) resolveRoleName(ctx context.Context, roleID int64) (string, error) {

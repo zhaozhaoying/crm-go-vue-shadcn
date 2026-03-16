@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-vue-next"
 
+import { getDashboardOverview } from "@/api/modules/dashboard"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -20,9 +21,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { getDashboardOverview } from "@/api/modules/dashboard"
 import { getRequestErrorMessage } from "@/lib/http-error"
+import { isAdminUser } from "@/lib/auth-role"
+import { useAuthStore } from "@/stores/auth"
 import type {
+  DashboardRankingItem,
+  DashboardSalesAdminOverview,
   DashboardMonthlyContractCount,
   DashboardMonthlyRevenue,
   DashboardOverview,
@@ -40,6 +44,7 @@ type ChartPoint = {
 const loading = ref(false)
 const errorMessage = ref("")
 const overview = ref<DashboardOverview | null>(null)
+const authStore = useAuthStore()
 
 const chartWidth = 900
 const chartHeight = 280
@@ -75,6 +80,24 @@ const formatChange = (value: number) => {
   return `${sign}${current.toFixed(1)}%`
 }
 
+const trendDirection = (value: number): boolean | null => {
+  if (value > 0) return true
+  if (value < 0) return false
+  return null
+}
+
+const metricValueClass = (up: boolean | null) => {
+  if (up === true) return "text-emerald-600"
+  if (up === false) return "text-red-600"
+  return "text-foreground"
+}
+
+const metricChangeClass = (up: boolean | null) => {
+  if (up === true) return "text-emerald-600"
+  if (up === false) return "text-red-600"
+  return "text-muted-foreground"
+}
+
 const formatRelativeTime = (value: string) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "-"
@@ -98,6 +121,18 @@ const safeMonthlyRevenue = computed(() => overview.value?.monthlyRevenue ?? [])
 const safeMonthlyContracts = computed(() => overview.value?.monthlyContracts ?? [])
 const recentDeals = computed(() => overview.value?.recentDeals ?? [])
 const recentActivities = computed(() => overview.value?.recentActivities ?? [])
+const salesAdminOverview = computed<DashboardSalesAdminOverview | null>(
+  () => overview.value?.salesAdminOverview ?? null,
+)
+const showSalesAdminOverview = computed(
+  () => isAdminUser(authStore.user) && !!salesAdminOverview.value,
+)
+const todayNewCustomerRanks = computed<DashboardRankingItem[]>(
+  () => salesAdminOverview.value?.todayNewCustomerRanks ?? [],
+)
+const todayFollowRecordRanks = computed<DashboardRankingItem[]>(
+  () => salesAdminOverview.value?.todayFollowRecordRanks ?? [],
+)
 
 const stats = computed(() => {
   const data = overview.value
@@ -111,7 +146,7 @@ const stats = computed(() => {
       title: "本月签约额",
       value: formatCurrency(revenue.current),
       change: formatChange(revenue.changeRate),
-      up: revenue.changeRate >= 0,
+      up: trendDirection(revenue.changeRate),
       icon: DollarSign,
       desc: `上月 ${formatCurrency(revenue.previous)}`,
     },
@@ -119,7 +154,7 @@ const stats = computed(() => {
       title: "本月新客户",
       value: formatCount(customers.current),
       change: formatChange(customers.changeRate),
-      up: customers.changeRate >= 0,
+      up: trendDirection(customers.changeRate),
       icon: Users,
       desc: `上月 ${formatCount(customers.previous)}`,
     },
@@ -127,7 +162,7 @@ const stats = computed(() => {
       title: "本月新增商机",
       value: formatCount(opportunities.current),
       change: formatChange(opportunities.changeRate),
-      up: opportunities.changeRate >= 0,
+      up: trendDirection(opportunities.changeRate),
       icon: CreditCard,
       desc: `上月 ${formatCount(opportunities.previous)}`,
     },
@@ -135,12 +170,67 @@ const stats = computed(() => {
       title: "本月转化率",
       value: formatRate(conversion.current),
       change: formatChange(conversion.changeRate),
-      up: conversion.changeRate >= 0,
+      up: trendDirection(conversion.changeRate),
       icon: TrendingUp,
       desc: `上月 ${formatRate(conversion.previous)}`,
     },
   ]
 })
+
+const salesAdminStats = computed(() => {
+  const data = salesAdminOverview.value
+  if (!data) return []
+
+  const todayNewCustomers = safeStat(data.todayNewCustomers)
+  const todayFollowRecords = safeStat(data.todayFollowRecords)
+  const monthlyNewCustomers = safeStat(data.monthlyNewCustomers)
+  const monthlyFollowRecords = safeStat(data.monthlyFollowRecords)
+
+  return [
+    {
+      title: "今日新增客户",
+      value: formatCount(todayNewCustomers.current),
+      change: formatChange(todayNewCustomers.changeRate),
+      up: trendDirection(todayNewCustomers.changeRate),
+      icon: Users,
+      desc: `昨日 ${formatCount(todayNewCustomers.previous)}`,
+    },
+    {
+      title: "今日跟进数量",
+      value: formatCount(todayFollowRecords.current),
+      change: formatChange(todayFollowRecords.changeRate),
+      up: trendDirection(todayFollowRecords.changeRate),
+      icon: FileText,
+      desc: `昨日 ${formatCount(todayFollowRecords.previous)}`,
+    },
+    {
+      title: "本月客户数量",
+      value: formatCount(monthlyNewCustomers.current),
+      change: formatChange(monthlyNewCustomers.changeRate),
+      up: trendDirection(monthlyNewCustomers.changeRate),
+      icon: Users,
+      desc: `上月 ${formatCount(monthlyNewCustomers.previous)}`,
+    },
+    {
+      title: "本月跟进数量",
+      value: formatCount(monthlyFollowRecords.current),
+      change: formatChange(monthlyFollowRecords.changeRate),
+      up: trendDirection(monthlyFollowRecords.changeRate),
+      icon: FileText,
+      desc: `上月 ${formatCount(monthlyFollowRecords.previous)}`,
+    },
+  ]
+})
+
+const rankingUserName = (item: DashboardRankingItem) =>
+  String(item.userName || "").trim() || `用户${item.userId}`
+
+const rankingBadgeClass = (index: number) => {
+  if (index === 0) return "border-amber-200 bg-amber-50 text-amber-700"
+  if (index === 1) return "border-slate-200 bg-slate-100 text-slate-700"
+  if (index === 2) return "border-orange-200 bg-orange-50 text-orange-700"
+  return "border-border bg-muted text-muted-foreground"
+}
 
 const mergedTrend = computed(() => {
   const revenueMap = new Map(
@@ -308,11 +398,6 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">仪表盘</h1>
-      <p class="text-sm text-muted-foreground">业务数据概览与近期动态</p>
-    </div>
-
     <Card v-if="errorMessage" class="border-red-200 bg-red-50/40">
       <CardContent class="pt-6">
         <p class="text-sm text-red-600">{{ errorMessage }}</p>
@@ -326,17 +411,133 @@ onMounted(() => {
           <component :is="stat.icon" class="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div class="text-2xl font-bold">{{ stat.value }}</div>
+          <div class="text-2xl font-bold" :class="metricValueClass(stat.up)">{{ stat.value }}</div>
           <div class="mt-1 flex items-center gap-1">
-            <ArrowUpRight v-if="stat.up" class="h-3 w-3 text-emerald-600" />
-            <ArrowDownRight v-else class="h-3 w-3 text-red-500" />
-            <span class="text-xs" :class="stat.up ? 'text-emerald-600' : 'text-red-500'">
+            <ArrowUpRight v-if="stat.up === true" class="h-3 w-3 text-emerald-600" />
+            <ArrowDownRight v-else-if="stat.up === false" class="h-3 w-3 text-red-500" />
+            <span v-else class="text-xs text-muted-foreground">-</span>
+            <span class="text-xs" :class="metricChangeClass(stat.up)">
               {{ stat.change }}
             </span>
             <span class="text-xs text-muted-foreground">{{ stat.desc }}</span>
           </div>
         </CardContent>
       </Card>
+    </div>
+
+    <div v-if="showSalesAdminOverview" class="space-y-4">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card v-for="stat in salesAdminStats" :key="stat.title" class="shadow-sm">
+          <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle class="text-sm font-medium text-muted-foreground">
+              {{ stat.title }}
+            </CardTitle>
+            <component :is="stat.icon" class="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div class="text-2xl font-bold" :class="metricValueClass(stat.up)">{{ stat.value }}</div>
+            <div class="mt-1 flex items-center gap-1">
+              <ArrowUpRight v-if="stat.up === true" class="h-3 w-3 text-emerald-600" />
+              <ArrowDownRight v-else-if="stat.up === false" class="h-3 w-3 text-red-500" />
+              <span v-else class="text-xs text-muted-foreground">-</span>
+              <span class="text-xs" :class="metricChangeClass(stat.up)">
+                {{ stat.change }}
+              </span>
+              <span class="text-xs text-muted-foreground">{{ stat.desc }}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div class="grid gap-4 lg:grid-cols-2">
+        <Card class="shadow-sm">
+          <CardHeader>
+            <CardTitle class="text-base">销售今日新增客户排名</CardTitle>
+            <CardDescription>按客户归属销售统计今日新增客户数量</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div
+              v-if="todayNewCustomerRanks.length === 0"
+              class="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground"
+            >
+              今日暂无新增客户
+            </div>
+            <div v-else class="max-h-[392px] space-y-3 overflow-y-auto pr-1">
+              <div
+                v-for="(item, index) in todayNewCustomerRanks"
+                :key="`customer-rank-${item.userId}`"
+                class="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
+              >
+                <div class="flex min-w-0 items-center gap-3">
+                  <Badge
+                    variant="secondary"
+                    class="min-w-8 justify-center border"
+                    :class="rankingBadgeClass(index)"
+                  >
+                    {{ index + 1 }}
+                  </Badge>
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-medium">
+                      {{ rankingUserName(item) }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">今日新增客户</p>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <p class="text-lg font-semibold tabular-nums">
+                    {{ formatCount(item.count) }}
+                  </p>
+                  <p class="text-xs text-muted-foreground">客户</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card class="shadow-sm">
+          <CardHeader>
+            <CardTitle class="text-base">今日跟进记录数量排名</CardTitle>
+            <CardDescription>按销售今日新增的跟进记录数量排序</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div
+              v-if="todayFollowRecordRanks.length === 0"
+              class="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground"
+            >
+              今日暂无跟进记录
+            </div>
+            <div v-else class="max-h-[392px] space-y-3 overflow-y-auto pr-1">
+              <div
+                v-for="(item, index) in todayFollowRecordRanks"
+                :key="`follow-rank-${item.userId}`"
+                class="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
+              >
+                <div class="flex min-w-0 items-center gap-3">
+                  <Badge
+                    variant="secondary"
+                    class="min-w-8 justify-center border"
+                    :class="rankingBadgeClass(index)"
+                  >
+                    {{ index + 1 }}
+                  </Badge>
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-medium">
+                      {{ rankingUserName(item) }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">今日跟进记录</p>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <p class="text-lg font-semibold tabular-nums">
+                    {{ formatCount(item.count) }}
+                  </p>
+                  <p class="text-xs text-muted-foreground">记录</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
 
     <Card class="shadow-sm">

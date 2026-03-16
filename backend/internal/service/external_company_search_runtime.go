@@ -1,6 +1,7 @@
 package service
 
 import (
+	"backend/internal/errmsg"
 	"backend/internal/external/companysearch"
 	"backend/internal/model"
 	"backend/internal/repository"
@@ -179,7 +180,7 @@ func (r *ExternalCompanySearchRuntime) processNext(ctx context.Context, workerTo
 	if task == nil {
 		return false, nil
 	}
-	if _, err := r.appendEvent(ctx, task.ID, model.ExternalCompanySearchEventTaskStarted, "task started", map[string]any{
+	if _, err := r.appendEvent(ctx, task.ID, model.ExternalCompanySearchEventTaskStarted, "任务开始执行", map[string]any{
 		"taskId": task.ID,
 		"status": task.Status,
 	}); err != nil {
@@ -247,7 +248,7 @@ func (r *ExternalCompanySearchRuntime) handleSearchPage(ctx context.Context, tas
 	if err := r.repo.UpdateTaskProgress(ctx, task); err != nil {
 		return err
 	}
-	_, _ = r.appendEvent(ctx, task.ID, model.ExternalCompanySearchEventTaskProgress, "task progress updated", externalCompanySearchProgressPayload{
+	_, _ = r.appendEvent(ctx, task.ID, model.ExternalCompanySearchEventTaskProgress, "任务进度已更新", externalCompanySearchProgressPayload{
 		TaskID:          task.ID,
 		Status:          task.Status,
 		PageNo:          task.PageNo,
@@ -319,7 +320,7 @@ func (r *ExternalCompanySearchRuntime) handleFetchedCompany(ctx context.Context,
 		task.SavedCount++
 	}
 	if resultCreated {
-		_, _ = r.appendEvent(ctx, task.ID, model.ExternalCompanySearchEventResultSaved, "result saved", map[string]any{
+		_, _ = r.appendEvent(ctx, task.ID, model.ExternalCompanySearchEventResultSaved, "结果已保存", map[string]any{
 			"taskId":         task.ID,
 			"companyId":      storedCompany.ID,
 			"companyName":    storedCompany.CompanyName,
@@ -338,7 +339,7 @@ func (r *ExternalCompanySearchRuntime) completeTask(ctx context.Context, task *m
 	if err := r.repo.MarkTaskCompleted(ctx, task.ID, task.WorkerToken, now); err != nil {
 		return err
 	}
-	_, _ = r.appendEvent(ctx, task.ID, model.ExternalCompanySearchEventTaskCompleted, "task completed", externalCompanySearchProgressPayload{
+	_, _ = r.appendEvent(ctx, task.ID, model.ExternalCompanySearchEventTaskCompleted, "任务已完成", externalCompanySearchProgressPayload{
 		TaskID:          task.ID,
 		Status:          model.ExternalCompanySearchTaskStatusCompleted,
 		PageNo:          task.PageNo,
@@ -352,6 +353,7 @@ func (r *ExternalCompanySearchRuntime) completeTask(ctx context.Context, task *m
 }
 
 func (r *ExternalCompanySearchRuntime) failTask(ctx context.Context, task *model.ExternalCompanySearchTask, message string) error {
+	message = errmsg.Normalize(message)
 	now := time.Now().UTC()
 	if err := r.repo.MarkTaskFailed(ctx, task.ID, task.WorkerToken, message, now); err != nil {
 		return err
@@ -370,6 +372,7 @@ func (r *ExternalCompanySearchRuntime) failTask(ctx context.Context, task *model
 }
 
 func (r *ExternalCompanySearchRuntime) appendEvent(ctx context.Context, taskID int64, eventType, message string, payload any) (*model.ExternalCompanySearchEvent, error) {
+	message = errmsg.Normalize(message)
 	event, err := r.repo.AppendEvent(ctx, taskID, eventType, message, marshalExternalCompanySearchPayload(payload))
 	if err != nil {
 		return nil, err

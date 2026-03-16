@@ -23,11 +23,11 @@ func NewUploadHandler(service service.UploadService) *UploadHandler {
 // @Accept      multipart/form-data
 // @Produce     json
 // @Security    BearerAuth
-// @Param       file formData file true "头像文件(jpg/png/webp, 最大2MB)"
+// @Param       file formData file true "头像文件（支持 JPG、PNG、WEBP，最大 2MB）"
 // @Success     200 {object} APIResponse{data=map[string]string}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     500 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     500 {object} APIResponse "服务器内部错误"
 // @Router      /api/v1/users/avatar/upload [post]
 func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	if h.service == nil {
@@ -51,7 +51,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		case errors.Is(err, service.ErrUploadServiceNotConfigured):
 			Error(c, http.StatusInternalServerError, 40024, "OSS上传服务未配置")
 		default:
-			Error(c, http.StatusInternalServerError, 40025, "头像上传失败")
+			ErrorWithDetail(c, http.StatusInternalServerError, 40025, "头像上传失败", err)
 		}
 		return
 	}

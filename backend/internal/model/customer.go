@@ -119,6 +119,10 @@ type CustomerListFilter struct {
 	SkipViewerOwnerLimit bool `gorm:"-"`
 	// IncludePoolInMyScope allows the "my" category to include pool customers.
 	IncludePoolInMyScope bool `gorm:"-"`
+	// IncludeCreatorScope allows the "my" category to also include customers
+	// where create_user_id = ViewerID, used for inside-sales roles so they can
+	// see customers they created and assigned to outside-sales staff.
+	IncludeCreatorScope bool `gorm:"-"`
 }
 
 type CustomerListResult struct {

@@ -49,6 +49,9 @@ func New(
 			auth.GET("/captcha", authHandler.Captcha)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/refresh", authHandler.Refresh)
+			auth.POST("/reset-password/verify", authHandler.VerifyResetIdentity)
+			auth.POST("/reset-password/confirm", authHandler.ResetPassword)
+			auth.POST("/reset-password", authHandler.ResetPasswordDirect)
 		}
 
 		protected := v1.Group("")
@@ -159,6 +162,7 @@ func New(
 			protected.GET("/external-company-search/tasks/:id/results", externalCompanySearchHandler.ListResults)
 			protected.GET("/external-company-search/tasks/:id/events", externalCompanySearchHandler.ListEvents)
 			protected.GET("/external-company-search/tasks/:id/stream", externalCompanySearchHandler.StreamTask)
+			protected.POST("/external-company-search/companies/:id/enrich", externalCompanySearchHandler.EnrichCompany)
 		}
 	}
 

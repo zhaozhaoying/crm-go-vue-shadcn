@@ -29,13 +29,22 @@ const titleMap: Record<string, string> = {
 const breadcrumbSegments = computed(() => {
   const segments = route.path.split('/').filter(Boolean)
   if (!segments.length) return [{ title: '仪表盘', url: '/' }]
-  return segments.map((seg, i) => {
+  return segments.reduce<Array<{ title: string; url: string }>>((items, seg, i) => {
     const path = '/' + segments.slice(0, i + 1).join('/')
-    return {
+    const item = {
       title: titleMap[seg] || (route.meta?.title as string) || seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' '),
       url: path,
     }
-  })
+
+    const previous = items[items.length - 1]
+    if (previous?.title === item.title) {
+      items[items.length - 1] = item
+      return items
+    }
+
+    items.push(item)
+    return items
+  }, [])
 })
 </script>
 

@@ -44,7 +44,7 @@ func NewResourcePoolHandler(service service.ResourcePoolService) *ResourcePoolHa
 // @Param       page query int false "页码，从1开始"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.ResourcePoolListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/resource-pool [get]
 func (h *ResourcePoolHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -70,7 +70,7 @@ func (h *ResourcePoolHandler) List(c *gin.Context) {
 		PageSize: pageSize,
 	})
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 70001, "failed to list resource pool")
+		ErrorWithDetail(c, http.StatusInternalServerError, 70001, "加载资源池失败", err)
 		return
 	}
 	Success(c, result)
@@ -85,19 +85,19 @@ func (h *ResourcePoolHandler) List(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       body body ResourcePoolSearchRequest true "检索参数"
 // @Success     200 {object} APIResponse{data=model.ResourcePoolSearchResult}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/resource-pool/search [post]
 func (h *ResourcePoolHandler) SearchAndStore(c *gin.Context) {
 	userID, err := authctx.GetUserIDFromContext(c)
 	if err != nil {
-		Error(c, http.StatusUnauthorized, 70002, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	var req ResourcePoolSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 70003, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 70003, "请求参数错误", err)
 		return
 	}
 
@@ -120,7 +120,7 @@ func (h *ResourcePoolHandler) SearchAndStore(c *gin.Context) {
 		case errors.Is(svcErr, service.ErrResourcePoolSearchFailed):
 			Error(c, http.StatusBadGateway, 70007, "百度地图检索失败")
 		default:
-			Error(c, http.StatusInternalServerError, 70008, "地图资源检索失败")
+			ErrorWithDetail(c, http.StatusInternalServerError, 70008, "地图资源检索失败", svcErr)
 		}
 		return
 	}
@@ -136,20 +136,20 @@ func (h *ResourcePoolHandler) SearchAndStore(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       id path int true "资源池ID"
 // @Success     200 {object} APIResponse{data=model.ResourcePoolConvertResult}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/resource-pool/{id}/convert [post]
 func (h *ResourcePoolHandler) ConvertToCustomer(c *gin.Context) {
 	userID, err := authctx.GetUserIDFromContext(c)
 	if err != nil {
-		Error(c, http.StatusUnauthorized, 70002, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	resourceID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || resourceID <= 0 {
-		Error(c, http.StatusBadRequest, 70009, "invalid resource id")
+		Error(c, http.StatusBadRequest, 70009, "无效的资源ID")
 		return
 	}
 
@@ -157,13 +157,13 @@ func (h *ResourcePoolHandler) ConvertToCustomer(c *gin.Context) {
 	if svcErr != nil {
 		switch {
 		case errors.Is(svcErr, service.ErrResourcePoolItemNotFound):
-			Error(c, http.StatusNotFound, 70010, "resource pool item not found")
+			Error(c, http.StatusNotFound, 70010, "资源池线索不存在")
 		case errors.Is(svcErr, service.ErrResourcePoolNoConvertiblePhone):
 			Error(c, http.StatusBadRequest, 70011, "地图资源电话不可用于创建客户，请补充手机号后重试")
 		case errors.Is(svcErr, service.ErrResourcePoolConvertFailed):
 			Error(c, http.StatusConflict, 70012, "地图资源转客户失败：客户信息冲突")
 		default:
-			Error(c, http.StatusInternalServerError, 70013, "地图资源转客户失败")
+			ErrorWithDetail(c, http.StatusInternalServerError, 70013, "地图资源转客户失败", svcErr)
 		}
 		return
 	}
@@ -180,19 +180,19 @@ func (h *ResourcePoolHandler) ConvertToCustomer(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       body body ResourcePoolBatchConvertRequest true "批量转客户参数"
 // @Success     200 {object} APIResponse{data=model.ResourcePoolBatchConvertResult}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/resource-pool/convert/batch [post]
 func (h *ResourcePoolHandler) ConvertBatchToCustomer(c *gin.Context) {
 	userID, err := authctx.GetUserIDFromContext(c)
 	if err != nil {
-		Error(c, http.StatusUnauthorized, 70002, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	var req ResourcePoolBatchConvertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 70014, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 70014, "请求参数错误", err)
 		return
 	}
 
@@ -202,7 +202,7 @@ func (h *ResourcePoolHandler) ConvertBatchToCustomer(c *gin.Context) {
 		case errors.Is(svcErr, service.ErrResourcePoolInvalidInput):
 			Error(c, http.StatusBadRequest, 70015, "请提供有效的地图资源ID列表")
 		default:
-			Error(c, http.StatusInternalServerError, 70016, "地图资源批量转客户失败")
+			ErrorWithDetail(c, http.StatusInternalServerError, 70016, "地图资源批量转客户失败", svcErr)
 		}
 		return
 	}

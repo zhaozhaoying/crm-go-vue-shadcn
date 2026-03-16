@@ -57,6 +57,8 @@ const roleLabel = computed(() => {
     sales_director: '销售总监',
     sales_manager: '销售经理',
     sales_staff: '销售员工',
+    sales_inside: 'Inside销售',
+    sales_outside: 'Outside销售',
     ops_manager: '运营经理',
     ops_staff: '运营员工',
   }

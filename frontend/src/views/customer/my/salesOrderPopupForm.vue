@@ -129,9 +129,8 @@ const normalizeText = (value: unknown) => String(value ?? "").trim();
 const isContractNumberCheckUnsupported = (error: unknown) => {
   if (!axios.isAxiosError(error)) return false;
   const status = error.response?.status;
-  const data = error.response?.data as { message?: string } | undefined;
-  const message = String(data?.message ?? error.message ?? "").toLowerCase();
-  return status === 404 || message.includes("invalid contract id");
+  const data = error.response?.data as { code?: number; message?: string } | undefined;
+  return status === 404 || Number(data?.code) === 60002;
 };
 
 const loadContractNumberPrefix = async () => {

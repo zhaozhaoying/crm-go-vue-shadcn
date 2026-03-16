@@ -1,6 +1,7 @@
 package service
 
 import (
+	"backend/internal/errmsg"
 	"bufio"
 	"context"
 	"encoding/csv"
@@ -242,6 +243,11 @@ func (s *customerImportService) applyImportBatch(
 		return nil
 	}
 
+	operatorRole, err := s.getUserRoleName(ctx, input.OperatorUserID)
+	if err != nil {
+		return err
+	}
+
 	nameSet, legalNameSet, weixinSet, phoneSet := collectImportBatchKeys(rows)
 	existingNames, err := s.findExistingCustomerFieldValues(ctx, "name", nameSet)
 	if err != nil {
@@ -268,6 +274,7 @@ func (s *customerImportService) applyImportBatch(
 		return tx.Error
 	}
 	defer tx.Rollback()
+	assignmentRepo := repository.NewGormCustomerRepository(tx)
 
 	for idx, row := range rows {
 		if row.Name != "" {
@@ -322,7 +329,10 @@ func (s *customerImportService) applyImportBatch(
 			return err
 		}
 
-		ownerUserID, collectTime := resolveImportOwner(row, input.OperatorUserID, nowUnix)
+		ownerUserID, collectTime, err := s.resolveImportOwner(ctx, assignmentRepo, row, input.OperatorUserID, operatorRole, nowUnix)
+		if err != nil {
+			return err
+		}
 		customerRow := customerCreateImportRow{
 			Name:             row.Name,
 			LegalName:        row.LegalName,
@@ -437,16 +447,46 @@ func (s *customerImportService) applyImportBatch(
 	return tx.Commit().Error
 }
 
-func resolveImportOwner(row customerImportRow, operatorUserID int64, nowUnix int64) (*int64, *int64) {
+func (s *customerImportService) resolveImportOwner(ctx context.Context, assignmentRepo customerOwnerAssignmentRepo, row customerImportRow, operatorUserID int64, operatorRole string, nowUnix int64) (*int64, *int64, error) {
 	if row.Status == model.CustomerStatusPool {
-		return nil, nil
+		return nil, nil, nil
+	}
+	if isInsideSalesRole(operatorRole) {
+		owner, err := pickBalancedSalesOwnerUserID(ctx, assignmentRepo, operatorUserID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &owner, &nowUnix, nil
+	}
+	if isOutsideSalesRole(operatorRole) {
+		owner := operatorUserID
+		return &owner, &nowUnix, nil
 	}
 	owner := row.OwnerUserID
 	if owner == nil {
 		defaultOwner := operatorUserID
 		owner = &defaultOwner
 	}
-	return owner, &nowUnix
+	return owner, &nowUnix, nil
+}
+
+func (s *customerImportService) getUserRoleName(ctx context.Context, userID int64) (string, error) {
+	if userID <= 0 {
+		return "", nil
+	}
+
+	var roleName string
+	err := s.db.WithContext(ctx).
+		Table("users AS u").
+		Select("COALESCE(r.name, '')").
+		Joins("LEFT JOIN roles r ON u.role_id = r.id").
+		Where("u.id = ?", userID).
+		Limit(1).
+		Scan(&roleName).Error
+	if err != nil {
+		return "", err
+	}
+	return roleName, nil
 }
 
 func collectImportBatchKeys(rows []customerImportRow) (names []string, legalNames []string, weixins []string, phones []string) {
@@ -604,6 +644,7 @@ func appendCustomerImportError(result *model.CustomerImportResult, maxErrors int
 	if len(result.Errors) >= maxErrors {
 		return
 	}
+	errItem.Reason = errmsg.Normalize(errItem.Reason)
 	result.Errors = append(result.Errors, errItem)
 }
 

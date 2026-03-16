@@ -18,6 +18,7 @@ import {
   releaseCustomer,
   updateCustomer,
 } from "@/api/modules/customers";
+import { listUsers } from "@/api/modules/users";
 import {
   listContracts,
   createContract,
@@ -75,12 +76,27 @@ const selectedIds = ref<number[]>([]);
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null);
 type OwnershipScope = "all" | "mine" | "sales" | "subordinates";
 const ownershipScope = ref<OwnershipScope>("all");
-const ownershipScopeTabs: Array<{ value: OwnershipScope; label: string }> = [
+const hasSubordinates = ref(false);
+const ALL_OWNERSHIP_SCOPE_TABS: Array<{ value: OwnershipScope; label: string }> = [
   { value: "all", label: "全部客户" },
   { value: "mine", label: "我的" },
   { value: "sales", label: "销售部" },
   { value: "subordinates", label: "下属" },
 ];
+const ownershipScopeTabs = computed(() => {
+  if (!hasSubordinates.value) {
+    return ALL_OWNERSHIP_SCOPE_TABS.filter((tab) => tab.value !== "subordinates");
+  }
+  return ALL_OWNERSHIP_SCOPE_TABS;
+});
+
+// 如果当前选中的 tab 因无下属而被移除，自动重置为"全部"
+watch(ownershipScopeTabs, (tabs) => {
+  const available = tabs.map((t) => t.value);
+  if (!available.includes(ownershipScope.value)) {
+    ownershipScope.value = "all";
+  }
+});
 
 interface SearchForm {
   name: string;
@@ -569,8 +585,30 @@ const handleSubmit = async (payload: CustomerFormPayload) => {
   }
 };
 
-onMounted(fetchCustomers);
-onActivated(fetchCustomers);
+const checkSubordinates = async () => {
+  try {
+    const currentUserId = authStore.user?.id;
+    if (!currentUserId) {
+      hasSubordinates.value = false;
+      return;
+    }
+    const users = await listUsers();
+    hasSubordinates.value = users.some(
+      (u) => u.parentId === currentUserId,
+    );
+  } catch {
+    hasSubordinates.value = false;
+  }
+};
+
+onMounted(async () => {
+  await checkSubordinates();
+  fetchCustomers();
+});
+onActivated(async () => {
+  await checkSubordinates();
+  fetchCustomers();
+});
 </script>
 
 <template>

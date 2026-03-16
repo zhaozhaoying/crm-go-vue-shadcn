@@ -3,9 +3,14 @@ package repository
 import (
 	"backend/internal/model"
 	"context"
+	"errors"
+	"strings"
 
+	gomysql "github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 )
+
+var ErrRoleNameExists = errors.New("role name already exists")
 
 type RoleRepository interface {
 	List(ctx context.Context) ([]model.Role, error)
@@ -74,11 +79,13 @@ func (r *gormRoleRepository) Create(ctx context.Context, role *model.Role) error
 		Name      string `gorm:"column:name"`
 		Label     string `gorm:"column:label"`
 		Sort      int    `gorm:"column:sort"`
-		CreatedAt any    `gorm:"column:created_at"`
 	}
 
 	row := roleRow{Name: role.Name, Label: role.Label, Sort: role.Sort}
 	if err := r.db.WithContext(ctx).Table("roles").Create(&row).Error; err != nil {
+		if isRoleNameUniqueErr(err) {
+			return ErrRoleNameExists
+		}
 		return err
 	}
 	role.ID = row.ID
@@ -90,7 +97,7 @@ func (r *gormRoleRepository) Create(ctx context.Context, role *model.Role) error
 }
 
 func (r *gormRoleRepository) Update(ctx context.Context, role *model.Role) error {
-	return r.db.WithContext(ctx).
+	err := r.db.WithContext(ctx).
 		Table("roles").
 		Where("id = ?", role.ID).
 		Updates(map[string]interface{}{
@@ -98,6 +105,10 @@ func (r *gormRoleRepository) Update(ctx context.Context, role *model.Role) error
 			"label": role.Label,
 			"sort":  role.Sort,
 		}).Error
+	if isRoleNameUniqueErr(err) {
+		return ErrRoleNameExists
+	}
+	return err
 }
 
 func (r *gormRoleRepository) Delete(ctx context.Context, id int64) error {
@@ -105,4 +116,21 @@ func (r *gormRoleRepository) Delete(ctx context.Context, id int64) error {
 		Table("roles").
 		Where("id = ?", id).
 		Delete(nil).Error
+}
+
+func isRoleNameUniqueErr(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var mysqlErr *gomysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+		msg := strings.ToLower(mysqlErr.Message)
+		return strings.Contains(msg, "roles.name") ||
+			strings.Contains(msg, "for key 'name'") ||
+			strings.Contains(msg, "for key 'roles.name'")
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint failed: roles.name")
 }

@@ -39,6 +39,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { getRequestErrorMessage } from "@/lib/http-error"
 import { hasAnyRole, isAdminUser } from "@/lib/auth-role"
 import { useAuthStore } from "@/stores/auth"
@@ -102,11 +108,33 @@ const canOperateSiteService = computed(() =>
   ]),
 )
 
+const hasSalesRole = computed(() =>
+  hasAnyRole(authStore.user, [
+    "sales_director",
+    "sales_manager",
+    "sales_staff",
+    "sales_inside",
+    "sales_outside",
+    "销售总监",
+    "销售经理",
+    "销售员工",
+    "销售",
+    "Inside销售",
+    "Outside销售",
+  ]),
+)
+
 const isPendingAudit = (status?: string) =>
   String(status || "").trim() === "pending"
 
 const canEditContract = (contract: Contract) => {
-  if (canOperateSiteService.value) return true
+  // 管理员：任何时候都能改
+  if (isAdminUser(authStore.user)) return true
+  // 运营：只有审核通过/驳回后才能改
+  if (canOperateSiteService.value) return !isPendingAudit(contract.auditStatus)
+  // 销售：任何时候都能打开编辑（审核后字段会被后端/表单限制为仅备注）
+  if (hasSalesRole.value) return true
+  // 其他角色：仅待审核时可改
   return isPendingAudit(contract.auditStatus)
 }
 
@@ -363,12 +391,13 @@ onActivated(() => {
           <div v-else-if="error" class="p-6 text-sm text-destructive">
             {{ error }}
           </div>
-          <Table v-else class="min-w-[1860px]">
+          <Table v-else class="min-w-[1980px]">
             <TableHeader class="sticky top-0 z-10 bg-muted/50">
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>合同编号</TableHead>
                 <TableHead>合同名称</TableHead>
+                <TableHead>客户</TableHead>
                 <TableHead>合同金额</TableHead>
                 <TableHead>负责销售</TableHead>
                 <TableHead>负责运营</TableHead>
@@ -403,6 +432,10 @@ onActivated(() => {
 
                 <TableCell class="max-w-[220px] whitespace-normal break-words">
                   {{ item.contractName || "-" }}
+                </TableCell>
+
+                <TableCell class="max-w-[220px] whitespace-normal break-words">
+                  {{ item.customerName || (item.customerId ? `#${item.customerId}` : "-") }}
                 </TableCell>
 
                 <TableCell class="font-medium">
@@ -509,8 +542,24 @@ onActivated(() => {
                   <span v-else>-</span>
                 </TableCell>
 
-                <TableCell class="max-w-[280px] whitespace-normal break-words text-sm text-muted-foreground">
-                  {{ item.remark || "-" }}
+                <TableCell class="max-w-[280px] text-sm text-muted-foreground">
+                  <template v-if="item.remark">
+                    <TooltipProvider :delayDuration="200">
+                      <Tooltip>
+                        <TooltipTrigger as-child>
+                          <div
+                            class="line-clamp-3 cursor-help whitespace-normal break-words text-left leading-6"
+                          >
+                            {{ item.remark }}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent class="max-w-sm whitespace-pre-wrap break-words text-left">
+                          <p>{{ item.remark }}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </template>
+                  <span v-else>-</span>
                 </TableCell>
 
                 <TableCell
@@ -531,7 +580,7 @@ onActivated(() => {
                 </TableCell>
               </TableRow>
 
-              <EmptyTablePlaceholder v-if="contracts.length === 0" :colspan="19" text="暂无合同数据" />
+              <EmptyTablePlaceholder v-if="contracts.length === 0" :colspan="20" text="暂无合同数据" />
             </TableBody>
           </Table>
         </div>

@@ -27,7 +27,7 @@ func NewSystemSettingHandler(service *service.SystemSettingService) *SystemSetti
 func (h *SystemSettingHandler) GetSettings(c *gin.Context) {
 	settings, err := h.service.GetAllSettings()
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10100, "failed to load settings")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10100, "加载系统设置失败", err)
 		return
 	}
 	Success(c, settings)
@@ -45,12 +45,12 @@ func (h *SystemSettingHandler) GetSettings(c *gin.Context) {
 func (h *SystemSettingHandler) UpdateSettings(c *gin.Context) {
 	var req model.UpdateSystemSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10101, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10101, "请求参数错误", err)
 		return
 	}
 
 	if err := h.service.UpdateSettings(&req); err != nil {
-		Error(c, http.StatusInternalServerError, 10102, "failed to update settings")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10102, "更新系统设置失败", err)
 		return
 	}
 
@@ -67,7 +67,7 @@ func (h *SystemSettingHandler) UpdateSettings(c *gin.Context) {
 func (h *SystemSettingHandler) GetCustomerLevels(c *gin.Context) {
 	levels, err := h.service.GetCustomerLevels()
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10103, "failed to load customer levels")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10103, "加载客户级别失败", err)
 		return
 	}
 	Success(c, levels)
@@ -85,13 +85,13 @@ func (h *SystemSettingHandler) GetCustomerLevels(c *gin.Context) {
 func (h *SystemSettingHandler) CreateCustomerLevel(c *gin.Context) {
 	var req model.CustomerLevelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10104, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10104, "请求参数错误", err)
 		return
 	}
 
 	level, err := h.service.CreateCustomerLevel(&req)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10105, "failed to create customer level")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10105, "创建客户级别失败", err)
 		return
 	}
 
@@ -111,18 +111,18 @@ func (h *SystemSettingHandler) CreateCustomerLevel(c *gin.Context) {
 func (h *SystemSettingHandler) UpdateCustomerLevel(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10106, "invalid customer level id")
+		Error(c, http.StatusBadRequest, 10106, "无效的客户级别ID")
 		return
 	}
 
 	var req model.CustomerLevelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10107, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10107, "请求参数错误", err)
 		return
 	}
 
 	if err := h.service.UpdateCustomerLevel(id, &req); err != nil {
-		Error(c, http.StatusInternalServerError, 10108, "failed to update customer level")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10108, "更新客户级别失败", err)
 		return
 	}
 
@@ -139,12 +139,12 @@ func (h *SystemSettingHandler) UpdateCustomerLevel(c *gin.Context) {
 func (h *SystemSettingHandler) DeleteCustomerLevel(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10109, "invalid customer level id")
+		Error(c, http.StatusBadRequest, 10109, "无效的客户级别ID")
 		return
 	}
 
 	if err := h.service.DeleteCustomerLevel(id); err != nil {
-		Error(c, http.StatusInternalServerError, 10110, "failed to delete customer level")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10110, "删除客户级别失败", err)
 		return
 	}
 
@@ -161,7 +161,7 @@ func (h *SystemSettingHandler) DeleteCustomerLevel(c *gin.Context) {
 func (h *SystemSettingHandler) GetCustomerSources(c *gin.Context) {
 	sources, err := h.service.GetCustomerSources()
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10111, "failed to load customer sources")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10111, "加载客户来源失败", err)
 		return
 	}
 	Success(c, sources)
@@ -179,13 +179,13 @@ func (h *SystemSettingHandler) GetCustomerSources(c *gin.Context) {
 func (h *SystemSettingHandler) CreateCustomerSource(c *gin.Context) {
 	var req model.CustomerSourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10112, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10112, "请求参数错误", err)
 		return
 	}
 
 	source, err := h.service.CreateCustomerSource(&req)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10113, "failed to create customer source")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10113, "创建客户来源失败", err)
 		return
 	}
 
@@ -205,18 +205,18 @@ func (h *SystemSettingHandler) CreateCustomerSource(c *gin.Context) {
 func (h *SystemSettingHandler) UpdateCustomerSource(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10114, "invalid customer source id")
+		Error(c, http.StatusBadRequest, 10114, "无效的客户来源ID")
 		return
 	}
 
 	var req model.CustomerSourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10115, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10115, "请求参数错误", err)
 		return
 	}
 
 	if err := h.service.UpdateCustomerSource(id, &req); err != nil {
-		Error(c, http.StatusInternalServerError, 10116, "failed to update customer source")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10116, "更新客户来源失败", err)
 		return
 	}
 
@@ -233,12 +233,12 @@ func (h *SystemSettingHandler) UpdateCustomerSource(c *gin.Context) {
 func (h *SystemSettingHandler) DeleteCustomerSource(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10117, "invalid customer source id")
+		Error(c, http.StatusBadRequest, 10117, "无效的客户来源ID")
 		return
 	}
 
 	if err := h.service.DeleteCustomerSource(id); err != nil {
-		Error(c, http.StatusInternalServerError, 10118, "failed to delete customer source")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10118, "删除客户来源失败", err)
 		return
 	}
 

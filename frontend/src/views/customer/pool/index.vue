@@ -524,7 +524,6 @@ onActivated(fetchCustomers);
                   <TableHead>城市</TableHead>
                   <TableHead>区县</TableHead>
                   <TableHead>下次跟进时间</TableHead>
-                  <TableHead>7天倒计时</TableHead>
                   <TableHead>备注</TableHead>
                   <TableHead
                     class="sticky right-0 z-30 w-[220px] min-w-[220px] bg-muted/95 text-center border-l border-border"
@@ -584,9 +583,6 @@ onActivated(fetchCustomers);
                   }}</TableCell>
                   <TableCell class="text-xs">{{
                     customer.nextTime || "-"
-                  }}</TableCell>
-                  <TableCell class="text-xs whitespace-nowrap">{{
-                    formatSevenDayCountdown(customer)
                   }}</TableCell>
                   <TableCell class="text-xs text-muted-foreground">
                     <p

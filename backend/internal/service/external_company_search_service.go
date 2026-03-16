@@ -1,6 +1,7 @@
 package service
 
 import (
+	"backend/internal/errmsg"
 	"backend/internal/external/companysearch"
 	"backend/internal/model"
 	"backend/internal/repository"
@@ -105,7 +106,7 @@ func (s *externalCompanySearchService) CreateTasks(ctx context.Context, input mo
 			return nil, err
 		}
 		createdTasks = append(createdTasks, *saved)
-		_, _ = s.appendEvent(ctx, saved.ID, model.ExternalCompanySearchEventTaskCreated, "task created", map[string]any{
+		_, _ = s.appendEvent(ctx, saved.ID, model.ExternalCompanySearchEventTaskCreated, "任务已创建", map[string]any{
 			"task": saved,
 		})
 	}
@@ -175,13 +176,14 @@ func (s *externalCompanySearchService) CancelTask(ctx context.Context, taskID, v
 	if err := s.repo.CancelTask(ctx, taskID); err != nil {
 		return err
 	}
-	_, _ = s.appendEvent(ctx, taskID, model.ExternalCompanySearchEventTaskCanceled, "task canceled", map[string]any{
+	_, _ = s.appendEvent(ctx, taskID, model.ExternalCompanySearchEventTaskCanceled, "任务已取消", map[string]any{
 		"taskId": taskID,
 	})
 	return nil
 }
 
 func (s *externalCompanySearchService) appendEvent(ctx context.Context, taskID int64, eventType, message string, payload any) (*model.ExternalCompanySearchEvent, error) {
+	message = errmsg.Normalize(message)
 	payloadJSON := marshalExternalCompanySearchPayload(payload)
 	event, err := s.repo.AppendEvent(ctx, taskID, eventType, message, payloadJSON)
 	if err != nil {
@@ -242,8 +244,8 @@ func canManageExternalCompanySearchTask(task *model.ExternalCompanySearchTask, v
 func canViewExternalCompanySearchSharedData(actorRole string) bool {
 	return isRole(actorRole,
 		"admin", "管理员",
-		"sales_director", "sales_manager", "sales_staff",
-		"销售总监", "销售经理", "销售员工", "销售",
+		"sales_director", "sales_manager", "sales_staff", "sales_inside", "sales_outside",
+		"销售总监", "销售经理", "销售员工", "销售", "Inside销售", "Outside销售",
 	)
 }
 

@@ -19,6 +19,7 @@ import (
 
 type ExternalCompanySearchHandler struct {
 	service        service.ExternalCompanySearchService
+	enrichService  service.ExternalCompanyEnrichService
 	hub            *service.ExternalCompanySearchHub
 	frontendOrigin string
 }
@@ -43,10 +44,16 @@ type ExternalCompanySearchCancelResponse struct {
 
 func NewExternalCompanySearchHandler(
 	service service.ExternalCompanySearchService,
+	enrichService service.ExternalCompanyEnrichService,
 	hub *service.ExternalCompanySearchHub,
 	frontendOrigin string,
 ) *ExternalCompanySearchHandler {
-	return &ExternalCompanySearchHandler{service: service, hub: hub, frontendOrigin: strings.TrimSpace(frontendOrigin)}
+	return &ExternalCompanySearchHandler{
+		service:        service,
+		enrichService:  enrichService,
+		hub:            hub,
+		frontendOrigin: strings.TrimSpace(frontendOrigin),
+	}
 }
 
 // CreateTasks godoc
@@ -57,25 +64,25 @@ func NewExternalCompanySearchHandler(
 // @Security    BearerAuth
 // @Param       body body CreateExternalCompanySearchTasksRequest true "抓取任务"
 // @Success     200 {object} APIResponse{data=handler.ExternalCompanySearchTasksResponse}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/external-company-search/tasks [post]
 func (h *ExternalCompanySearchHandler) CreateTasks(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 80001, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	var req CreateExternalCompanySearchTasksRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 80002, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 90002, "请求参数错误", err)
 		return
 	}
 	searchOptionsJSON := ""
 	if req.SearchOptions != nil {
 		data, err := json.Marshal(req.SearchOptions)
 		if err != nil {
-			Error(c, http.StatusBadRequest, 80003, "invalid search options")
+			Error(c, http.StatusBadRequest, 90003, "搜索配置无效")
 			return
 		}
 		searchOptionsJSON = string(data)
@@ -108,12 +115,12 @@ func (h *ExternalCompanySearchHandler) CreateTasks(c *gin.Context) {
 // @Param       page query int false "页码"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.ExternalCompanySearchTaskListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/external-company-search/tasks [get]
 func (h *ExternalCompanySearchHandler) ListTasks(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 80001, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	filter := model.ExternalCompanySearchTaskListFilter{
@@ -139,19 +146,19 @@ func (h *ExternalCompanySearchHandler) ListTasks(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       id path int true "任务ID"
 // @Success     200 {object} APIResponse{data=model.ExternalCompanySearchTask}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/external-company-search/tasks/{id} [get]
 func (h *ExternalCompanySearchHandler) GetTask(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 80001, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	taskID, ok := parseIDParam(c, "id")
 	if !ok {
-		Error(c, http.StatusBadRequest, 80004, "invalid task id")
+		Error(c, http.StatusBadRequest, 90004, "无效的任务ID")
 		return
 	}
 	task, err := h.service.GetTask(c.Request.Context(), taskID, userID, currentUserRole(c))
@@ -174,19 +181,19 @@ func (h *ExternalCompanySearchHandler) GetTask(c *gin.Context) {
 // @Param       page query int false "页码"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.ExternalCompanySearchResultListResult}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/external-company-search/tasks/{id}/results [get]
 func (h *ExternalCompanySearchHandler) ListResults(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 80001, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	taskID, ok := parseIDParam(c, "id")
 	if !ok {
-		Error(c, http.StatusBadRequest, 80004, "invalid task id")
+		Error(c, http.StatusBadRequest, 90004, "无效的任务ID")
 		return
 	}
 	result, err := h.service.ListTaskResults(c.Request.Context(), taskID, userID, currentUserRole(c), model.ExternalCompanySearchResultListFilter{
@@ -214,12 +221,12 @@ func (h *ExternalCompanySearchHandler) ListResults(c *gin.Context) {
 // @Param       page query int false "页码"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.ExternalCompanySearchResultListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/external-company-search/results [get]
 func (h *ExternalCompanySearchHandler) ListAllResults(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 80001, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	result, err := h.service.ListResults(c.Request.Context(), userID, currentUserRole(c), model.ExternalCompanySearchResultListFilter{
@@ -245,19 +252,19 @@ func (h *ExternalCompanySearchHandler) ListAllResults(c *gin.Context) {
 // @Param       afterSeq query int false "事件序号起点"
 // @Param       limit query int false "返回条数"
 // @Success     200 {object} APIResponse{data=model.ExternalCompanySearchEventListResult}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/external-company-search/tasks/{id}/events [get]
 func (h *ExternalCompanySearchHandler) ListEvents(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 80001, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	taskID, ok := parseIDParam(c, "id")
 	if !ok {
-		Error(c, http.StatusBadRequest, 80004, "invalid task id")
+		Error(c, http.StatusBadRequest, 90004, "无效的任务ID")
 		return
 	}
 	result, err := h.service.ListTaskEvents(c.Request.Context(), taskID, userID, currentUserRole(c), parsePositiveInt64(c.Query("afterSeq")), parsePositiveIntWithDefault(c.Query("limit"), 100))
@@ -275,19 +282,19 @@ func (h *ExternalCompanySearchHandler) ListEvents(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       id path int true "任务ID"
 // @Success     200 {object} APIResponse{data=handler.ExternalCompanySearchCancelResponse}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/external-company-search/tasks/{id}/cancel [post]
 func (h *ExternalCompanySearchHandler) CancelTask(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 80001, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	taskID, ok := parseIDParam(c, "id")
 	if !ok {
-		Error(c, http.StatusBadRequest, 80004, "invalid task id")
+		Error(c, http.StatusBadRequest, 90004, "无效的任务ID")
 		return
 	}
 	if err := h.service.CancelTask(c.Request.Context(), taskID, userID, currentUserRole(c)); err != nil {
@@ -305,23 +312,23 @@ func (h *ExternalCompanySearchHandler) CancelTask(c *gin.Context) {
 // @Param       id path int true "任务ID"
 // @Param       afterSeq query int false "事件序号起点"
 // @Success     200 {object} APIResponse
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/external-company-search/tasks/{id}/stream [get]
 func (h *ExternalCompanySearchHandler) StreamTask(c *gin.Context) {
 	if !h.allowWebSocketOrigin(c.Request.Header.Get("Origin")) {
-		Error(c, http.StatusForbidden, 80005, "websocket origin not allowed")
+		Error(c, http.StatusForbidden, 90005, "WebSocket 来源不被允许")
 		return
 	}
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 80001, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	taskID, ok := parseIDParam(c, "id")
 	if !ok {
-		Error(c, http.StatusBadRequest, 80004, "invalid task id")
+		Error(c, http.StatusBadRequest, 90004, "无效的任务ID")
 		return
 	}
 	if _, err := h.service.GetTask(c.Request.Context(), taskID, userID, currentUserRole(c)); err != nil {
@@ -336,7 +343,7 @@ func (h *ExternalCompanySearchHandler) StreamTask(c *gin.Context) {
 
 		history, err := h.service.ListTaskEvents(ctx, taskID, userID, currentUserRole(c), afterSeq, 500)
 		if err != nil {
-			_ = websocket.JSON.Send(conn, gin.H{"error": err.Error()})
+			_ = websocket.JSON.Send(conn, gin.H{"error": normalizeErrorDetail(err.Error())})
 			return
 		}
 		for _, event := range history.Items {
@@ -384,20 +391,58 @@ func (h *ExternalCompanySearchHandler) StreamTask(c *gin.Context) {
 	server.ServeHTTP(c.Writer, c.Request)
 }
 
+// EnrichCompany godoc
+// @Summary     深度获取企业联系方式和中文名称
+// @Tags        external-company-search
+// @Produce     json
+// @Security    BearerAuth
+// @Param       id path int true "企业ID"
+// @Success     200 {object} APIResponse{data=model.ExternalCompany}
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "企业不存在"
+// @Router      /api/v1/external-company-search/companies/{id}/enrich [post]
+func (h *ExternalCompanySearchHandler) EnrichCompany(c *gin.Context) {
+	if _, ok := currentUserID(c); !ok {
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
+		return
+	}
+	companyID, ok := parseIDParam(c, "id")
+	if !ok {
+		Error(c, http.StatusBadRequest, 90004, "无效的企业ID")
+		return
+	}
+	if h.enrichService == nil {
+		Error(c, http.StatusInternalServerError, 90099, "富化服务未初始化")
+		return
+	}
+	company, err := h.enrichService.EnrichCompany(c.Request.Context(), companyID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrExternalCompanyNotFound):
+			Error(c, http.StatusNotFound, 90011, "企业不存在")
+		default:
+			ErrorWithDetail(c, http.StatusInternalServerError, 90099, "获取联系方式失败", err)
+		}
+		return
+	}
+	Success(c, company)
+}
+
 func (h *ExternalCompanySearchHandler) handleServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrExternalCompanySearchKeywordRequired):
-		Error(c, http.StatusBadRequest, 80006, "keyword is required")
+		Error(c, http.StatusBadRequest, 90006, "关键词不能为空")
 	case errors.Is(err, service.ErrExternalCompanySearchPlatformRequired):
-		Error(c, http.StatusBadRequest, 80007, "platform is required")
+		Error(c, http.StatusBadRequest, 90007, "抓取平台不能为空")
 	case errors.Is(err, service.ErrExternalCompanySearchPlatformUnsupported):
-		Error(c, http.StatusBadRequest, 80008, err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 90008, "抓取平台不支持", err)
 	case errors.Is(err, repository.ErrExternalCompanySearchTaskNotFound):
-		Error(c, http.StatusNotFound, 80009, "task not found")
+		Error(c, http.StatusNotFound, 90009, "任务不存在")
 	case errors.Is(err, service.ErrExternalCompanySearchTaskForbidden):
-		Error(c, http.StatusForbidden, 80010, "task access forbidden")
+		Error(c, http.StatusForbidden, 90010, "无权访问该任务")
 	default:
-		Error(c, http.StatusInternalServerError, 80099, "external company search request failed")
+		ErrorWithDetail(c, http.StatusInternalServerError, 90099, "外部企业抓取请求失败", err)
 	}
 }
 

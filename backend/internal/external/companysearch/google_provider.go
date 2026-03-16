@@ -142,6 +142,12 @@ func (p *GoogleProvider) fetchPage(ctx context.Context, query string, start, pag
 	if hasNext && len(response.Queries.NextPage) > 0 {
 		nextStart = response.Queries.NextPage[0].StartIndex
 	}
+	// Google CSE API only supports start index up to (101 - num).
+	// Requesting start > (101 - num) returns a 400 "invalid argument" error.
+	// Cap hasNext here so the caller never attempts an out-of-range page.
+	if nextStart > 101-p.num {
+		hasNext = false
+	}
 
 	return SearchPage{
 		PageNo:       pageNo,

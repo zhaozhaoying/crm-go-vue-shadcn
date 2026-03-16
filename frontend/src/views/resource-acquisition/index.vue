@@ -1,17 +1,14 @@
 <script setup lang="ts">
-import {
-  computed,
-  onActivated,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 import {
   Globe2,
   Loader2,
   SquareArrowOutUpRight,
   Search,
   Copy,
+  Sparkles,
+  Phone,
+  Mail,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
@@ -47,6 +44,7 @@ import { useExternalCompanySearchTask } from "@/composables/useExternalCompanySe
 import { useExternalCompanySearchTaskList } from "@/composables/useExternalCompanySearchTaskList";
 import { useExternalCompanySearchResourceList } from "@/composables/useExternalCompanySearchResourceList";
 import { getRequestErrorMessage } from "@/lib/http-error";
+import { enrichExternalCompany } from "@/api/modules/externalCompanySearch";
 import type { ExternalCompanySearchResultItem } from "@/types/externalCompanySearch";
 import {
   EXTERNAL_COMPANY_SEARCH_PLATFORM,
@@ -55,6 +53,9 @@ import {
 
 import CreateTaskDialog from "./components/CreateTaskDialog.vue";
 import TaskManagementSheet from "./components/TaskManagementSheet.vue";
+
+// Track which company IDs are currently being enriched
+const enrichingIds = ref<Set<number>>(new Set());
 
 const supportedPlatforms = [
   {
@@ -120,8 +121,7 @@ const loadResourceList = resourceListWorkspace.loadResourceList;
 const scheduleResourceListRefresh =
   resourceListWorkspace.scheduleResourceListRefresh;
 const handleResourceSearch = resourceListWorkspace.handleResourceSearch;
-const handleResultPageChange =
-  resourceListWorkspace.handleResultPageChange;
+const handleResultPageChange = resourceListWorkspace.handleResultPageChange;
 const handleResultPageSizeChange =
   resourceListWorkspace.handleResultPageSizeChange;
 
@@ -190,6 +190,44 @@ const handleCopy = async (text: string) => {
     toast.success("复制成功");
   } catch (error) {
     toast.error("复制失败");
+  }
+};
+
+const handleEnrich = async (item: ExternalCompanySearchResultItem) => {
+  if (enrichingIds.value.has(item.companyId)) return;
+  enrichingIds.value = new Set([...enrichingIds.value, item.companyId]);
+  try {
+    const updated = await enrichExternalCompany(item.companyId);
+    // Patch the item in the current list so the UI updates without a full reload
+    const idx = resourceItems.value.findIndex(
+      (r) => r.companyId === item.companyId,
+    );
+    if (idx !== -1 && updated) {
+      const patched = { ...resourceItems.value[idx] };
+      if (updated.companyName) patched.companyName = updated.companyName;
+      if (updated.companyNameEn) patched.companyNameEn = updated.companyNameEn;
+      if (updated.contact) patched.contact = updated.contact;
+      if (updated.phone) patched.phone = updated.phone;
+      if (updated.email) patched.email = updated.email;
+      if (updated.address) patched.address = updated.address;
+      resourceItems.value = [
+        ...resourceItems.value.slice(0, idx),
+        patched,
+        ...resourceItems.value.slice(idx + 1),
+      ];
+    }
+    const hasContact = updated?.phone || updated?.email || updated?.contact;
+    if (hasContact) {
+      toast.success("联系方式获取成功");
+    } else {
+      toast.info("未找到更多联系信息，可能需要手动查询");
+    }
+  } catch (error) {
+    toast.error(getRequestErrorMessage(error, "获取联系方式失败"));
+  } finally {
+    const next = new Set(enrichingIds.value);
+    next.delete(item.companyId);
+    enrichingIds.value = next;
   }
 };
 
@@ -317,86 +355,90 @@ onActivated(() => {
 <template>
   <div class="w-full flex flex-col gap-4 lg:gap-6">
     <!-- 顶部操作栏 -->
-    <div
-      class="flex flex-col gap-3 px-4 lg:px-6 shrink-0 lg:flex-row lg:items-center lg:justify-between"
-    >
-      <div class="flex items-center gap-2">
-        <CreateTaskDialog
-          ref="createTaskDialogRef"
-          :creating="creating"
-          :action-error="actionError"
-          :platforms="supportedPlatforms"
-          :default-platform="String(EXTERNAL_COMPANY_SEARCH_PLATFORM.ALIBABA)"
-          @create="handleCreateTask"
-        />
-
-        <TaskManagementSheet
-          :active-task="activeTask"
-          :task-items="taskItems"
-          :task-loading="taskLoading"
-          :task-keyword="taskKeyword"
-          :task-page-index="taskPageIndex"
-          :task-total-pages="taskTotalPages"
-          :task-page-size="taskPageSize"
-          :task-total="taskTotal"
-          :current-progress-percent="currentProgressPercent"
-          :canceling="canceling"
-          :can-cancel-task="canCancelTask"
-          :streaming="streaming"
-          :stream-badge-label="streamBadgeLabel"
-          :has-active-non-terminal-task="hasActiveNonTerminalTask"
-          :refreshing="taskLoading || loadingTask || resourceLoading"
-          :stream-error="streamError"
-          @update:task-keyword="taskKeyword = $event"
-          @open-task="handleOpenTask"
-          @cancel-task="handleCancelTask"
-          @refresh="handleRefreshAll"
-          @search="handleTaskSearch"
-          @page-change="handleTaskPageChange"
-          @page-size-change="handleTaskPageSizeChange"
-          @open-change="handleTaskSheetOpenChange"
-        />
-      </div>
-
-      <div class="flex flex-wrap items-center gap-2 lg:justify-end">
-        <div class="relative w-full sm:w-[280px] lg:w-[320px]">
-          <Search
-            class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"
+    <div class="px-4 lg:px-6 shrink-0">
+      <div
+        class="flex flex-col gap-3 rounded-lg bg-card sm:flex-row sm:items-center sm:justify-between"
+      >
+        <!-- 左侧：操作按钮 -->
+        <div class="flex shrink-0 items-center gap-2">
+          <CreateTaskDialog
+            ref="createTaskDialogRef"
+            :creating="creating"
+            :action-error="actionError"
+            :platforms="supportedPlatforms"
+            :default-platform="String(EXTERNAL_COMPANY_SEARCH_PLATFORM.ALIBABA)"
+            @create="handleCreateTask"
           />
-          <Input
-            v-model="resourceSearch"
-            type="search"
-            placeholder="搜索企业 / 产品 / 关键词..."
-            class="pl-8 h-9 bg-background"
-            @keyup.enter="handleResourceSearch"
+
+          <TaskManagementSheet
+            :active-task="activeTask"
+            :task-items="taskItems"
+            :task-loading="taskLoading"
+            :task-keyword="taskKeyword"
+            :task-page-index="taskPageIndex"
+            :task-total-pages="taskTotalPages"
+            :task-page-size="taskPageSize"
+            :task-total="taskTotal"
+            :current-progress-percent="currentProgressPercent"
+            :canceling="canceling"
+            :can-cancel-task="canCancelTask"
+            :streaming="streaming"
+            :stream-badge-label="streamBadgeLabel"
+            :has-active-non-terminal-task="hasActiveNonTerminalTask"
+            :refreshing="taskLoading || loadingTask || resourceLoading"
+            :stream-error="streamError"
+            @update:task-keyword="taskKeyword = $event"
+            @open-task="handleOpenTask"
+            @cancel-task="handleCancelTask"
+            @refresh="handleRefreshAll"
+            @search="handleTaskSearch"
+            @page-change="handleTaskPageChange"
+            @page-size-change="handleTaskPageSizeChange"
+            @open-change="handleTaskSheetOpenChange"
           />
         </div>
 
-        <Select v-model="resourcePlatformFilter">
-          <SelectTrigger class="h-9 w-[150px] bg-background">
-            <SelectValue placeholder="平台筛选" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">全部平台</SelectItem>
-              <SelectItem
-                v-for="platform in supportedPlatforms"
-                :key="platform.value"
-                :value="String(platform.value)"
-              >
-                {{ platform.label }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+        <!-- 右侧：搜索与筛选 -->
+        <div class="flex w-full items-center gap-2 sm:w-auto">
+          <div class="relative flex-1 sm:flex-none sm:w-[260px]">
+            <Search
+              class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"
+            />
+            <Input
+              v-model="resourceSearch"
+              type="search"
+              placeholder="搜索企业 / 产品 / 关键词..."
+              class="pl-8 h-9 bg-background"
+              @keyup.enter="handleResourceSearch"
+            />
+          </div>
 
-        <label
-          for="resource-new-only"
-          class="flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm text-foreground"
-        >
-          <Switch id="resource-new-only" v-model:checked="resourceNewOnly" />
-          <span>只看新发掘</span>
-        </label>
+          <Select v-model="resourcePlatformFilter">
+            <SelectTrigger class="h-9 w-[130px] shrink-0 bg-background">
+              <SelectValue placeholder="平台筛选" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="all">全部平台</SelectItem>
+                <SelectItem
+                  v-for="platform in supportedPlatforms"
+                  :key="platform.value"
+                  :value="String(platform.value)"
+                >
+                  {{ platform.label }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+
+          <label
+            for="resource-new-only"
+            class="flex h-9 shrink-0 cursor-pointer select-none items-center gap-2 rounded-md border bg-background px-3 text-sm text-foreground"
+          >
+            <Switch id="resource-new-only" v-model:checked="resourceNewOnly" />
+            <span class="whitespace-nowrap">只看新发掘</span>
+          </label>
+        </div>
       </div>
     </div>
 
@@ -421,13 +463,14 @@ onActivated(() => {
             <TableRow>
               <TableHead class="w-16">ID</TableHead>
               <TableHead>企业</TableHead>
+              <!-- <TableHead>联系方式</TableHead> -->
               <TableHead>平台</TableHead>
               <TableHead>城市</TableHead>
               <TableHead>类型</TableHead>
               <TableHead>关键词</TableHead>
-              <TableHead class="w-[30%]">主营产品</TableHead>
+              <TableHead class="w-[25%]">主营产品</TableHead>
               <TableHead class="w-24">入库状态</TableHead>
-              <TableHead class="w-20 text-center sticky right-0 z-20 bg-muted"
+              <TableHead class="w-28 text-center sticky right-0 z-20 bg-muted"
                 >操作</TableHead
               >
             </TableRow>
@@ -440,12 +483,65 @@ onActivated(() => {
             >
               <TableCell>{{ item.id }}</TableCell>
               <TableCell>
-                <div class="min-w-0 space-y-1">
+                <div class="min-w-0 space-y-0.5">
                   <p class="truncate font-medium" :title="item.companyName">
                     {{ item.companyName }}
                   </p>
+                  <p
+                    v-if="
+                      item.companyNameEn &&
+                      item.companyNameEn !== item.companyName
+                    "
+                    class="truncate text-xs text-muted-foreground"
+                    :title="item.companyNameEn"
+                  >
+                    {{ item.companyNameEn }}
+                  </p>
                 </div>
               </TableCell>
+              <!-- 联系方式列 -->
+              <!-- <TableCell>
+                <div class="space-y-0.5 min-w-[140px]">
+                  <div
+                    v-if="item.phone"
+                    class="flex items-center gap-1 text-xs"
+                    :title="item.phone"
+                  >
+                    <Phone class="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <button
+                      class="truncate max-w-[120px] hover:text-primary transition-colors cursor-pointer"
+                      @click="handleCopy(item.phone!)"
+                    >
+                      {{ item.phone }}
+                    </button>
+                  </div>
+                  <div
+                    v-if="item.email"
+                    class="flex items-center gap-1 text-xs"
+                    :title="item.email"
+                  >
+                    <Mail class="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <button
+                      class="truncate max-w-[120px] hover:text-primary transition-colors cursor-pointer"
+                      @click="handleCopy(item.email!)"
+                    >
+                      {{ item.email }}
+                    </button>
+                  </div>
+                  <div
+                    v-if="item.contact && !item.phone && !item.email"
+                    class="text-xs text-muted-foreground truncate max-w-[140px]"
+                    :title="item.contact"
+                  >
+                    {{ item.contact }}
+                  </div>
+                  <span
+                    v-if="!item.phone && !item.email && !item.contact"
+                    class="text-xs text-muted-foreground/50"
+                    >—</span
+                  >
+                </div>
+              </TableCell> -->
               <TableCell>
                 <Badge variant="outline" class="font-normal bg-background">
                   {{ platformLabel(item.platform) }}
@@ -485,8 +581,10 @@ onActivated(() => {
               <TableCell
                 class="text-center sticky right-0 bg-background z-10 border-l border-border"
               >
-                <div class="flex items-center justify-center gap-1.5">
+                <div class="flex items-center justify-center gap-1">
                   <TooltipProvider :delayDuration="200">
+                    <!-- 深度获取联系方式 -->
+                    <!-- 复制企业名称 -->
                     <Tooltip>
                       <TooltipTrigger as-child>
                         <Button
@@ -503,6 +601,7 @@ onActivated(() => {
                       </TooltipContent>
                     </Tooltip>
 
+                    <!-- 跳转企业主页 -->
                     <Tooltip v-if="item.companyUrl">
                       <TooltipTrigger as-child>
                         <Button

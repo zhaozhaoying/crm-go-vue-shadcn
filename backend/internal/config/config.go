@@ -38,6 +38,7 @@ type Config struct {
 	OSSBasePath             string
 	AlibabaSearchBaseURL    string
 	MadeInChinaBaseURL      string
+	MadeInChinaProxyURL     string
 	GoogleAPIKey            string
 	GoogleCX                string
 	GoogleSearchNum         int
@@ -78,6 +79,7 @@ func Load() Config {
 		OSSBasePath:             getEnv("OSS_BASE_PATH", "avatars/"),
 		AlibabaSearchBaseURL:    getEnv("ALIBABA_SEARCH_BASE_URL", "https://www.alibaba.com/search/api/supplierTextSearch"),
 		MadeInChinaBaseURL:      getEnv("MADE_IN_CHINA_BASE_URL", "https://www.made-in-china.com"),
+		MadeInChinaProxyURL:     strings.TrimSpace(getEnv("MADE_IN_CHINA_PROXY_URL", "")),
 		GoogleAPIKey:            getEnv("GOOGLE_API_KEY", ""),
 		GoogleCX:                getEnv("GOOGLE_CX", ""),
 		GoogleSearchNum:         getEnvInt("GOOGLE_SEARCH_NUM", 10),
@@ -184,6 +186,12 @@ func (c Config) Validate() error {
 		parsed, err := url.Parse(c.GoogleProxyURL)
 		if err != nil || strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
 			return fmt.Errorf("GOOGLE_PROXY_URL must be a valid proxy URL")
+		}
+	}
+	if c.MadeInChinaProxyURL != "" {
+		parsed, err := url.Parse(c.MadeInChinaProxyURL)
+		if err != nil || strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
+			return fmt.Errorf("MADE_IN_CHINA_PROXY_URL must be a valid proxy URL")
 		}
 	}
 	return nil

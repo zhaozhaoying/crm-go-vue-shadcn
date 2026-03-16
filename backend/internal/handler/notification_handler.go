@@ -33,12 +33,12 @@ func NewNotificationHandler(activityLogRepo *repository.ActivityLogRepository, n
 // @Security    BearerAuth
 // @Param       limit query int false "返回条数，默认50，最大200"
 // @Success     200 {object} APIResponse{data=[]model.ActivityLog}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/notifications/activity-logs [get]
 func (h *NotificationHandler) ListActivityLogs(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
@@ -52,7 +52,7 @@ func (h *NotificationHandler) ListActivityLogs(c *gin.Context) {
 
 	logs, err := h.activityLogRepo.ListRecent(c.Request.Context(), limit, userID, showAll)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 80001, "failed to list activity logs")
+		ErrorWithDetail(c, http.StatusInternalServerError, 80001, "加载通知活动记录失败", err)
 		return
 	}
 
@@ -65,18 +65,18 @@ func (h *NotificationHandler) ListActivityLogs(c *gin.Context) {
 // @Produce     json
 // @Security    BearerAuth
 // @Success     200 {object} APIResponse
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/notifications/read-keys [get]
 func (h *NotificationHandler) ListReadKeys(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	keys, err := h.notificationRepo.ListReadKeys(c.Request.Context(), userID)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 80002, "failed to list read keys")
+		ErrorWithDetail(c, http.StatusInternalServerError, 80002, "加载已读通知标记失败", err)
 		return
 	}
 	Success(c, gin.H{"keys": keys})
@@ -90,19 +90,19 @@ func (h *NotificationHandler) ListReadKeys(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       body body NotificationMarkReadRequest true "通知键列表"
 // @Success     200 {object} APIResponse
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/notifications/mark-read [post]
 func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	var req NotificationMarkReadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 80003, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 80003, "请求参数错误", err)
 		return
 	}
 	if len(req.Keys) == 0 {
@@ -111,7 +111,7 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 	}
 
 	if err := h.notificationRepo.MarkAsRead(c.Request.Context(), userID, req.Keys); err != nil {
-		Error(c, http.StatusInternalServerError, 80004, "failed to mark as read")
+		ErrorWithDetail(c, http.StatusInternalServerError, 80004, "标记通知已读失败", err)
 		return
 	}
 	Success(c, nil)
@@ -129,7 +129,7 @@ func isGlobalRole(role string) bool {
 func (h *NotificationHandler) CreateNotificationRead(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
@@ -137,12 +137,12 @@ func (h *NotificationHandler) CreateNotificationRead(c *gin.Context) {
 		Key string `json:"key"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Key == "" {
-		Error(c, http.StatusBadRequest, 80003, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 80003, "请求参数错误", err)
 		return
 	}
 
 	if err := h.notificationRepo.MarkAsRead(c.Request.Context(), userID, []string{req.Key}); err != nil {
-		Error(c, http.StatusInternalServerError, 80004, "failed to mark as read")
+		ErrorWithDetail(c, http.StatusInternalServerError, 80004, "标记通知已读失败", err)
 		return
 	}
 	Success(c, nil)
@@ -154,12 +154,12 @@ func (h *NotificationHandler) CreateNotificationRead(c *gin.Context) {
 // @Produce     json
 // @Security    BearerAuth
 // @Success     200 {object} APIResponse
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/notifications/unread-count [get]
 func (h *NotificationHandler) UnreadCount(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
@@ -168,13 +168,13 @@ func (h *NotificationHandler) UnreadCount(c *gin.Context) {
 
 	logs, err := h.activityLogRepo.ListRecent(c.Request.Context(), 200, userID, showAll)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 80001, "failed to list activity logs")
+		ErrorWithDetail(c, http.StatusInternalServerError, 80001, "加载通知活动记录失败", err)
 		return
 	}
 
 	readKeys, err := h.notificationRepo.ListReadKeys(c.Request.Context(), userID)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 80002, "failed to list read keys")
+		ErrorWithDetail(c, http.StatusInternalServerError, 80002, "加载已读通知标记失败", err)
 		return
 	}
 

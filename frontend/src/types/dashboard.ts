@@ -14,6 +14,21 @@ export interface DashboardMonthlyContractCount {
   count: number
 }
 
+export interface DashboardRankingItem {
+  userId: number
+  userName: string
+  count: number
+}
+
+export interface DashboardSalesAdminOverview {
+  todayNewCustomers: DashboardStat
+  todayFollowRecords: DashboardStat
+  monthlyNewCustomers: DashboardStat
+  monthlyFollowRecords: DashboardStat
+  todayNewCustomerRanks: DashboardRankingItem[]
+  todayFollowRecordRanks: DashboardRankingItem[]
+}
+
 export interface DashboardRecentDeal {
   id: number
   customerName: string
@@ -40,6 +55,7 @@ export interface DashboardOverview {
   conversionRate: DashboardStat
   monthlyRevenue: DashboardMonthlyRevenue[]
   monthlyContracts: DashboardMonthlyContractCount[]
+  salesAdminOverview?: DashboardSalesAdminOverview | null
   recentDeals: DashboardRecentDeal[]
   recentActivities: DashboardRecentActivity[]
 }

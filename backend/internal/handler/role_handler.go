@@ -39,7 +39,7 @@ func NewRoleHandler(service service.RoleService) *RoleHandler {
 func (h *RoleHandler) List(c *gin.Context) {
 	roles, err := h.service.List(c.Request.Context())
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 50001, "获取角色列表失败")
+		ErrorWithDetail(c, http.StatusInternalServerError, 50001, "获取角色列表失败", err)
 		return
 	}
 	Success(c, roles)
@@ -57,12 +57,16 @@ func (h *RoleHandler) List(c *gin.Context) {
 func (h *RoleHandler) Create(c *gin.Context) {
 	var req CreateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 50002, "参数错误: "+err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 50002, "参数错误", err)
 		return
 	}
 	role, err := h.service.Create(c.Request.Context(), req.Name, req.Label, req.Sort)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 50003, "创建角色失败")
+		if errors.Is(err, service.ErrRoleExists) {
+			Error(c, http.StatusConflict, 50008, "角色名称已存在")
+			return
+		}
+		ErrorWithDetail(c, http.StatusInternalServerError, 50003, "创建角色失败", err)
 		return
 	}
 	Success(c, role)
@@ -86,7 +90,7 @@ func (h *RoleHandler) Update(c *gin.Context) {
 	}
 	var req UpdateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 50002, "参数错误: "+err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 50002, "参数错误", err)
 		return
 	}
 	role, err := h.service.Update(c.Request.Context(), id, req.Name, req.Label, req.Sort)
@@ -95,7 +99,11 @@ func (h *RoleHandler) Update(c *gin.Context) {
 			Error(c, http.StatusNotFound, 50005, "角色不存在")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 50006, "更新角色失败")
+		if errors.Is(err, service.ErrRoleExists) {
+			Error(c, http.StatusConflict, 50008, "角色名称已存在")
+			return
+		}
+		ErrorWithDetail(c, http.StatusInternalServerError, 50006, "更新角色失败", err)
 		return
 	}
 	Success(c, role)
@@ -116,7 +124,7 @@ func (h *RoleHandler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.service.Delete(c.Request.Context(), id); err != nil {
-		Error(c, http.StatusInternalServerError, 50007, "删除角色失败")
+		ErrorWithDetail(c, http.StatusInternalServerError, 50007, "删除角色失败", err)
 		return
 	}
 	Success(c, nil)

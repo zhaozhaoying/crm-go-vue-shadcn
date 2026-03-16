@@ -64,6 +64,11 @@ func getSQLiteMigrations() []Migration {
 			Name:    "add_contract_audit_columns",
 			Up:      upAddContractAuditColumns,
 		},
+		{
+			Version: 2026031101,
+			Name:    "add_user_sales_type",
+			Up:      upAddUserSalesType,
+		},
 	}
 }
 
@@ -87,6 +92,7 @@ func upCreateBaseSchema(tx *gorm.DB) error {
 			avatar TEXT NOT NULL DEFAULT '',
 			role_id INTEGER NOT NULL DEFAULT 0,
 			parent_id INTEGER,
+			sales_type TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL DEFAULT 'enabled',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -359,6 +365,15 @@ func upAddContractAuditColumns(tx *gorm.DB) error {
 		return err
 	}
 	return addColumnIfNotExists(tx, "contracts", "audited_at", "DATETIME")
+}
+
+func upAddUserSalesType(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "users", "sales_type", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return execStatements(tx, []string{
+		`CREATE INDEX IF NOT EXISTS idx_users_sales_type ON users(sales_type)`,
+	})
 }
 
 func upCreateAuthTokenTables(tx *gorm.DB) error {

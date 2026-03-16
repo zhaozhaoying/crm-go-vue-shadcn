@@ -175,7 +175,7 @@ onMounted(() => {
           {{ loading ? "登录中..." : "登录" }}
         </Button>
         <div class="text-center text-sm">
-          <a href="#" class="underline underline-offset-4">忘记密码？</a>
+          <RouterLink to="/forgot-password" class="underline underline-offset-4">忘记密码？</RouterLink>
         </div>
       </div>
     </form>

@@ -22,6 +22,7 @@ var (
 	ErrCustomerNameRequired                 = errors.New("customer name is required")
 	ErrCustomerLimitExceeded                = errors.New("customer limit exceeded")
 	ErrCustomerSameDepartmentClaimForbidden = errors.New("same department customer cannot be claimed")
+	ErrCustomerNoOutsideSalesAvailable      = errors.New("no outside sales available")
 	ErrPhoneNotFound                        = errors.New("phone not found")
 	ErrPhoneAlreadyExists                   = errors.New("phone already exists for this customer")
 	ErrInvalidPhoneFormat                   = errors.New("invalid phone format")
@@ -32,6 +33,8 @@ var phoneRegex = regexp.MustCompile(`^1[3-9]\d{9}$`)
 const (
 	customerLimitSettingKey     = "customer_limit"
 	defaultCustomerLimitSetting = 100
+	roleSalesInside             = "sales_inside"
+	roleSalesOutside            = "sales_outside"
 )
 
 type CustomerService interface {
@@ -93,6 +96,10 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 
 	role := strings.TrimSpace(filter.ActorRole)
 	isAdmin := isRole(role, "admin", "管理员")
+	// Inside-sales staff should also see customers they created and assigned to outside-sales.
+	if isInsideSalesRole(role) {
+		filter.IncludeCreatorScope = true
+	}
 	scope := normalizeOwnershipScope(filter.OwnershipScope)
 
 	directSubordinateIDs, err := s.repo.ListDirectSubordinateUserIDsByRoleNames(ctx, []int64{filter.ViewerID}, nil)
@@ -114,8 +121,8 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 		filter.AllowedOwnerUserIDs = directSubordinateIDs
 	case "sales":
 		salesIDs, err := s.repo.ListUserIDsByRoleNames(ctx, []string{
-			"sales_director", "sales_manager", "sales_staff",
-			"销售总监", "销售经理", "销售员工", "销售",
+			"sales_director", "sales_manager", "sales_staff", roleSalesInside, roleSalesOutside,
+			"销售总监", "销售经理", "销售员工", "销售", "Inside销售", "Outside销售",
 		})
 		if err != nil {
 			return model.CustomerListFilter{}, err
@@ -159,6 +166,14 @@ func normalizeOwnershipScope(raw string) string {
 		// Unknown values fallback to "all" to avoid accidental empty-list behavior.
 		return "all"
 	}
+}
+
+func isInsideSalesRole(role string) bool {
+	return isRole(role, roleSalesInside, "sale_inside", "Inside销售", "inside销售", "电销员工")
+}
+
+func isOutsideSalesRole(role string) bool {
+	return isRole(role, roleSalesOutside, "sale_outside", "Outside销售", "outside销售")
 }
 
 func uniquePositiveInt64(ids []int64) []int64 {
@@ -210,43 +225,15 @@ func intersectPositiveInt64(left, right []int64) []int64 {
 }
 
 func (s *customerService) listAllDescendantUserIDs(ctx context.Context, rootUserID int64) ([]int64, error) {
-	if rootUserID <= 0 {
-		return []int64{}, nil
-	}
-
-	visited := map[int64]struct{}{rootUserID: {}}
-	queue := []int64{rootUserID}
-	result := make([]int64, 0, 8)
-
-	for len(queue) > 0 {
-		nextLevel, err := s.repo.ListDirectSubordinateUserIDsByRoleNames(ctx, queue, nil)
-		if err != nil {
-			return nil, err
-		}
-		if len(nextLevel) == 0 {
-			break
-		}
-
-		nextQueue := make([]int64, 0, len(nextLevel))
-		for _, id := range nextLevel {
-			if id <= 0 {
-				continue
-			}
-			if _, seen := visited[id]; seen {
-				continue
-			}
-			visited[id] = struct{}{}
-			result = append(result, id)
-			nextQueue = append(nextQueue, id)
-		}
-		queue = nextQueue
-	}
-
-	return result, nil
+	return listAllDescendantUserIDsByRepo(ctx, s.repo, rootUserID)
 }
 
 func (s *customerService) CreateCustomer(ctx context.Context, input model.CustomerCreateInput) (*model.Customer, error) {
 	normalized, uniqueInput, err := normalizeCreateInput(input)
+	if err != nil {
+		return nil, err
+	}
+	normalized, err = s.applyCreateOwnerAssignment(ctx, normalized)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +264,31 @@ func (s *customerService) CreateCustomer(ctx context.Context, input model.Custom
 	}
 	s.logActivity(ctx, normalized.OperatorUserID, model.ActionCreateCustomer, model.TargetTypeCustomer, customer.ID, customer.Name, "")
 	return customer, nil
+}
+
+func (s *customerService) applyCreateOwnerAssignment(ctx context.Context, input model.CustomerCreateInput) (model.CustomerCreateInput, error) {
+	if strings.TrimSpace(input.Status) != model.CustomerStatusOwned || input.OperatorUserID <= 0 {
+		return input, nil
+	}
+
+	operatorRole, err := s.repo.GetUserRoleName(ctx, input.OperatorUserID)
+	if err != nil {
+		return model.CustomerCreateInput{}, err
+	}
+
+	switch {
+	case isInsideSalesRole(operatorRole):
+		ownerUserID, err := pickBalancedSalesOwnerUserID(ctx, s.repo, input.OperatorUserID)
+		if err != nil {
+			return model.CustomerCreateInput{}, err
+		}
+		input.OwnerUserID = &ownerUserID
+	case isOutsideSalesRole(operatorRole):
+		ownerUserID := input.OperatorUserID
+		input.OwnerUserID = &ownerUserID
+	}
+
+	return input, nil
 }
 
 func (s *customerService) UpdateCustomer(ctx context.Context, customerID int64, input model.CustomerUpdateInput) (*model.Customer, error) {

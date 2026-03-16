@@ -54,7 +54,7 @@ func NewUserHandler(service service.UserService) *UserHandler {
 func (h *UserHandler) List(c *gin.Context) {
 	users, err := h.service.List(c.Request.Context())
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 40001, "获取用户列表失败")
+		ErrorWithDetail(c, http.StatusInternalServerError, 40001, "获取用户列表失败", err)
 		return
 	}
 	Success(c, users)
@@ -72,7 +72,7 @@ func (h *UserHandler) Search(c *gin.Context) {
 	keyword := c.Query("keyword")
 	users, err := h.service.Search(c.Request.Context(), keyword)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 40001, "搜索用户失败")
+		ErrorWithDetail(c, http.StatusInternalServerError, 40014, "搜索用户失败", err)
 		return
 	}
 	Success(c, users)
@@ -112,7 +112,7 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 func (h *UserHandler) Create(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 40004, "参数错误: "+err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 40004, "参数错误", err)
 		return
 	}
 	user, err := h.service.Create(c.Request.Context(), service.CreateUserInput{
@@ -134,7 +134,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 			Error(c, http.StatusBadRequest, 40006, "无效的角色")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 40007, "创建用户失败")
+		ErrorWithDetail(c, http.StatusInternalServerError, 40007, "创建用户失败", err)
 		return
 	}
 	Success(c, user)
@@ -158,7 +158,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 40004, "参数错误: "+err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 40004, "参数错误", err)
 		return
 	}
 	user, err := h.service.Update(c.Request.Context(), id, service.UpdateUserInput{
@@ -185,7 +185,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 			Error(c, http.StatusBadRequest, 40011, "密码至少6位")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 40008, "更新用户失败")
+		ErrorWithDetail(c, http.StatusInternalServerError, 40008, "更新用户失败", err)
 		return
 	}
 	Success(c, user)
@@ -206,7 +206,7 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.service.Delete(c.Request.Context(), id); err != nil {
-		Error(c, http.StatusInternalServerError, 40010, "删除用户失败")
+		ErrorWithDetail(c, http.StatusInternalServerError, 40010, "删除用户失败", err)
 		return
 	}
 	Success(c, nil)
@@ -224,7 +224,7 @@ func (h *UserHandler) Delete(c *gin.Context) {
 func (h *UserHandler) BatchDisable(c *gin.Context) {
 	var req BatchDisableUsersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 40004, "参数错误: "+err.Error())
+		ErrorWithDetail(c, http.StatusBadRequest, 40004, "参数错误", err)
 		return
 	}
 
@@ -234,7 +234,7 @@ func (h *UserHandler) BatchDisable(c *gin.Context) {
 			Error(c, http.StatusBadRequest, 40012, "用户ID列表不能为空且必须为正整数")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 40013, "批量禁用用户失败")
+		ErrorWithDetail(c, http.StatusInternalServerError, 40013, "批量禁用用户失败", err)
 		return
 	}
 	Success(c, gin.H{"affected": affected})

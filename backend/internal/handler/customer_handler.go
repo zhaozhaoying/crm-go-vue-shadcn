@@ -109,7 +109,7 @@ func NewCustomerHandler(
 // @Param       page query int false "页码，从1开始"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.CustomerListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/customers [get]
 func (h *CustomerHandler) List(c *gin.Context) {
 	h.listByCategory(c, c.Query("category"))
@@ -121,12 +121,12 @@ func (h *CustomerHandler) List(c *gin.Context) {
 // @Tags        customers
 // @Produce     json
 // @Security    BearerAuth
-// @Param       ownershipScope query string false "查看范围(all/mine/subordinates/sales)"
+// @Param       ownershipScope query string false "查看范围（全部/我的/下属/销售）"
 // @Param       keyword query string false "关键词"
 // @Param       page query int false "页码，从1开始"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.CustomerListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/customers/my [get]
 func (h *CustomerHandler) ListMy(c *gin.Context) {
 	h.listByCategory(c, "my")
@@ -139,11 +139,11 @@ func (h *CustomerHandler) ListMy(c *gin.Context) {
 // @Produce     json
 // @Security    BearerAuth
 // @Param       keyword query string false "关键词"
-// @Param       sortBy query string false "排序字段(dropTime/followTime/updatedAt)"
+// @Param       sortBy query string false "排序字段（掉库时间/跟进时间/更新时间）"
 // @Param       page query int false "页码，从1开始"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.CustomerListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/customers/pool [get]
 func (h *CustomerHandler) ListPool(c *gin.Context) {
 	h.listByCategory(c, "pool")
@@ -158,7 +158,7 @@ func (h *CustomerHandler) ListPool(c *gin.Context) {
 // @Param       page query int false "页码，从1开始"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.CustomerListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/customers/potential [get]
 func (h *CustomerHandler) ListPotential(c *gin.Context) {
 	h.listByCategory(c, "potential")
@@ -173,7 +173,7 @@ func (h *CustomerHandler) ListPotential(c *gin.Context) {
 // @Param       page query int false "页码，从1开始"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.CustomerListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/customers/partner [get]
 func (h *CustomerHandler) ListPartner(c *gin.Context) {
 	h.listByCategory(c, "partner")
@@ -189,7 +189,7 @@ func (h *CustomerHandler) ListPartner(c *gin.Context) {
 // @Param       page query int false "页码，从1开始"
 // @Param       pageSize query int false "每页条数"
 // @Success     200 {object} APIResponse{data=model.CustomerListResult}
-// @Failure     401 {object} APIResponse
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/customers/search [get]
 func (h *CustomerHandler) ListSearch(c *gin.Context) {
 	h.listByCategory(c, "search")
@@ -223,7 +223,7 @@ func (h *CustomerHandler) listByCategory(c *gin.Context, category string) {
 
 	result, err := h.service.ListCustomers(c.Request.Context(), filter)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10001, "failed to list customers")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10001, "加载客户列表失败", err)
 		return
 	}
 
@@ -270,20 +270,20 @@ func parseBoolQuery(raw string) bool {
 // @Security    BearerAuth
 // @Param       body body CreateCustomerRequest true "客户信息"
 // @Success     200 {object} APIResponse{data=model.Customer}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     409 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     409 {object} APIResponse "请求冲突"
 // @Router      /api/v1/customers [post]
 func (h *CustomerHandler) Create(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	var req CreateCustomerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10031, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10031, "请求参数错误", err)
 		return
 	}
 
@@ -306,21 +306,23 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrCustomerNameRequired):
-			Error(c, http.StatusBadRequest, 10032, "customer name is required")
+			Error(c, http.StatusBadRequest, 10032, "客户名称不能为空")
 		case errors.Is(err, service.ErrInvalidPhoneFormat):
-			Error(c, http.StatusBadRequest, 10021, "invalid phone format")
+			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
 		case errors.Is(err, service.ErrCustomerNameExists):
-			Error(c, http.StatusConflict, 10033, "customer name already exists")
+			Error(c, http.StatusConflict, 10033, "客户名称已存在")
 		case errors.Is(err, service.ErrCustomerLegalExists):
-			Error(c, http.StatusConflict, 10034, "customer legal name already exists")
+			Error(c, http.StatusConflict, 10034, "法人名称已存在")
 		case errors.Is(err, service.ErrCustomerWeixinExists):
-			Error(c, http.StatusConflict, 10035, "customer weixin already exists")
+			Error(c, http.StatusConflict, 10035, "微信号已存在")
 		case errors.Is(err, service.ErrCustomerPhoneExists):
-			Error(c, http.StatusConflict, 10022, "phone already exists for this customer")
+			Error(c, http.StatusConflict, 10022, "手机号已存在")
+		case errors.Is(err, service.ErrCustomerNoOutsideSalesAvailable):
+			Error(c, http.StatusConflict, 10039, "当前团队下暂无可分配的销售负责人")
 		case errors.Is(err, service.ErrCustomerLimitExceeded):
 			Error(c, http.StatusConflict, 10038, "个人客户池已达上限，已成交客户不计入")
 		default:
-			Error(c, http.StatusInternalServerError, 10036, "failed to create customer")
+			ErrorWithDetail(c, http.StatusInternalServerError, 10036, "创建客户失败", err)
 		}
 		return
 	}
@@ -338,26 +340,26 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 // @Param       id path int true "客户ID"
 // @Param       body body UpdateCustomerRequest true "客户信息"
 // @Success     200 {object} APIResponse{data=model.Customer}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
-// @Failure     404 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Failure     404 {object} APIResponse "资源不存在"
 // @Router      /api/v1/customers/{id} [put]
 func (h *CustomerHandler) Update(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 
 	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 
 	var req UpdateCustomerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10031, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10031, "请求参数错误", err)
 		return
 	}
 
@@ -378,21 +380,21 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrCustomerNotFound):
-			Error(c, http.StatusNotFound, 10003, "customer not found")
+			Error(c, http.StatusNotFound, 10003, "客户不存在")
 		case errors.Is(err, service.ErrCustomerNameRequired):
-			Error(c, http.StatusBadRequest, 10032, "customer name is required")
+			Error(c, http.StatusBadRequest, 10032, "客户名称不能为空")
 		case errors.Is(err, service.ErrInvalidPhoneFormat):
-			Error(c, http.StatusBadRequest, 10021, "invalid phone format")
+			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
 		case errors.Is(err, service.ErrCustomerNameExists):
-			Error(c, http.StatusConflict, 10033, "customer name already exists")
+			Error(c, http.StatusConflict, 10033, "客户名称已存在")
 		case errors.Is(err, service.ErrCustomerLegalExists):
-			Error(c, http.StatusConflict, 10034, "customer legal name already exists")
+			Error(c, http.StatusConflict, 10034, "法人名称已存在")
 		case errors.Is(err, service.ErrCustomerWeixinExists):
-			Error(c, http.StatusConflict, 10035, "customer weixin already exists")
+			Error(c, http.StatusConflict, 10035, "微信号已存在")
 		case errors.Is(err, service.ErrCustomerPhoneExists):
-			Error(c, http.StatusConflict, 10022, "phone already exists for this customer")
+			Error(c, http.StatusConflict, 10022, "手机号已存在")
 		default:
-			Error(c, http.StatusInternalServerError, 10037, "failed to update customer")
+			ErrorWithDetail(c, http.StatusInternalServerError, 10037, "更新客户失败", err)
 		}
 		return
 	}
@@ -409,13 +411,13 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 // @Security    BearerAuth
 // @Param       body body CheckCustomerUniqueRequest true "唯一性校验条件"
 // @Success     200 {object} APIResponse{data=model.CustomerUniqueCheckResult}
-// @Failure     400 {object} APIResponse
-// @Failure     401 {object} APIResponse
+// @Failure     400 {object} APIResponse "请求参数错误"
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
 // @Router      /api/v1/customers/validate-unique [post]
 func (h *CustomerHandler) CheckUnique(c *gin.Context) {
 	var req CheckCustomerUniqueRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10031, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10031, "请求参数错误", err)
 		return
 	}
 
@@ -427,7 +429,7 @@ func (h *CustomerHandler) CheckUnique(c *gin.Context) {
 		Phones:            req.Phones,
 	})
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10038, "failed to check uniqueness")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10046, "校验客户唯一性失败", err)
 		return
 	}
 
@@ -435,33 +437,33 @@ func (h *CustomerHandler) CheckUnique(c *gin.Context) {
 }
 
 // ImportCSV godoc
-// @Summary     批量导入客户(CSV)
-// @Description 上传CSV文件导入客户，支持十万级数据批量处理；支持dryRun预演
+// @Summary     批量导入客户（CSV）
+// @Description 上传 CSV 文件导入客户，支持十万级数据批量处理；支持仅校验不入库预演
 // @Tags        customers
 // @Accept      multipart/form-data
 // @Produce     json
 // @Security    BearerAuth
-// @Param       file formData file true "CSV文件(需包含表头，至少: name, phone)"
+// @Param       file formData file true "CSV 文件（需包含表头，至少包含 name、phone 列）"
 // @Param       batchSize formData int false "批大小，默认1000，最大5000"
-// @Param       dryRun formData bool false "是否仅校验不入库，默认false"
-// @Param       defaultStatus formData string false "默认客户状态(owned/pool)，默认owned"
+// @Param       dryRun formData bool false "是否仅校验不入库，默认否"
+// @Param       defaultStatus formData string false "默认客户状态（传值使用 owned/pool，对应私有/公海，默认 owned）"
 // @Param       maxErrors formData int false "最多返回多少条错误明细，默认200"
 // @Success     200 {object} APIResponse{data=model.CustomerImportResult}
 // @Router      /api/v1/customers/import/csv [post]
 func (h *CustomerHandler) ImportCSV(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	if h.importService == nil {
-		Error(c, http.StatusNotImplemented, 10039, "customer import service is not configured")
+		Error(c, http.StatusNotImplemented, 10045, "客户导入服务未配置")
 		return
 	}
 
 	file, _, err := c.Request.FormFile("file")
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10040, "file is required")
+		Error(c, http.StatusBadRequest, 10040, "请上传导入文件")
 		return
 	}
 	defer file.Close()
@@ -481,11 +483,11 @@ func (h *CustomerHandler) ImportCSV(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrCustomerImportInvalidFile):
-			Error(c, http.StatusBadRequest, 10041, "invalid csv file")
+			Error(c, http.StatusBadRequest, 10041, "CSV 文件无效")
 		case errors.Is(err, service.ErrCustomerImportInvalidHeader):
-			Error(c, http.StatusBadRequest, 10042, "invalid csv header, required columns: name, phone")
+			Error(c, http.StatusBadRequest, 10042, "CSV 表头无效，必须包含 name、phone")
 		default:
-			Error(c, http.StatusInternalServerError, 10043, "failed to import customers: "+err.Error())
+			ErrorWithDetail(c, http.StatusInternalServerError, 10043, "导入客户失败", err)
 		}
 		return
 	}
@@ -504,23 +506,23 @@ func (h *CustomerHandler) ImportCSV(c *gin.Context) {
 func (h *CustomerHandler) Claim(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 
 	customer, err := h.service.ClaimCustomer(c.Request.Context(), id, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrCustomerNotFound) {
-			Error(c, http.StatusNotFound, 10003, "customer not found")
+			Error(c, http.StatusNotFound, 10003, "客户不存在")
 			return
 		}
 		if errors.Is(err, service.ErrCustomerNotInPool) {
-			Error(c, http.StatusConflict, 10004, "customer is not in pool")
+			Error(c, http.StatusConflict, 10004, "该客户不在公海中")
 			return
 		}
 		if errors.Is(err, service.ErrCustomerLimitExceeded) {
@@ -531,7 +533,7 @@ func (h *CustomerHandler) Claim(c *gin.Context) {
 			Error(c, http.StatusForbidden, 10044, "同部门客户不可领取")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 10005, "failed to claim customer")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10005, "领取客户失败", err)
 		return
 	}
 	Success(c, customer)
@@ -548,30 +550,30 @@ func (h *CustomerHandler) Claim(c *gin.Context) {
 func (h *CustomerHandler) Release(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 
 	customer, err := h.service.ReleaseCustomer(c.Request.Context(), id, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrCustomerNotFound) {
-			Error(c, http.StatusNotFound, 10003, "customer not found")
+			Error(c, http.StatusNotFound, 10003, "客户不存在")
 			return
 		}
 		if errors.Is(err, service.ErrCustomerAlreadyInPool) {
-			Error(c, http.StatusConflict, 10006, "customer is already in pool")
+			Error(c, http.StatusConflict, 10006, "客户已在公海中")
 			return
 		}
 		if errors.Is(err, service.ErrCustomerNotOwned) {
-			Error(c, http.StatusForbidden, 10007, "customer is not owned by current user")
+			Error(c, http.StatusForbidden, 10007, "当前用户不是该客户负责人")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 10008, "failed to release customer")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10008, "释放客户失败", err)
 		return
 	}
 	Success(c, customer)
@@ -590,18 +592,18 @@ func (h *CustomerHandler) Release(c *gin.Context) {
 func (h *CustomerHandler) Transfer(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 
 	var req TransferCustomerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10009, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10009, "请求参数错误", err)
 		return
 	}
 
@@ -612,18 +614,18 @@ func (h *CustomerHandler) Transfer(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrCustomerNotFound) {
-			Error(c, http.StatusNotFound, 10003, "customer not found")
+			Error(c, http.StatusNotFound, 10003, "客户不存在")
 			return
 		}
 		if errors.Is(err, service.ErrCustomerNotOwned) {
-			Error(c, http.StatusForbidden, 10007, "customer is not owned by current user")
+			Error(c, http.StatusForbidden, 10007, "当前用户不是该客户负责人")
 			return
 		}
 		if errors.Is(err, service.ErrCustomerLimitExceeded) {
 			Error(c, http.StatusConflict, 10038, "个人客户池已达上限，已成交客户不计入")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 10010, "failed to transfer customer")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10010, "转移客户失败", err)
 		return
 	}
 	Success(c, customer)
@@ -642,13 +644,13 @@ func (h *CustomerHandler) Transfer(c *gin.Context) {
 func (h *CustomerHandler) AddPhone(c *gin.Context) {
 	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 
 	var req AddPhoneRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10020, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10020, "请求参数错误", err)
 		return
 	}
 
@@ -661,14 +663,14 @@ func (h *CustomerHandler) AddPhone(c *gin.Context) {
 
 	if err := h.service.AddPhone(c.Request.Context(), phone); err != nil {
 		if errors.Is(err, service.ErrInvalidPhoneFormat) {
-			Error(c, http.StatusBadRequest, 10021, "invalid phone format")
+			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
 			return
 		}
 		if errors.Is(err, service.ErrPhoneAlreadyExists) {
-			Error(c, http.StatusConflict, 10022, "phone already exists for this customer")
+			Error(c, http.StatusConflict, 10022, "手机号已存在")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 10023, "failed to add phone")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10023, "新增客户电话失败", err)
 		return
 	}
 
@@ -686,13 +688,13 @@ func (h *CustomerHandler) AddPhone(c *gin.Context) {
 func (h *CustomerHandler) ListPhones(c *gin.Context) {
 	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 
 	phones, err := h.service.ListPhones(c.Request.Context(), customerID)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10024, "failed to list phones")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10024, "加载客户电话失败", err)
 		return
 	}
 
@@ -713,18 +715,18 @@ func (h *CustomerHandler) ListPhones(c *gin.Context) {
 func (h *CustomerHandler) UpdatePhone(c *gin.Context) {
 	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 	phoneID, err := strconv.ParseInt(c.Param("phoneId"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10025, "invalid phone id")
+		Error(c, http.StatusBadRequest, 10025, "无效的电话ID")
 		return
 	}
 
 	var req UpdatePhoneRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10020, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10020, "请求参数错误", err)
 		return
 	}
 
@@ -738,18 +740,18 @@ func (h *CustomerHandler) UpdatePhone(c *gin.Context) {
 
 	if err := h.service.UpdatePhone(c.Request.Context(), phone); err != nil {
 		if errors.Is(err, service.ErrPhoneNotFound) {
-			Error(c, http.StatusNotFound, 10026, "phone not found")
+			Error(c, http.StatusNotFound, 10026, "电话不存在")
 			return
 		}
 		if errors.Is(err, service.ErrInvalidPhoneFormat) {
-			Error(c, http.StatusBadRequest, 10021, "invalid phone format")
+			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
 			return
 		}
 		if errors.Is(err, service.ErrPhoneAlreadyExists) {
-			Error(c, http.StatusConflict, 10022, "phone already exists for this customer")
+			Error(c, http.StatusConflict, 10022, "手机号已存在")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 10027, "failed to update phone")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10027, "更新客户电话失败", err)
 		return
 	}
 
@@ -768,21 +770,21 @@ func (h *CustomerHandler) UpdatePhone(c *gin.Context) {
 func (h *CustomerHandler) DeletePhone(c *gin.Context) {
 	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 	phoneID, err := strconv.ParseInt(c.Param("phoneId"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10025, "invalid phone id")
+		Error(c, http.StatusBadRequest, 10025, "无效的电话ID")
 		return
 	}
 
 	if err := h.service.DeletePhone(c.Request.Context(), customerID, phoneID); err != nil {
 		if errors.Is(err, service.ErrPhoneNotFound) {
-			Error(c, http.StatusNotFound, 10026, "phone not found")
+			Error(c, http.StatusNotFound, 10026, "电话不存在")
 			return
 		}
-		Error(c, http.StatusInternalServerError, 10028, "failed to delete phone")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10028, "删除客户电话失败", err)
 		return
 	}
 
@@ -802,7 +804,7 @@ func (h *CustomerHandler) DeletePhone(c *gin.Context) {
 func (h *CustomerHandler) ListStatusLogs(c *gin.Context) {
 	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 
@@ -811,7 +813,7 @@ func (h *CustomerHandler) ListStatusLogs(c *gin.Context) {
 
 	logs, err := h.service.ListStatusLogs(c.Request.Context(), customerID, page, pageSize)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, 10029, "failed to list status logs")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10029, "加载客户状态日志失败", err)
 		return
 	}
 
@@ -831,18 +833,18 @@ func (h *CustomerHandler) ListStatusLogs(c *gin.Context) {
 func (h *CustomerHandler) CreateStatusLog(c *gin.Context) {
 	userID, ok := currentUserID(c)
 	if !ok {
-		Error(c, http.StatusUnauthorized, 30004, "invalid token claims")
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
 	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		Error(c, http.StatusBadRequest, 10002, "invalid customer id")
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
 		return
 	}
 
 	var req CreateStatusLogRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Error(c, http.StatusBadRequest, 10020, "invalid request body")
+		ErrorWithDetail(c, http.StatusBadRequest, 10020, "请求参数错误", err)
 		return
 	}
 
@@ -856,7 +858,7 @@ func (h *CustomerHandler) CreateStatusLog(c *gin.Context) {
 	}
 
 	if err := h.service.CreateStatusLog(c.Request.Context(), log); err != nil {
-		Error(c, http.StatusInternalServerError, 10030, "failed to create status log")
+		ErrorWithDetail(c, http.StatusInternalServerError, 10030, "创建客户状态日志失败", err)
 		return
 	}
 
@@ -974,7 +976,7 @@ func isMaskBypassRole(role string) bool {
 
 func isSalesOrOperationRole(role string) bool {
 	switch strings.TrimSpace(strings.ToLower(role)) {
-	case "sales_director", "sales_manager", "sales_staff", "销售总监", "销售经理", "销售员工", "销售":
+	case "sales_director", "sales_manager", "sales_staff", "sales_inside", "sales_outside", "销售总监", "销售经理", "销售员工", "销售", "inside销售", "outside销售":
 		return true
 	case "ops_manager", "operation_manager", "ops_staff", "operation_staff", "运营经理", "运营员工", "运营":
 		return true

@@ -1,6 +1,7 @@
 .DS_Store
 .idea
 .vscode
+.claude
 
 # Backend
 /backend/bin
@@ -19,3 +20,6 @@
 # Env files
 .env
 .env.*
+
+# Release bundle (standalone repo)
+/release

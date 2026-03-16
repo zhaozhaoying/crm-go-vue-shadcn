@@ -2,6 +2,7 @@ package companysearch
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 	"time"
 )
 
-const defaultUserAgent = "Mozilla/5.0"
+const defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 type HTTPClientConfig struct {
 	Timeout               time.Duration
@@ -23,6 +24,10 @@ type HTTPClientConfig struct {
 	UserAgent             string
 	DisableCompression    bool
 	ProxyURL              string
+	// DisableHTTP2 removes h2 from the TLS ALPN extension so the TLS ClientHello
+	// looks like a plain HTTP/1.1 browser. Required for sites that reject Go's
+	// default HTTP/2-capable fingerprint (e.g. made-in-china.com).
+	DisableHTTP2 bool
 }
 
 type RequestOptions struct {
@@ -96,7 +101,7 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 		DialContext: (&net.Dialer{
 			Timeout: cfg.ConnectTimeout,
 		}).DialContext,
-		ForceAttemptHTTP2:     true,
+		ForceAttemptHTTP2:     !cfg.DisableHTTP2,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   10,
 		IdleConnTimeout:       90 * time.Second,
@@ -104,6 +109,12 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: cfg.ResponseHeaderTimeout,
 		DisableCompression:    cfg.DisableCompression,
+	}
+	// Completely remove h2 from the TLS ALPN negotiation so the ClientHello
+	// fingerprint matches a plain HTTP/1.1 browser. Sites like made-in-china.com
+	// block Go's default h2-capable fingerprint at the TLS handshake layer.
+	if cfg.DisableHTTP2 {
+		transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
 	}
 
 	return &HTTPClient{
