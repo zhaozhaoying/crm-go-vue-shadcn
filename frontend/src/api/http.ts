@@ -8,8 +8,33 @@ const isLocalHost =
   (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
 const defaultBaseURL = isLocalHost ? "http://localhost:8080/api" : "/api"
 
+const isRelativeBaseURL = !!envBaseURL && envBaseURL.startsWith("/")
+const isLoopbackBaseURL = (() => {
+  if (!envBaseURL || !/^https?:\/\//i.test(envBaseURL)) return false
+  try {
+    const parsed = new URL(envBaseURL)
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1"
+  } catch {
+    return false
+  }
+})()
+
+const resolvedBaseURL = (() => {
+  if (isLocalHost) {
+    if (!envBaseURL || isRelativeBaseURL) {
+      return "http://localhost:8080/api"
+    }
+    return envBaseURL
+  }
+
+  if (!envBaseURL || isLoopbackBaseURL) {
+    return "/api"
+  }
+  return envBaseURL
+})()
+
 const http = axios.create({
-  baseURL: envBaseURL || defaultBaseURL,
+  baseURL: resolvedBaseURL || defaultBaseURL,
   timeout: 10000
 })
 

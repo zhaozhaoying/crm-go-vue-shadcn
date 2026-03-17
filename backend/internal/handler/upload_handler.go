@@ -23,7 +23,7 @@ func NewUploadHandler(service service.UploadService) *UploadHandler {
 // @Accept      multipart/form-data
 // @Produce     json
 // @Security    BearerAuth
-// @Param       file formData file true "头像文件（支持 JPG、PNG、WEBP，最大 2MB）"
+// @Param       file formData file true "头像文件（支持 JPG、PNG、WEBP，最大 20MB）"
 // @Success     200 {object} APIResponse{data=map[string]string}
 // @Failure     400 {object} APIResponse "请求参数错误"
 // @Failure     401 {object} APIResponse "未登录或登录已失效"
@@ -47,7 +47,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		case errors.Is(err, service.ErrInvalidImageType):
 			Error(c, http.StatusBadRequest, 40022, "仅支持 JPG、PNG、WEBP 图片")
 		case errors.Is(err, service.ErrImageTooLarge):
-			Error(c, http.StatusBadRequest, 40023, "图片大小不能超过2MB")
+			Error(c, http.StatusBadRequest, 40023, "图片大小不能超过20MB")
 		case errors.Is(err, service.ErrUploadServiceNotConfigured):
 			Error(c, http.StatusInternalServerError, 40024, "OSS上传服务未配置")
 		default:

@@ -4031,7 +4031,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "file",
-                        "description": "头像文件（支持 JPG、PNG、WEBP，最大 2MB）",
+                        "description": "头像文件（支持 JPG、PNG、WEBP，最大 20MB）",
                         "name": "file",
                         "in": "formData",
                         "required": true

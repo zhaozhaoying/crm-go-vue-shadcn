@@ -4052,7 +4052,7 @@ paths:
       - multipart/form-data
       description: 上传用户头像到阿里云OSS
       parameters:
-      - description: 头像文件（支持 JPG、PNG、WEBP，最大 2MB）
+      - description: 头像文件（支持 JPG、PNG、WEBP，最大 20MB）
         in: formData
         name: file
         required: true

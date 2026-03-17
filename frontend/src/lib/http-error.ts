@@ -18,29 +18,10 @@ const toChineseMessage = (message: string, status?: number): string => {
     return normalized
   }
 
-  const lower = normalized.toLowerCase()
-  if (lower.includes("network error") || lower.includes("failed to fetch")) {
-    return "网络异常，无法连接后端服务"
-  }
-  if (lower.includes("timeout")) {
-    return "请求超时，请稍后重试"
-  }
-  if (lower.includes("request failed with status code 404")) {
-    return "接口不存在（请重启后端并确认已更新到最新代码）"
-  }
-  if (lower.includes("request failed with status code")) {
-    return status ? `请求失败（${status}）` : "请求失败"
-  }
-  if (lower.includes("request failed")) {
-    return status ? `请求失败（${status}）` : "请求失败"
-  }
-  if (status === 404) {
-    return "接口不存在（请重启后端并确认已更新到最新代码）"
-  }
   if (status) {
-    return `请求失败（${status}）`
+    return `${normalized} (${status})`
   }
-  return "请求失败，请稍后重试"
+  return normalized || "请求失败，请稍后重试"
 }
 
 export const getRequestErrorMessage = (error: unknown, fallback = "请求失败"): string => {
@@ -57,11 +38,11 @@ export const getRequestErrorMessage = (error: unknown, fallback = "请求失败"
     }
 
     if (status === 404) {
-      return "接口不存在（请重启后端并确认已更新到最新代码）"
+      return "接口不存在 (404)"
     }
 
     if (!status) {
-      return "无法连接后端服务，请确认后端已启动（默认 8080）"
+      return "无法连接后端服务"
     }
 
     return toChineseMessage(error.message, status)

@@ -21,7 +21,7 @@ var (
 	ErrImageUploadFailed          = errors.New("image upload failed")
 )
 
-const maxAvatarSize int64 = 2 * 1024 * 1024
+const maxAvatarSize int64 = 20 * 1024 * 1024
 
 type UploadService interface {
 	UploadAvatar(ctx context.Context, file *multipart.FileHeader) (string, error)

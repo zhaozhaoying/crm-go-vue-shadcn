@@ -289,6 +289,12 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
+注意：
+
+- `ExecStart` 必须指向你每次发布后真正会被覆盖更新的二进制
+- 如果你用的是 `scripts/build-cn.sh`，默认会更新 `/srv/crm-go-vue-shadcn/backend/crm-backend`
+- 如果你用的是 `scripts/package-release.sh`，默认产物在 `release/crm-backend`，要么手动复制过去，要么把 `ExecStart` 改成 `release` 目录里的实际路径
+
 启动服务：
 
 ```bash
@@ -369,6 +375,86 @@ go run ./cmd/migrate up
 
 sudo systemctl restart crm-backend
 sudo nginx -t && sudo systemctl reload nginx
+curl -s http://127.0.0.1:8080/api/health
+```
+
+说明：
+
+- `scripts/build-cn.sh` 和 `scripts/package-release.sh` 会把 `version`、`git_commit`、`build_time` 写进后端二进制
+- 重启后访问 `/api/health`，应该能看到当前运行中的构建版本和服务启动时间
+
+### 9.1 One-Click Deploy For Current Overseas Server
+
+如果你线上目录结构是下面这样：
+
+```text
+/home/shipin/crm-go.zhaozhaoying.cn
+├── .env
+├── dist/
+└── overseas_linux
+```
+
+并且 `systemd` 服务名是 `crm-go`，可以直接使用仓库里的脚本：
+
+```bash
+cd /Users/zhangyang/dev/zhaozhaoying/crm-go-vue-shadcn
+bash ./scripts/deploy-overseas.sh
+```
+
+这个脚本会自动完成：
+
+- 使用 `scripts/package-release.sh` 打包
+- 生成 `release/dist` 和 `release/overseas_linux`
+- 上传前端 `dist`
+- 上传后端二进制到远端临时文件
+- 在服务器上原子替换 `overseas_linux`
+- 重启 `crm-go`
+- 打印 `stat` 和 `/api/health` 结果，确认线上是否已经切到新版本
+
+常用参数：
+
+```bash
+# 连同 release/.env 一起上传到线上 .env
+bash ./scripts/deploy-overseas.sh --with-env
+
+# 先清理 Go 构建缓存，再重新打包 overseas_linux
+bash ./scripts/deploy-overseas.sh --clean-build
+
+# 只发前端
+bash ./scripts/deploy-overseas.sh --frontend-only
+
+# 只发后端
+bash ./scripts/deploy-overseas.sh --backend-only
+
+# 不重新打包，直接使用现有 release/ 产物
+bash ./scripts/deploy-overseas.sh --skip-build
+
+# 只上传，不重启远端 systemd 服务
+bash ./scripts/deploy-overseas.sh --no-restart
+```
+
+默认值和覆盖方式：
+
+- 默认 SSH 目标：`zhangyang@192.155.80.209`
+- 默认 SSH 私钥：`/Users/zhangyang/dev/zhaozhaoying/jiaoben/KeyPairForZhangYang.pem`
+- 默认远端目录：`/home/shipin/crm-go.zhaozhaoying.cn`
+- 默认服务名：`crm-go`
+- 默认后端文件名：`overseas_linux`
+- 默认构建目标：`GOOS=linux GOARCH=amd64 CGO_ENABLED=0`
+- 可选彻底重编译：`--clean-build`，会先执行 `go clean -cache -testcache`
+- 默认重启方式：执行时提示输入远端 `sudo` 密码，然后重启 `crm-go`
+
+如果要覆盖默认值，可以这样传环境变量：
+
+```bash
+DEPLOY_SSH_TARGET=root@your-server \
+DEPLOY_SSH_KEY=~/.ssh/id_rsa \
+DEPLOY_REMOTE_DIR=/home/shipin/your-app \
+DEPLOY_REMOTE_SERVICE=crm-go \
+DEPLOY_BACKEND_BIN_NAME=overseas_linux \
+DEPLOY_CLEAN_BUILD=1 \
+DEPLOY_SUDO_PASSWORD='你的sudo密码' \
+bash ./scripts/deploy-overseas.sh
 ```
 
 ### 10. Deployment Checklist
@@ -376,6 +462,7 @@ sudo nginx -t && sudo systemctl reload nginx
 上线前至少确认这些：
 
 - 后端健康检查通过：`http://127.0.0.1:8080/api/health`
+- 健康检查返回的 `gitCommit`、`buildTime`、`startedAt` 符合本次发布
 - 前端页面能正常打开
 - 登录、刷新 token、退出登录正常
 - 图片上传正常
@@ -400,6 +487,11 @@ sudo nginx -t && sudo systemctl reload nginx
   - 检查 `OSS_*` 是否完整
 - 服务启动失败
   - 先看 `journalctl -u crm-backend -f`
+- 服务看起来重启了，但接口还是旧逻辑
+  - 执行 `systemctl show crm-backend -p ExecStart,WorkingDirectory`
+  - 执行 `readlink -f /proc/$(pgrep -f crm-backend | head -n 1)/exe`
+  - 执行 `curl -s http://127.0.0.1:8080/api/health`
+  - 确认 `ExecStart` 指向的二进制、进程实际运行的二进制、以及这次构建输出的二进制是同一个文件
 - 合同开始时间/结束时间没有生成
   - 确认后端服务已经重启到最新代码
   - 重新保存一次合同，让后端执行最新提交逻辑
@@ -409,6 +501,5 @@ sudo nginx -t && sudo systemctl reload nginx
 如果你准备正式长期运维，建议下一步补这几样：
 
 - `Dockerfile` 和 `docker-compose.yml`
-- 一键发布脚本 `deploy.sh`
 - 生产环境备份脚本
 - CI/CD 自动构建和发布流程

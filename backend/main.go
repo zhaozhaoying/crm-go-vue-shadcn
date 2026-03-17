@@ -14,6 +14,12 @@ import (
 	"time"
 )
 
+var (
+	version   = "dev"
+	gitCommit = "unknown"
+	buildTime = "unknown"
+)
+
 // @title           Backend API
 // @version         1.0
 // @description     后端服务API文档
@@ -123,7 +129,7 @@ func main() {
 
 	authContextProvider := authctx.NewProvider(userRepo, roleRepo)
 
-	healthHandler := handler.NewHealthHandler("backend")
+	healthHandler := handler.NewHealthHandler("backend", version, gitCommit, buildTime)
 	customerHandler := handler.NewCustomerHandler(customerService, customerImportService)
 	crontabHandler := handler.NewCrontabHandler(customerAutoDropService)
 	authHandler := handler.NewAuthHandler(authService, authContextProvider, captchaService)
@@ -167,7 +173,14 @@ func main() {
 	)
 	addr := ":" + cfg.AppPort
 
-	log.Printf("starting server on %s (%s)", addr, cfg.AppEnv)
+	log.Printf(
+		"starting server on %s (%s) version=%s commit=%s buildTime=%s",
+		addr,
+		cfg.AppEnv,
+		version,
+		gitCommit,
+		buildTime,
+	)
 	log.Printf("swagger docs: http://localhost%s/swagger/index.html", addr)
 	if err := engine.Run(addr); err != nil {
 		log.Fatalf("failed to start server: %v", err)

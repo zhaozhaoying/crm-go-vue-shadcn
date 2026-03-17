@@ -12,6 +12,7 @@
   "dependencies": {
     "@unovis/ts": "^1.6.4",
     "@unovis/vue": "^1.6.4",
+    "@vee-validate/zod": "4.13.2",
     "@vueuse/core": "^14.2.1",
     "axios": "^1.8.1",
     "class-variance-authority": "^0.7.1",
@@ -21,9 +22,11 @@
     "radix-vue": "^1.9.15",
     "reka-ui": "^2.8.2",
     "tailwind-merge": "^2.6.0",
+    "vee-validate": "4.13.2",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0",
-    "vue-sonner": "^2.0.9"
+    "vue-sonner": "^2.0.9",
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.19.11",

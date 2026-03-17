@@ -18,7 +18,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   accept: "image/png,image/jpeg,image/webp",
-  maxSizeMB: 2,
+  maxSizeMB: 20,
   placeholder: "暂无图片",
   uploadText: "上传图片",
 })

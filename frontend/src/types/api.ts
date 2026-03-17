@@ -8,6 +8,10 @@ export interface HealthPayload {
   status: string
   service: string
   timestamp: string
+  version?: string
+  gitCommit?: string
+  buildTime?: string
+  startedAt?: string
 }
 
 export interface Customer {

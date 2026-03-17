@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from "vue"
+import { ref, watch, onBeforeUnmount, computed } from "vue"
+import { toTypedSchema } from "@vee-validate/zod"
+import { useForm, useField } from "vee-validate"
+import * as z from "zod"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import {
@@ -29,11 +32,34 @@ const emit = defineEmits<{
   (e: "success"): void
 }>()
 
-const form = ref({
-  username: "", password: "", nickname: "", email: "",
-  mobile: "", roleId: "", parentId: "none", status: "enabled", avatar: ""
+const formSchema = computed(() => toTypedSchema(z.object({
+  username: z.string().min(1, { message: "请填写登录账号" }),
+  password: props.mode === "create"
+    ? z.string().min(6, { message: "密码至少需要6位" })
+    : z.string().optional(),
+  nickname: z.string().optional(),
+  email: z.string().email({ message: "请输入有效的邮箱地址" }).optional().or(z.literal('')),
+  mobile: z.string().optional(),
+  roleId: z.string().min(1, { message: "请选择系统角色" }),
+  parentId: z.string(),
+  status: z.string(),
+  avatar: z.string().optional(),
+})))
+
+const { handleSubmit, resetForm, errors } = useForm({
+  validationSchema: formSchema,
 })
-const formError = ref("")
+
+const { value: username } = useField<string>('username')
+const { value: password } = useField<string>('password')
+const { value: nickname } = useField<string>('nickname')
+const { value: email } = useField<string>('email')
+const { value: mobile } = useField<string>('mobile')
+const { value: roleId } = useField<string>('roleId')
+const { value: parentId } = useField<string>('parentId')
+const { value: status } = useField<string>('status')
+const { value: avatar } = useField<string>('avatar')
+
 const formSubmitting = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const previewUrl = ref("")
@@ -47,24 +73,15 @@ const clearLocalPreviewObjectUrl = () => {
   }
 }
 
-watch(() => props.open, (val) => {
-  if (!val) {
-    selectedAvatarFile.value = null
-    clearLocalPreviewObjectUrl()
-    return
-  }
-  formError.value = ""
-  previewUrl.value = ""
-  selectedAvatarFile.value = null
-  clearLocalPreviewObjectUrl()
+const initialValues = computed(() => {
   if (props.mode === "create") {
-    form.value = {
+    return {
       username: "", password: "", nickname: "", email: "", mobile: "",
       roleId: props.roles[0]?.id ? String(props.roles[0].id) : "",
       parentId: "none", status: "enabled", avatar: ""
     }
   } else if (props.userData) {
-    form.value = {
+    return {
       username: props.userData.username, password: "",
       nickname: props.userData.nickname || "",
       email: props.userData.email || "",
@@ -74,8 +91,23 @@ watch(() => props.open, (val) => {
       status: props.userData.status || "enabled",
       avatar: props.userData.avatar || ""
     }
-    previewUrl.value = form.value.avatar ||
-      `https://api.dicebear.com/7.x/notionists/svg?seed=${form.value.username}&backgroundColor=ffffff`
+  }
+  return {}
+})
+
+watch(() => props.open, (val) => {
+  if (!val) {
+    selectedAvatarFile.value = null
+    clearLocalPreviewObjectUrl()
+    return
+  }
+  resetForm({ values: initialValues.value })
+  previewUrl.value = initialValues.value.avatar || ""
+  selectedAvatarFile.value = null
+  clearLocalPreviewObjectUrl()
+  if (props.mode === "edit" && props.userData) {
+    previewUrl.value = props.userData.avatar ||
+      `https://api.dicebear.com/7.x/notionists/svg?seed=${props.userData.username}&backgroundColor=ffffff`
   }
 })
 
@@ -92,62 +124,56 @@ const onFileSelected = (event: Event) => {
   const target = event.target as HTMLInputElement
   if (!target.files?.length) return
   const file = target.files[0]
-  if (!file.type.startsWith("image/")) { formError.value = "请上传图片格式的文件"; return }
-  if (file.size > 2 * 1024 * 1024) { formError.value = "图片大小不能超过 2MB"; return }
+  if (!file.type.startsWith("image/")) {
+    // TODO: show error
+    return
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    // TODO: show error
+    return
+  }
 
-  formError.value = ""
   selectedAvatarFile.value = file
   clearLocalPreviewObjectUrl()
   localPreviewObjectUrl.value = URL.createObjectURL(file)
   previewUrl.value = localPreviewObjectUrl.value
   target.value = ""
+  avatar.value = ""
 }
 
 const removeAvatar = () => {
   selectedAvatarFile.value = null
   clearLocalPreviewObjectUrl()
   previewUrl.value = ""
-  form.value.avatar = ""
+  avatar.value = ""
 }
 
-const handleSubmit = async () => {
-  formError.value = ""
+const onSubmit = handleSubmit(async (values) => {
   formSubmitting.value = true
   try {
-    const parentId = form.value.parentId && form.value.parentId !== "none" ? Number(form.value.parentId) : null
-    let avatarUrl = form.value.avatar
+    const parentIdValue = values.parentId && values.parentId !== "none" ? Number(values.parentId) : null
+    let avatarUrl = values.avatar
 
     if (selectedAvatarFile.value) {
       const uploadResult = await uploadUserAvatar(selectedAvatarFile.value)
       avatarUrl = uploadResult.url
     }
 
+    const payload = { ...values, parentId: parentIdValue, avatar: avatarUrl }
+
     if (props.mode === "create") {
-      if (!form.value.username || !form.value.password) { formError.value = "请填写用户名和密码"; return }
-      await createUser({
-        username: form.value.username, password: form.value.password,
-        nickname: form.value.nickname, email: form.value.email,
-        mobile: form.value.mobile, roleId: Number(form.value.roleId),
-        parentId: parentId,
-        avatar: avatarUrl
-      } as any)
+      await createUser(payload as any)
     } else if (props.userData) {
-      await updateUser(props.userData.id, {
-        username: form.value.username, nickname: form.value.nickname,
-        email: form.value.email, mobile: form.value.mobile,
-        roleId: Number(form.value.roleId),
-        parentId: parentId,
-        status: form.value.status, avatar: avatarUrl
-      } as any)
+      await updateUser(props.userData.id, payload as any)
     }
     emit("success")
     close()
   } catch (e) {
-    formError.value = e instanceof Error ? e.message : "操作失败"
+    // TODO: show error
   } finally {
     formSubmitting.value = false
   }
-}
+})
 
 onBeforeUnmount(() => {
   clearLocalPreviewObjectUrl()
@@ -179,12 +205,8 @@ onBeforeUnmount(() => {
             </h2>
           </div>
 
-          <form @submit.prevent="handleSubmit">
+          <form @submit="onSubmit">
             <div class="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
-              <div v-if="formError" class="rounded-lg bg-red-50 p-3 text-sm text-red-600 border border-red-100">
-                {{ formError }}
-              </div>
-
               <!-- 头像 -->
               <div class="flex flex-col items-center space-y-3 pb-4 border-b border-slate-100">
                 <input type="file" ref="fileInput" class="hidden" accept="image/png,image/jpeg,image/webp" @change="onFileSelected" />
@@ -192,7 +214,7 @@ onBeforeUnmount(() => {
                   <Avatar class="h-20 w-20 border-[3px] border-white shadow-md">
                     <AvatarImage :src="previewUrl" class="object-cover" />
                     <AvatarFallback class="bg-indigo-50 text-indigo-700 text-xl font-bold">
-                      {{ form.nickname ? form.nickname.charAt(0) : form.username ? form.username.charAt(0).toUpperCase() : "U" }}
+                      {{ nickname ? nickname.charAt(0) : username ? username.charAt(0).toUpperCase() : "U" }}
                     </AvatarFallback>
                   </Avatar>
                   <div class="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -207,22 +229,24 @@ onBeforeUnmount(() => {
                     <Trash2 class="h-3 w-3 mr-1.5" /> 移除
                   </Button>
                 </div>
-                <p class="text-xs text-slate-400">支持 JPG, PNG, WEBP 格式，最大 2MB</p>
+                <p class="text-xs text-slate-400">支持 JPG, PNG, WEBP 格式，最大 20MB</p>
               </div>
 
               <!-- 表单 -->
               <div class="grid grid-cols-2 gap-x-6 gap-y-5">
                 <div class="space-y-1.5">
-                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">登录账号 <span class="text-red-500">*</span></Label>
-                  <Input v-model="form.username" required placeholder="如: zhangsan" class="h-10" :disabled="mode === 'edit'" />
+                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="username">登录账号 <span class="text-red-500">*</span></Label>
+                  <Input v-model="username" id="username" placeholder="如: zhangsan" class="h-10" :disabled="mode === 'edit'" />
+                  <p v-if="errors.username" class="text-sm text-red-600">{{ errors.username }}</p>
                 </div>
                 <div class="space-y-1.5" v-if="mode === 'create'">
-                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">初始密码 <span class="text-red-500">*</span></Label>
-                  <Input v-model="form.password" type="password" required placeholder="至少6位" class="h-10" />
+                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="password">初始密码 <span class="text-red-500">*</span></Label>
+                  <Input v-model="password" id="password" type="password" placeholder="至少6位" class="h-10" />
+                  <p v-if="errors.password" class="text-sm text-red-600">{{ errors.password }}</p>
                 </div>
                 <div class="space-y-1.5" v-if="mode === 'edit'">
                   <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">账号状态</Label>
-                  <Select v-model="form.status">
+                  <Select v-model="status">
                     <SelectTrigger class="h-10"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
@@ -231,14 +255,16 @@ onBeforeUnmount(() => {
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                  <p v-if="errors.status" class="text-sm text-red-600">{{ errors.status }}</p>
                 </div>
                 <div class="space-y-1.5">
-                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">用户昵称</Label>
-                  <Input v-model="form.nickname" placeholder="如: 张三" class="h-10" />
+                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="nickname">用户昵称</Label>
+                  <Input v-model="nickname" id="nickname" placeholder="如: 张三" class="h-10" />
+                  <p v-if="errors.nickname" class="text-sm text-red-600">{{ errors.nickname }}</p>
                 </div>
                 <div class="space-y-1.5">
-                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">系统角色 <span class="text-red-500">*</span></Label>
-                  <Select v-model="form.roleId">
+                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="roleId">系统角色 <span class="text-red-500">*</span></Label>
+                  <Select v-model="roleId">
                     <SelectTrigger class="h-10"><SelectValue placeholder="选择角色" /></SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
@@ -246,18 +272,21 @@ onBeforeUnmount(() => {
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                  <p v-if="errors.roleId" class="text-sm text-red-600">{{ errors.roleId }}</p>
                 </div>
                 <div class="space-y-1.5">
-                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">电子邮箱</Label>
-                  <Input v-model="form.email" type="email" placeholder="example@company.com" class="h-10" />
+                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="email">电子邮箱</Label>
+                  <Input v-model="email" id="email" type="email" placeholder="example@company.com" class="h-10" />
+                  <p v-if="errors.email" class="text-sm text-red-600">{{ errors.email }}</p>
                 </div>
                 <div class="space-y-1.5">
-                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">手机号码</Label>
-                  <Input v-model="form.mobile" placeholder="138xxxx8888" class="h-10" />
+                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="mobile">手机号码</Label>
+                  <Input v-model="mobile" id="mobile" placeholder="138xxxx8888" class="h-10" />
+                  <p v-if="errors.mobile" class="text-sm text-red-600">{{ errors.mobile }}</p>
                 </div>
                 <div class="col-span-2 space-y-1.5 pt-4 border-t border-slate-100">
                   <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">汇报上级 (可选)</Label>
-                  <Select v-model="form.parentId">
+                  <Select v-model="parentId">
                     <SelectTrigger class="h-10"><SelectValue placeholder="无（顶层节点）" /></SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
@@ -268,6 +297,7 @@ onBeforeUnmount(() => {
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                  <p v-if="errors.parentId" class="text-sm text-red-600">{{ errors.parentId }}</p>
                 </div>
               </div>
             </div>
