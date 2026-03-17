@@ -26,6 +26,15 @@ func NewCrontabHandler(autoDropService service.CustomerAutoDropService) *Crontab
 // @Failure     500 {object} APIResponse "服务器内部错误"
 // @Router      /api/v1/tasks/customer-drop/run [post]
 func (h *CrontabHandler) RunAutoDropTask(c *gin.Context) {
+	if _, ok := currentUserID(c); !ok {
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
+		return
+	}
+	if !canRunCustomerAutoDropTask(currentUserRole(c)) {
+		Error(c, http.StatusForbidden, 10203, "仅管理员或财务经理可以手动执行自动掉库任务")
+		return
+	}
+
 	if h.autoDropService == nil {
 		Error(c, http.StatusInternalServerError, 10201, "自动掉库服务未配置")
 		return
@@ -37,4 +46,13 @@ func (h *CrontabHandler) RunAutoDropTask(c *gin.Context) {
 		return
 	}
 	Success(c, result)
+}
+
+func canRunCustomerAutoDropTask(role string) bool {
+	switch role {
+	case "admin", "管理员", "finance", "finance_manager", "财务", "财务经理":
+		return true
+	default:
+		return false
+	}
 }

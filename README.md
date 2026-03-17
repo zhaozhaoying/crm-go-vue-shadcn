@@ -214,6 +214,48 @@ go run ./cmd/migrate up
 go run ./cmd/bootstrap
 ```
 
+如果你在 macOS 本地交叉编译 Linux 版本，推荐优先使用下面这条：
+
+```bash
+cd /srv/crm-go-vue-shadcn/backend
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o crm-backend ./
+```
+
+这条命令更适合当前项目，优点是：
+
+- 不依赖 Linux 交叉编译工具链
+- 在 macOS 上可直接打 Linux 包
+- 生成的二进制更方便直接上传到 Linux 服务器运行
+
+如果你是在 Linux 服务器本机编译，或者你已经装好了 Linux 交叉编译器，也可以使用：
+
+```bash
+cd /srv/crm-go-vue-shadcn/backend
+CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o crm-backend ./
+```
+
+说明：
+
+- 你如果在 macOS 上直接执行 `CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build ...`，很容易因为本机使用的是 Apple clang 和 macOS SDK，无法编译 Linux 的 cgo 代码而报错
+- 出现这类错误时，直接改用 `CGO_ENABLED=0` 即可
+- 如果必须启用 `CGO_ENABLED=1`，建议改为在 Linux 环境中编译，或者使用专门的 Linux 交叉编译器
+
+如果你想把前端 `dist` 和 Linux 后端程序一起打到 `release/` 目录，仓库里已经带了脚本：
+
+```bash
+cd /srv/crm-go-vue-shadcn
+GOOS_TARGET=linux GOARCH_TARGET=amd64 CGO_ENABLED_TARGET=1 bash ./scripts/package-release.sh
+```
+
+打包完成后会生成：
+
+```text
+release/
+├── crm-backend
+├── .env
+└── dist/
+```
+
 说明：
 
 - `bootstrap` 会初始化管理员、角色、客户级别、客户来源、跟进方式

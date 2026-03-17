@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue"
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Clock3,
   CreditCard,
   DollarSign,
   FileText,
@@ -12,7 +13,6 @@ import {
 } from "lucide-vue-next"
 
 import { getDashboardOverview } from "@/api/modules/dashboard"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -22,9 +22,10 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { getRequestErrorMessage } from "@/lib/http-error"
-import { isAdminUser } from "@/lib/auth-role"
+import { hasAnyRole, isAdminUser } from "@/lib/auth-role"
 import { useAuthStore } from "@/stores/auth"
 import type {
+  DashboardAutoDropOverview,
   DashboardRankingItem,
   DashboardSalesAdminOverview,
   DashboardMonthlyContractCount,
@@ -124,14 +125,65 @@ const recentActivities = computed(() => overview.value?.recentActivities ?? [])
 const salesAdminOverview = computed<DashboardSalesAdminOverview | null>(
   () => overview.value?.salesAdminOverview ?? null,
 )
+const autoDropOverview = computed<DashboardAutoDropOverview>(() => ({
+  followUpDueSoonCount: Number(overview.value?.autoDropOverview?.followUpDueSoonCount ?? 0),
+  dealDueSoonCount: Number(overview.value?.autoDropOverview?.dealDueSoonCount ?? 0),
+  monthlyFollowUpDropped: Number(overview.value?.autoDropOverview?.monthlyFollowUpDropped ?? 0),
+  monthlyDealDropped: Number(overview.value?.autoDropOverview?.monthlyDealDropped ?? 0),
+}))
+const isSalesRole = computed(() =>
+  hasAnyRole(authStore.user, [
+    "sales_director",
+    "销售总监",
+    "sales_manager",
+    "销售经理",
+    "sales_staff",
+    "销售员工",
+    "sales_inside",
+    "sale_inside",
+    "销售",
+    "inside销售",
+    "电销员工",
+    "sales_outside",
+    "sale_outside",
+    "outside销售",
+  ]),
+)
+const isSalesLeader = computed(() =>
+  hasAnyRole(authStore.user, [
+    "sales_director",
+    "销售总监",
+    "sales_manager",
+    "销售经理",
+  ]),
+)
 const showSalesAdminOverview = computed(
-  () => isAdminUser(authStore.user) && !!salesAdminOverview.value,
+  () => (isAdminUser(authStore.user) || isSalesRole.value) && !!salesAdminOverview.value,
+)
+const showSalesRankings = computed(
+  () => (isAdminUser(authStore.user) || isSalesLeader.value) && !!salesAdminOverview.value,
 )
 const todayNewCustomerRanks = computed<DashboardRankingItem[]>(
   () => salesAdminOverview.value?.todayNewCustomerRanks ?? [],
 )
 const todayFollowRecordRanks = computed<DashboardRankingItem[]>(
   () => salesAdminOverview.value?.todayFollowRecordRanks ?? [],
+)
+const salesCustomerRankTitle = computed(() =>
+  isAdminUser(authStore.user) ? "销售今日新增客户排名" : "部门今日新增客户排名",
+)
+const salesCustomerRankDescription = computed(() =>
+  isAdminUser(authStore.user)
+    ? "按客户归属销售统计今日新增客户数量"
+    : "按当前部门销售统计今日新增客户数量",
+)
+const salesFollowRankTitle = computed(() =>
+  isAdminUser(authStore.user) ? "今日跟进记录数量排名" : "部门今日跟进记录排名",
+)
+const salesFollowRankDescription = computed(() =>
+  isAdminUser(authStore.user)
+    ? "按销售今日新增的跟进记录数量排序"
+    : "按当前部门销售今日新增的跟进记录数量排序",
 )
 
 const stats = computed(() => {
@@ -218,6 +270,36 @@ const salesAdminStats = computed(() => {
       up: trendDirection(monthlyFollowRecords.changeRate),
       icon: FileText,
       desc: `上月 ${formatCount(monthlyFollowRecords.previous)}`,
+    },
+  ]
+})
+
+const autoDropStats = computed(() => {
+  const data = autoDropOverview.value
+  return [
+    {
+      title: "未跟进不足1天",
+      value: formatCount(data.followUpDueSoonCount),
+      icon: Clock3,
+      valueClass: data.followUpDueSoonCount > 0 ? "text-red-600" : "text-foreground",
+    },
+    {
+      title: "未签单不足10天",
+      value: formatCount(data.dealDueSoonCount),
+      icon: CreditCard,
+      valueClass: data.dealDueSoonCount > 0 ? "text-orange-600" : "text-foreground",
+    },
+    {
+      title: "本月未跟进掉库",
+      value: formatCount(data.monthlyFollowUpDropped),
+      icon: FileText,
+      valueClass: data.monthlyFollowUpDropped > 0 ? "text-red-600" : "text-foreground",
+    },
+    {
+      title: "本月未签单掉库",
+      value: formatCount(data.monthlyDealDropped),
+      icon: Users,
+      valueClass: data.monthlyDealDropped > 0 ? "text-orange-600" : "text-foreground",
     },
   ]
 })
@@ -425,6 +507,18 @@ onMounted(() => {
       </Card>
     </div>
 
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Card v-for="stat in autoDropStats" :key="stat.title" class="shadow-sm">
+        <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle class="text-sm font-medium text-muted-foreground">{{ stat.title }}</CardTitle>
+          <component :is="stat.icon" class="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div class="text-2xl font-bold" :class="stat.valueClass">{{ stat.value }}</div>
+        </CardContent>
+      </Card>
+    </div>
+
     <div v-if="showSalesAdminOverview" class="space-y-4">
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card v-for="stat in salesAdminStats" :key="stat.title" class="shadow-sm">
@@ -449,11 +543,11 @@ onMounted(() => {
         </Card>
       </div>
 
-      <div class="grid gap-4 lg:grid-cols-2">
+      <div v-if="showSalesRankings" class="grid gap-4 lg:grid-cols-2">
         <Card class="shadow-sm">
           <CardHeader>
-            <CardTitle class="text-base">销售今日新增客户排名</CardTitle>
-            <CardDescription>按客户归属销售统计今日新增客户数量</CardDescription>
+            <CardTitle class="text-base">{{ salesCustomerRankTitle }}</CardTitle>
+            <CardDescription>{{ salesCustomerRankDescription }}</CardDescription>
           </CardHeader>
           <CardContent>
             <div
@@ -496,8 +590,8 @@ onMounted(() => {
 
         <Card class="shadow-sm">
           <CardHeader>
-            <CardTitle class="text-base">今日跟进记录数量排名</CardTitle>
-            <CardDescription>按销售今日新增的跟进记录数量排序</CardDescription>
+            <CardTitle class="text-base">{{ salesFollowRankTitle }}</CardTitle>
+            <CardDescription>{{ salesFollowRankDescription }}</CardDescription>
           </CardHeader>
           <CardContent>
             <div
@@ -708,9 +802,6 @@ onMounted(() => {
       <Card class="shadow-sm">
         <CardHeader>
           <CardTitle class="text-base">近期成交</CardTitle>
-          <CardDescription>
-            {{ loading ? "正在加载..." : `最近 ${recentDeals.length} 笔合同记录` }}
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <div class="space-y-5">
@@ -719,11 +810,6 @@ onMounted(() => {
               :key="sale.id"
               class="flex items-center gap-3"
             >
-              <Avatar class="h-9 w-9">
-                <AvatarFallback class="bg-primary/10 text-primary text-xs font-semibold">
-                  {{ (sale.customerName || "客").charAt(0) }}
-                </AvatarFallback>
-              </Avatar>
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium leading-none">
                   {{ sale.customerName || "未知客户" }}
@@ -733,7 +819,7 @@ onMounted(() => {
                 </p>
               </div>
               <div class="text-right">
-                <p class="text-sm font-semibold tabular-nums">
+                <p class="text-sm font-semibold tabular-nums text-red-600">
                   {{ formatCurrency(sale.amount) }}
                 </p>
                 <p class="text-xs text-muted-foreground">
@@ -754,7 +840,6 @@ onMounted(() => {
       <Card class="shadow-sm">
         <CardHeader>
           <CardTitle class="text-base">近期动态</CardTitle>
-          <CardDescription>销售与运营团队的最新跟进记录</CardDescription>
         </CardHeader>
         <CardContent>
           <div class="space-y-4">
@@ -763,22 +848,11 @@ onMounted(() => {
               :key="`${activity.type}-${activity.id}`"
               class="flex items-center gap-3"
             >
-              <Avatar class="h-8 w-8">
-                <AvatarFallback class="bg-muted text-muted-foreground text-xs font-medium">
-                  {{ (activity.userName || "匿").charAt(0) }}
-                </AvatarFallback>
-              </Avatar>
               <div class="min-w-0 flex-1">
                 <p class="text-sm">
                   <span class="font-medium">{{ activity.userName || "未知用户" }}</span>
                   <span class="text-muted-foreground"> {{ activity.action }} </span>
                   <span class="font-medium">{{ activity.target || "-" }}</span>
-                </p>
-                <p
-                  v-if="activity.content"
-                  class="mt-1 truncate text-xs text-muted-foreground"
-                >
-                  {{ activity.content }}
                 </p>
               </div>
               <span class="shrink-0 text-xs text-muted-foreground">

@@ -69,6 +69,11 @@ func getSQLiteMigrations() []Migration {
 			Name:    "add_user_sales_type",
 			Up:      upAddUserSalesType,
 		},
+		{
+			Version: 2026031701,
+			Name:    "seed_customer_rule_settings",
+			Up:      upSeedCustomerRuleSettings,
+		},
 	}
 }
 
@@ -349,6 +354,14 @@ func upCreateContractsTable(tx *gorm.DB) error {
 func upSeedContractNumberPrefixSetting(tx *gorm.DB) error {
 	stmts := []string{
 		`INSERT OR IGNORE INTO system_settings(key,value,description) VALUES ('contract_number_prefix','zzy_','合同编号前缀')`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upSeedCustomerRuleSettings(tx *gorm.DB) error {
+	stmts := []string{
+		`INSERT OR IGNORE INTO system_settings(key,value,description) VALUES ('customer_auto_drop_enabled','true','客户自动掉库总开关')`,
+		`INSERT OR IGNORE INTO system_settings(key,value,description) VALUES ('claim_freeze_days','7','本人客户进入公海后的回捡冷冻天数')`,
 	}
 	return execStatements(tx, stmts)
 }

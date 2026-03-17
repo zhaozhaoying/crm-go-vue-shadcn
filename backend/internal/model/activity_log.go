@@ -13,6 +13,7 @@ type ActivityLog struct {
 	TargetID   int64     `json:"targetId" gorm:"column:target_id;not null;default:0"`
 	TargetName string    `json:"targetName" gorm:"column:target_name;not null;default:''"`
 	Content    string    `json:"content" gorm:"column:content;not null;default:''"`
+	UserName   string    `json:"userName,omitempty" gorm:"column:user_name;->"`
 	CreatedAt  time.Time `json:"createdAt" gorm:"column:created_at"`
 }
 
@@ -27,6 +28,8 @@ const (
 	ActionImportCustomer   = "import_customer"
 	ActionClaimCustomer    = "claim_customer"
 	ActionReleaseCustomer  = "release_customer"
+	ActionAutoDropFollowUp = "auto_drop_follow_up"
+	ActionAutoDropDeal     = "auto_drop_deal"
 	ActionTransferCustomer = "transfer_customer"
 	ActionSalesFollow      = "sales_follow"
 	ActionOperationFollow  = "operation_follow"

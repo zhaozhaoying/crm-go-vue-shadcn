@@ -58,7 +58,8 @@ interface FormState {
   shootingTime: string;
 }
 
-const formError = ref("");
+const serverError = ref("");
+const submitAttempted = ref(false);
 const loadingRecords = ref(false);
 const form = ref<FormState>({
   content: "",
@@ -72,7 +73,7 @@ const contentError = computed(() => {
   const content = form.value.content.trim();
 
   if (!content) {
-    return "";
+    return submitAttempted.value ? "请输入跟进内容" : "";
   }
 
   if (content.includes("跟进")) {
@@ -89,6 +90,18 @@ const contentError = computed(() => {
 
   return "";
 });
+
+const followMethodError = computed(() => {
+  if (form.value.followMethodId) {
+    return "";
+  }
+  return submitAttempted.value ? "请选择跟进方式" : "";
+});
+
+const validationError = computed(() => contentError.value || followMethodError.value);
+const formError = computed(() =>
+  (submitAttempted.value ? validationError.value : "") || serverError.value,
+);
 
 const followMethods = ref<FollowMethod[]>([]);
 const records = ref<OperationFollowRecord[]>([]);
@@ -124,7 +137,8 @@ watch(
   () => props.open,
   (open) => {
     if (open) {
-      formError.value = "";
+      serverError.value = "";
+      submitAttempted.value = false;
       form.value = {
         content: "",
         followMethodId: "",
@@ -176,29 +190,19 @@ const formatDateTime = (dateStr?: string): string => {
 };
 
 const handleSubmit = async () => {
+  submitAttempted.value = true;
+  serverError.value = "";
+
   if (!props.customerId) {
-    formError.value = "客户ID不能为空";
+    serverError.value = "客户ID不能为空";
+    toast.error(serverError.value);
     return;
   }
 
-  const content = form.value.content.trim();
-
-  if (!content) {
-    formError.value = "请输入跟进内容";
+  if (validationError.value) {
+    toast.error(validationError.value);
     return;
   }
-
-  if (contentError.value) {
-    formError.value = contentError.value;
-    return;
-  }
-
-  if (!form.value.followMethodId) {
-    formError.value = "请选择跟进方式";
-    return;
-  }
-
-  formError.value = "";
 
   try {
     await createOperationFollowRecord({
@@ -218,6 +222,7 @@ const handleSubmit = async () => {
       nextFollowTime: "",
       shootingTime: "",
     };
+    submitAttempted.value = false;
 
     // 刷新记录列表
     await loadRecords();
@@ -227,8 +232,8 @@ const handleSubmit = async () => {
 
     toast.success("运营跟进记录添加成功");
   } catch (err: any) {
-    formError.value = err?.response?.data?.message || err?.message || "添加失败";
-    toast.error(formError.value);
+    serverError.value = err?.response?.data?.message || err?.message || "添加失败";
+    toast.error(serverError.value);
   }
 };
 </script>
@@ -257,7 +262,10 @@ const handleSubmit = async () => {
                   <span class="mr-1 text-destructive">*</span>跟进方式
                 </Label>
                 <Select v-model="form.followMethodId" :disabled="submitting || loadingMethods">
-                  <SelectTrigger id="follow-method">
+                  <SelectTrigger
+                    id="follow-method"
+                    :class="followMethodError ? 'border-destructive focus:ring-destructive/20' : ''"
+                  >
                     <SelectValue placeholder="选择跟进方式" />
                   </SelectTrigger>
                   <SelectContent>
@@ -272,6 +280,9 @@ const handleSubmit = async () => {
                     </SelectGroup>
                   </SelectContent>
                 </Select>
+                <p v-if="followMethodError" class="text-sm text-destructive">
+                  {{ followMethodError }}
+                </p>
               </div>
 
               <div class="space-y-2">
@@ -283,6 +294,7 @@ const handleSubmit = async () => {
                   id="appointment-time"
                   v-model="form.appointmentTime"
                   placeholder="请选择约见时间"
+                  content-align="end"
                   :disabled="submitting"
                 />
               </div>
@@ -309,6 +321,7 @@ const handleSubmit = async () => {
                   id="next-follow-time"
                   v-model="form.nextFollowTime"
                   placeholder="请选择下次跟进时间"
+                  content-align="end"
                   :disabled="submitting"
                 />
               </div>
@@ -324,7 +337,7 @@ const handleSubmit = async () => {
                 placeholder="请输入跟进内容"
                 :rows="3"
                 :disabled="submitting"
-                :class="contentError ? 'border-destructive' : ''"
+                :class="contentError ? 'border-destructive focus-visible:ring-destructive/20' : ''"
               />
               <p v-if="contentError" class="text-sm text-destructive">
                 {{ contentError }}

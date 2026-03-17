@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onActivated, ref, watch } from "vue";
-import { Loader2, Plus, RefreshCw, Search, SquarePen } from "lucide-vue-next";
+import { BaggageClaim, Loader2, Plus, RefreshCw, Search, SquarePen } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 
 import {
   listPotentialCustomers,
+  claimCustomer,
   createCustomer,
   updateCustomer,
 } from "@/api/modules/customers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import OperationFollowUpDialog from "@/components/custom/OperationFollowUpDialog.vue";
+import SalesFollowUpDialog from "@/components/custom/SalesFollowUpDialog.vue";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import {
@@ -38,6 +41,7 @@ import type { Customer, CustomerFormPayload } from "@/types/customer";
 
 const loading = ref(false);
 const submitting = ref(false);
+const claimingId = ref<number | null>(null);
 const error = ref("");
 const customers = ref<Customer[]>([]);
 const totalCount = ref(0);
@@ -75,6 +79,10 @@ const activeSearchForm = ref<SearchForm>(createEmptySearchForm());
 const dialogOpen = ref(false);
 const dialogMode = ref<"create" | "edit">("create");
 const editingCustomer = ref<Customer | null>(null);
+const followUpDialogOpen = ref(false);
+const followUpCustomerId = ref<number | null>(null);
+const operationFollowUpDialogOpen = ref(false);
+const operationFollowUpCustomerId = ref<number | null>(null);
 
 const provinceOptions = chinaPcaCode;
 const cityOptions = computed(() => {
@@ -220,6 +228,37 @@ const openEdit = (customer: Customer) => {
   dialogOpen.value = true;
 }
 
+const handleClaim = async (customer: Customer) => {
+  claimingId.value = customer.id;
+  try {
+    await claimCustomer(customer.id);
+    toast.success("领取成功，客户已归属到我的客户");
+    await fetchCustomers();
+  } catch (err) {
+    toast.error(getRequestErrorMessage(err, "领取失败"));
+  } finally {
+    claimingId.value = null;
+  }
+}
+
+const openFollowUp = (customer: Customer) => {
+  followUpCustomerId.value = customer.id;
+  followUpDialogOpen.value = true;
+}
+
+const handleFollowUpSubmit = () => {
+  fetchCustomers();
+}
+
+const openOperationFollowUp = (customer: Customer) => {
+  operationFollowUpCustomerId.value = customer.id;
+  operationFollowUpDialogOpen.value = true;
+}
+
+const handleOperationFollowUpSubmit = () => {
+  fetchCustomers();
+}
+
 const refreshList = () => {
   fetchCustomers();
 }
@@ -342,11 +381,11 @@ onActivated(fetchCustomers);
           </div>
           <div class="flex items-center gap-2">
             <label class="text-sm text-muted-foreground whitespace-nowrap"
-              >联系电话</label
+              >电话</label
             >
             <Input
               v-model="searchForm.phone"
-              placeholder="联系电话"
+              placeholder="电话"
               class="h-9 w-40"
             />
           </div>
@@ -357,16 +396,6 @@ onActivated(fetchCustomers);
             <Input
               v-model="searchForm.weixin"
               placeholder="微信"
-              class="h-9 w-40"
-            />
-          </div>
-          <div class="flex items-center gap-2">
-            <label class="text-sm text-muted-foreground whitespace-nowrap"
-              >负责人</label
-            >
-            <Input
-              v-model="searchForm.ownerUserName"
-              placeholder="输入负责人"
               class="h-9 w-40"
             />
           </div>
@@ -396,7 +425,10 @@ onActivated(fetchCustomers);
             <label class="text-sm text-muted-foreground whitespace-nowrap"
               >城市</label
             >
-            <Select v-model="searchForm.city" :disabled="!searchForm.province || searchForm.province === 'all'">
+            <Select
+              v-model="searchForm.city"
+              :disabled="!searchForm.province || searchForm.province === 'all'"
+            >
               <SelectTrigger class="h-9 w-40">
                 <SelectValue placeholder="选择城市" />
               </SelectTrigger>
@@ -418,7 +450,10 @@ onActivated(fetchCustomers);
             <label class="text-sm text-muted-foreground whitespace-nowrap"
               >区县</label
             >
-            <Select v-model="searchForm.area" :disabled="!searchForm.city || searchForm.city === 'all'">
+            <Select
+              v-model="searchForm.area"
+              :disabled="!searchForm.city || searchForm.city === 'all'"
+            >
               <SelectTrigger class="h-9 w-40">
                 <SelectValue placeholder="选择区县" />
               </SelectTrigger>
@@ -436,10 +471,9 @@ onActivated(fetchCustomers);
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="flex items-center gap-2 ml-auto">
+          <div
+            class="flex w-full justify-end gap-2 pt-1 lg:ml-auto lg:w-auto lg:pt-0"
+          >
             <Button size="sm" @click="handleSearch">
               <Search class="h-4 w-4" />
               <span>搜索</span>
@@ -456,10 +490,6 @@ onActivated(fetchCustomers);
           <div class="flex items-center gap-2">
             <Button size="sm" @click="refreshList">
               <RefreshCw class="h-4 w-4" />
-            </Button>
-            <Button size="sm" @click="openCreate">
-              <Plus class="h-4 w-4" />
-              <span>添加</span>
             </Button>
           </div>
           <div class="flex items-center gap-2">
@@ -501,7 +531,7 @@ onActivated(fetchCustomers);
                 <TableHead>7天倒计时</TableHead>
                 <TableHead>备注</TableHead>
                 <TableHead
-                  class="sticky right-0 z-30 w-[120px] min-w-[120px] bg-muted/95 text-center"
+                  class="sticky right-0 z-30 w-[180px] min-w-[180px] bg-muted/95 text-center"
                   >操作</TableHead
                 >
               </TableRow>
@@ -581,16 +611,57 @@ onActivated(fetchCustomers);
                     </p>
                   </TableCell>
                   <TableCell
-                    class="sticky right-0 z-10 w-[120px] min-w-[120px] bg-background text-center group-hover:bg-muted/30"
+                    class="sticky right-0 z-10 w-[180px] min-w-[180px] bg-background text-center border-l"
                   >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      @click="openEdit(customer)"
-                    >
-                      <SquarePen class="h-4 w-4" />
-                      <span>编辑</span>
-                    </Button>
+                    <div class="grid grid-cols-2 gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="w-full justify-start gap-2"
+                        :disabled="claimingId === customer.id || submitting"
+                        @click="openFollowUp(customer)"
+                      >
+                        <span>销售跟进</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="w-full justify-start gap-2"
+                        :disabled="claimingId === customer.id || submitting"
+                        @click="openOperationFollowUp(customer)"
+                      >
+                        <span>运营跟进</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="w-full justify-start gap-2"
+                        :disabled="claimingId === customer.id || submitting"
+                        @click="handleClaim(customer)"
+                      >
+                        <Loader2
+                          v-if="claimingId === customer.id"
+                          class="h-4 w-4 flex-shrink-0 animate-spin"
+                        />
+                        <BaggageClaim
+                          v-else
+                          class="h-4 w-4 flex-shrink-0 text-emerald-600"
+                        />
+                        <span :class="claimingId === customer.id ? '' : 'text-emerald-600'">
+                          {{ claimingId === customer.id ? "领取中" : "领取" }}
+                        </span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="w-full justify-start gap-2"
+                        :disabled="claimingId === customer.id || submitting"
+                        @click="openEdit(customer)"
+                      >
+                        <SquarePen class="h-4 w-4 flex-shrink-0" />
+                        <span>编辑</span>
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
 
@@ -620,6 +691,16 @@ onActivated(fetchCustomers);
       :customer="editingCustomer"
       :submitting="submitting"
       @submit="handleSubmit"
+    />
+    <SalesFollowUpDialog
+      v-model:open="followUpDialogOpen"
+      :customer-id="followUpCustomerId"
+      @submit="handleFollowUpSubmit"
+    />
+    <OperationFollowUpDialog
+      v-model:open="operationFollowUpDialogOpen"
+      :customer-id="operationFollowUpCustomerId"
+      @submit="handleOperationFollowUpSubmit"
     />
   </div>
 </template>

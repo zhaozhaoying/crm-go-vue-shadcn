@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watchEffect } from "vue"
+import { computed, onMounted, ref, watchEffect } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
 import { Button } from "@/components/ui/button"
@@ -8,14 +8,16 @@ import { useNotificationStore } from "@/stores/notification"
 const route = useRoute()
 const router = useRouter()
 const notificationStore = useNotificationStore()
+const initializing = ref(true)
 
 const notificationId = computed(() => Number(route.params.id))
 const notification = computed(() => notificationStore.getById(notificationId.value))
 
-onMounted(() => {
+onMounted(async () => {
   if (notificationStore.notifications.length === 0) {
-    notificationStore.fetchNotifications()
+    await notificationStore.fetchNotifications()
   }
+  initializing.value = false
 })
 
 watchEffect(() => {
@@ -54,7 +56,11 @@ const formatRelativeTime = (value: string) => {
       ← 返回通知中心
     </Button>
 
-    <div v-if="notification" class="rounded-xl border bg-card p-6 shadow-sm">
+    <div v-if="initializing" class="rounded-xl border bg-card p-6 text-sm text-muted-foreground shadow-sm">
+      通知加载中...
+    </div>
+
+    <div v-else-if="notification" class="rounded-xl border bg-card p-6 shadow-sm">
       <div class="border-b pb-4">
         <h2 class="text-xl font-semibold text-card-foreground">{{ notification.title }}</h2>
         <p class="mt-2 text-xs text-muted-foreground">

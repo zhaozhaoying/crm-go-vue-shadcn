@@ -69,6 +69,7 @@ type Customer struct {
 	CollectTime        *time.Time      `json:"collectTime,omitempty" gorm:"-"`
 	DropTime           *time.Time      `json:"dropTime,omitempty" gorm:"-"`
 	DropUserID         *int64          `json:"dropUserId,omitempty" gorm:"column:drop_user_id"`
+	DropUserName       string          `json:"dropUserName,omitempty" gorm:"-"`
 	CreateUserID       int64           `json:"createUserId,omitempty" gorm:"column:create_user_id;not null;default:0"`
 	OwnerUserID        *int64          `json:"ownerUserId" gorm:"column:owner_user_id;index"`
 	OperateUserID      int64           `json:"operateUserId,omitempty" gorm:"column:operate_user_id;not null;default:0"`
@@ -113,7 +114,7 @@ type CustomerListFilter struct {
 	HasViewer      bool   `gorm:"-"`
 	ActorRole      string `gorm:"-"`
 
-	// AllowedOwnerUserIDs is used by role-based scope for "my" customer list.
+	// AllowedOwnerUserIDs is used by role-based scope for owner-based customer lists.
 	AllowedOwnerUserIDs []int64 `gorm:"-"`
 	// SkipViewerOwnerLimit is used by admin "all" scope on "my" category.
 	SkipViewerOwnerLimit bool `gorm:"-"`
@@ -123,6 +124,10 @@ type CustomerListFilter struct {
 	// where create_user_id = ViewerID, used for inside-sales roles so they can
 	// see customers they created and assigned to outside-sales staff.
 	IncludeCreatorScope bool `gorm:"-"`
+	// AllowedServiceUserIDs is used by partner customer list for ops-manager style access.
+	AllowedServiceUserIDs []int64 `gorm:"-"`
+	// ForceServiceUserID is used by partner customer list for ops-staff style access.
+	ForceServiceUserID *int64 `gorm:"-"`
 }
 
 type CustomerListResult struct {

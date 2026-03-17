@@ -9,9 +9,12 @@ import {
   createCustomer,
   updateCustomer,
 } from "@/api/modules/customers";
+import { listUsers } from "@/api/modules/users";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import OperationFollowUpDialog from "@/components/custom/OperationFollowUpDialog.vue";
+import SalesFollowUpDialog from "@/components/custom/SalesFollowUpDialog.vue";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import {
@@ -49,6 +52,7 @@ const totalCount = ref(0);
 const showSearch = ref(false);
 const pageIndex = ref(0);
 const pageSize = ref(10);
+const userDisplayNameMap = ref<Record<number, string>>({});
 
 interface SearchForm {
   name: string;
@@ -80,6 +84,10 @@ const activeSearchForm = ref<SearchForm>(createEmptySearchForm());
 const dialogOpen = ref(false);
 const dialogMode = ref<"create" | "edit">("create");
 const editingCustomer = ref<Customer | null>(null);
+const followUpDialogOpen = ref(false);
+const followUpCustomerId = ref<number | null>(null);
+const operationFollowUpDialogOpen = ref(false);
+const operationFollowUpCustomerId = ref<number | null>(null);
 
 const provinceOptions = chinaPcaCode;
 const cityOptions = computed(() => {
@@ -124,6 +132,50 @@ const getPrimaryPhone = (customer: Customer) => {
   if (!customer.phones?.length) return "-";
   const primary = customer.phones.find((phone) => phone.isPrimary);
   return primary?.phone || customer.phones[0].phone;
+}
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "-";
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  } catch {
+    return "-";
+  }
+}
+
+const renderDropUser = (customer: Customer) => {
+  if (customer.dropUserName?.trim()) {
+    return customer.dropUserName;
+  }
+  if (customer.dropUserId) {
+    return userDisplayNameMap.value[customer.dropUserId] || `用户 #${customer.dropUserId}`;
+  }
+  return "-";
+}
+
+const fetchUserDisplayNameMap = async () => {
+  try {
+    const users = await listUsers();
+    userDisplayNameMap.value = Object.fromEntries(
+      users.map((user) => {
+        const displayName =
+          (user.nickname || user.username || "").trim() || `用户 #${user.id}`;
+        return [user.id, displayName];
+      }),
+    );
+  } catch {
+    userDisplayNameMap.value = {};
+  }
 }
 
 const regionNameCache = new Map<
@@ -238,8 +290,22 @@ const handleClaim = async (customer: Customer) => {
   }
 }
 
-const handleFollow = (customer: Customer) => {
-  openEdit(customer);
+const openFollowUp = (customer: Customer) => {
+  followUpCustomerId.value = customer.id;
+  followUpDialogOpen.value = true;
+}
+
+const handleFollowUpSubmit = () => {
+  fetchCustomers();
+}
+
+const openOperationFollowUp = (customer: Customer) => {
+  operationFollowUpCustomerId.value = customer.id;
+  operationFollowUpDialogOpen.value = true;
+}
+
+const handleOperationFollowUpSubmit = () => {
+  fetchCustomers();
 }
 
 const refreshList = () => {
@@ -333,8 +399,15 @@ const handleSubmit = async (payload: CustomerFormPayload) => {
   }
 }
 
-onMounted(fetchCustomers);
-onActivated(fetchCustomers);
+onMounted(async () => {
+  await Promise.all([fetchUserDisplayNameMap(), fetchCustomers()]);
+});
+onActivated(async () => {
+  if (Object.keys(userDisplayNameMap.value).length === 0) {
+    await fetchUserDisplayNameMap();
+  }
+  await fetchCustomers();
+});
 </script>
 
 <template>
@@ -511,6 +584,8 @@ onActivated(fetchCustomers);
               <TableHeader class="sticky top-0 z-20 bg-muted/40">
                 <TableRow>
                   <TableHead class="w-16">编号</TableHead>
+                  <TableHead>落库时间</TableHead>
+                  <TableHead>跟进人</TableHead>
                   <TableHead>客户名称</TableHead>
                   <TableHead>法人</TableHead>
                   <TableHead>联系人</TableHead>
@@ -526,7 +601,7 @@ onActivated(fetchCustomers);
                   <TableHead>下次跟进时间</TableHead>
                   <TableHead>备注</TableHead>
                   <TableHead
-                    class="sticky right-0 z-30 w-[220px] min-w-[220px] bg-muted/95 text-center border-l border-border"
+                    class="sticky right-0 z-30 w-[180px] min-w-[180px] bg-muted/95 text-center border-l border-border"
                     >操作</TableHead
                   >
                 </TableRow>
@@ -540,6 +615,10 @@ onActivated(fetchCustomers);
                   <TableCell class="text-muted-foreground">{{
                     customer.id
                   }}</TableCell>
+                    <TableCell class="whitespace-nowrap">{{
+                    formatDateTime(customer.dropTime)
+                  }}</TableCell>
+                  <TableCell class="whitespace-nowrap">{{ renderDropUser(customer) }}</TableCell>
                   <TableCell class="font-medium">
                     <div class="flex flex-col gap-0.5">
                       <span>{{ customer.name }}</span>
@@ -560,6 +639,7 @@ onActivated(fetchCustomers);
                       {{ renderOwner(customer) }}
                     </Badge>
                   </TableCell>
+                
                   <TableCell>{{
                     resolveRegionName(
                       customer.province,
@@ -593,26 +673,43 @@ onActivated(fetchCustomers);
                     </p>
                   </TableCell>
                   <TableCell
-                    class="sticky right-0 z-10 w-[220px] min-w-[220px] bg-background text-center border-l border-border"
+                    class="sticky right-0 z-10 w-[180px] min-w-[180px] border-l border-border bg-background text-center"
                   >
-                    <div class="flex items-center justify-center gap-2">
+                    <div class="grid grid-cols-2 gap-1.5">
                       <Button
                         variant="ghost"
                         size="sm"
+                        class="w-full justify-start gap-2"
                         :disabled="claimingId === customer.id || submitting"
-                        :class="claimingId === customer.id ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : ''"
+                        @click="openFollowUp(customer)"
+                      >
+                        <span>销售跟进</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="w-full justify-start gap-2"
+                        :disabled="claimingId === customer.id || submitting"
+                        @click="openOperationFollowUp(customer)"
+                      >
+                        <span>运营跟进</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="w-full justify-start gap-2"
+                        :disabled="claimingId === customer.id || submitting"
                         @click="handleClaim(customer)"
                       >
                         <Loader2
                           v-if="claimingId === customer.id"
-                          class="h-4 w-4 animate-spin"
+                          class="h-4 w-4 flex-shrink-0 animate-spin"
                         />
                         <BaggageClaim
                           v-else
-                          class="h-4 w-4"
-                          style="color: #1abc9d"
+                          class="h-4 w-4 flex-shrink-0 text-emerald-600"
                         />
-                        <span :style="claimingId === customer.id ? '' : 'color: #1abc9d'">
+                        <span :class="claimingId === customer.id ? '' : 'text-emerald-600'">
                           {{ claimingId === customer.id ? "领取中" : "领取" }}
                         </span>
                       </Button>
@@ -620,16 +717,17 @@ onActivated(fetchCustomers);
                         variant="ghost"
                         size="sm"
                         :disabled="claimingId === customer.id || submitting"
-                        @click="handleFollow(customer)"
+                        class="w-full justify-start gap-2"
+                        @click="openEdit(customer)"
                       >
-                        <SquarePen class="h-4 w-4" />
-                        <span>跟进</span>
+                        <SquarePen class="h-4 w-4 flex-shrink-0" />
+                        <span>编辑</span>
                       </Button>
                     </div>
                   </TableCell>
                 </TableRow>
 
-                <EmptyTablePlaceholder v-if="customers.length === 0" :colspan="17" />
+                <EmptyTablePlaceholder v-if="customers.length === 0" :colspan="18" />
               </TableBody>
           </Table>
         </div>
@@ -654,6 +752,16 @@ onActivated(fetchCustomers);
       :customer="editingCustomer"
       :submitting="submitting"
       @submit="handleSubmit"
+    />
+    <SalesFollowUpDialog
+      v-model:open="followUpDialogOpen"
+      :customer-id="followUpCustomerId"
+      @submit="handleFollowUpSubmit"
+    />
+    <OperationFollowUpDialog
+      v-model:open="operationFollowUpDialogOpen"
+      :customer-id="operationFollowUpCustomerId"
+      @submit="handleOperationFollowUpSubmit"
     />
   </div>
 </template>

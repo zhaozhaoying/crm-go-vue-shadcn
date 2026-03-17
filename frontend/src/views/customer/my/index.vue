@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onActivated, ref, watch } from "vue";
+import {
+  computed,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from "vue";
 import {
   ClipboardList,
   FileText,
@@ -24,6 +32,7 @@ import {
   createContract,
   updateContract,
 } from "@/api/modules/contracts";
+import { getSystemSettings } from "@/api/modules/systemSettings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -46,7 +55,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatSevenDayCountdown } from "@/lib/customer-display";
+import {
+  getDealDropCountdown,
+  getFollowUpDropCountdown,
+} from "@/lib/customer-display";
 import { isAdminUser } from "@/lib/auth-role";
 import { getRequestErrorMessage } from "@/lib/http-error";
 import { chinaPcaCode } from "@/data/china-pca-code";
@@ -167,6 +179,10 @@ const totalPages = computed(() =>
   Math.max(1, Math.ceil(totalCount.value / pageSize.value)),
 );
 const isAdmin = computed(() => isAdminUser(authStore.user));
+const followUpDropDays = ref(30);
+const dealDropDays = ref(90);
+const countdownNowMs = ref(Date.now());
+let countdownTimer: number | null = null;
 const allPageSelected = computed(
   () =>
     customers.value.length > 0 &&
@@ -225,10 +241,13 @@ const getPrimaryPhone = (customer: Customer) => {
   return primary?.phone || customer.phones[0].phone;
 };
 
-const formatNextTime = (nextTime?: string | null) => {
-  if (!nextTime) return "-";
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "-";
   try {
-    const date = new Date(nextTime);
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
@@ -239,6 +258,52 @@ const formatNextTime = (nextTime?: string | null) => {
   } catch {
     return "-";
   }
+};
+
+const getFollowUpCountdownDisplay = (customer: Customer) =>
+  getFollowUpDropCountdown(
+    customer,
+    followUpDropDays.value,
+    countdownNowMs.value,
+  );
+
+const getDealCountdownDisplay = (customer: Customer) =>
+  getDealDropCountdown(
+    customer,
+    dealDropDays.value,
+    countdownNowMs.value,
+  );
+
+const getCountdownCellClass = (isWarning: boolean) =>
+  isWarning ? "font-medium text-destructive" : "text-muted-foreground";
+
+const loadDropSettings = async () => {
+  try {
+    const settings = await getSystemSettings();
+    followUpDropDays.value = Number(settings.followUpDropDays) > 0
+      ? Number(settings.followUpDropDays)
+      : 30;
+    dealDropDays.value = Number(settings.dealDropDays) > 0
+      ? Number(settings.dealDropDays)
+      : 90;
+  } catch {
+    followUpDropDays.value = 30;
+    dealDropDays.value = 90;
+  }
+};
+
+const startCountdownTimer = () => {
+  countdownNowMs.value = Date.now();
+  if (countdownTimer !== null) return;
+  countdownTimer = window.setInterval(() => {
+    countdownNowMs.value = Date.now();
+  }, 60 * 1000);
+};
+
+const stopCountdownTimer = () => {
+  if (countdownTimer === null) return;
+  window.clearInterval(countdownTimer);
+  countdownTimer = null;
 };
 
 const regionNameCache = new Map<
@@ -602,12 +667,22 @@ const checkSubordinates = async () => {
 };
 
 onMounted(async () => {
+  startCountdownTimer();
+  await loadDropSettings();
   await checkSubordinates();
   fetchCustomers();
 });
 onActivated(async () => {
+  startCountdownTimer();
+  await loadDropSettings();
   await checkSubordinates();
   fetchCustomers();
+});
+onDeactivated(() => {
+  stopCountdownTimer();
+});
+onUnmounted(() => {
+  stopCountdownTimer();
 });
 </script>
 
@@ -638,11 +713,11 @@ onActivated(async () => {
           </div>
           <div class="flex items-center gap-2">
             <label class="text-sm text-muted-foreground whitespace-nowrap"
-              >联系电话</label
+              >电话</label
             >
             <Input
               v-model="searchForm.phone"
-              placeholder="联系电话"
+              placeholder="电话"
               class="h-9 w-40"
             />
           </div>
@@ -653,16 +728,6 @@ onActivated(async () => {
             <Input
               v-model="searchForm.weixin"
               placeholder="微信"
-              class="h-9 w-40"
-            />
-          </div>
-          <div class="flex items-center gap-2">
-            <label class="text-sm text-muted-foreground whitespace-nowrap"
-              >负责人</label
-            >
-            <Input
-              v-model="searchForm.ownerUserName"
-              placeholder="输入负责人"
               class="h-9 w-40"
             />
           </div>
@@ -738,10 +803,9 @@ onActivated(async () => {
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="flex items-center gap-2 ml-auto">
+          <div
+            class="flex w-full justify-end gap-2 pt-1 lg:ml-auto lg:w-auto lg:pt-0"
+          >
             <Button size="sm" @click="handleSearch">
               <Search class="h-4 w-4" />
               <span>搜索</span>
@@ -843,8 +907,8 @@ onActivated(async () => {
                   </div>
                 </TableHead>
                 <TableHead class="w-16 whitespace-nowrap">编号</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>7天倒计时</TableHead>
+                <TableHead>跟进倒计时</TableHead>
+                <TableHead>签单倒计时</TableHead>
                 <TableHead>客户名称</TableHead>
                 <TableHead>法人</TableHead>
                 <TableHead>联系人</TableHead>
@@ -857,7 +921,6 @@ onActivated(async () => {
                 <TableHead>省份</TableHead>
                 <TableHead>城市</TableHead>
                 <TableHead>区县</TableHead>
-                <TableHead>下次跟进时间</TableHead>
                 <TableHead>备注</TableHead>
                 <TableHead
                   class="sticky right-0 z-30 w-[180px] min-w-[180px] border-l border-border bg-muted/95 text-center"
@@ -872,7 +935,7 @@ onActivated(async () => {
             <TableBody>
               <TableRow v-if="error">
                 <TableCell
-                  :colspan="19"
+                  :colspan="18"
                   class="h-24 text-center text-destructive"
                 >
                   {{ error }}
@@ -888,6 +951,7 @@ onActivated(async () => {
                     selectedIds.includes(customer.id) ? 'selected' : undefined
                   "
                 >
+                
                   <TableCell>
                     <div class="flex items-center justify-center">
                       <Checkbox
@@ -910,8 +974,40 @@ onActivated(async () => {
                   <TableCell class="text-muted-foreground">{{
                     customer.id
                   }}</TableCell>
-                  <TableCell>
+                   <TableCell class="text-xs">
+                    <span class="block whitespace-nowrap text-muted-foreground mb-2">
+                      {{ formatDateTime(customer.nextTime) }}
+                    </span>
+                    <span
+                      class="mt-1 block whitespace-nowrap"
+                      :class="
+                        getCountdownCellClass(
+                          getFollowUpCountdownDisplay(customer).isWarning,
+                        )
+                      "
+                    >
+                      {{ getFollowUpCountdownDisplay(customer).text }}
+                    </span>
+                  </TableCell>
+                  <TableCell class="text-xs">
+                    <span class="block whitespace-nowrap text-muted-foreground mb-2">
+                      {{ formatDateTime(customer.collectTime) }}
+                    </span>
+                    <span
+                      class="mt-1 block whitespace-nowrap"
+                      :class="
+                        getCountdownCellClass(
+                          getDealCountdownDisplay(customer).isWarning,
+                        )
+                      "
+                    >
+                      {{ getDealCountdownDisplay(customer).text }}
+                    </span>
+                  </TableCell>
+                  <TableCell class="font-medium">
+                    <span class="block mb-2">{{ customer.name }}</span>
                     <Badge
+                      class="mt-1 w-fit whitespace-nowrap"
                       :variant="
                         customer.dealStatus === 'done' ? 'default' : 'secondary'
                       "
@@ -924,14 +1020,7 @@ onActivated(async () => {
                       {{ customer.dealStatus === "done" ? "已成交" : "未成交" }}
                     </Badge>
                   </TableCell>
-                  <TableCell class="text-xs whitespace-nowrap">{{
-                    formatSevenDayCountdown(customer)
-                  }}</TableCell>
-                  <TableCell class="font-medium">
-                    <div class="flex flex-col gap-0.5 whitespace-nowrap">
-                      <span>{{ customer.name }}</span>
-                    </div>
-                  </TableCell>
+                 
                   <TableCell>{{ customer.legalName || "-" }}</TableCell>
                   <TableCell>{{ customer.contactName || "-" }}</TableCell>
                   <TableCell>{{ getPrimaryPhone(customer) }}</TableCell>
@@ -970,10 +1059,6 @@ onActivated(async () => {
                       customer.area,
                     ).areaName || "-"
                   }}</TableCell>
-                  <TableCell class="text-xs">{{
-                    formatNextTime(customer.nextTime)
-                  }}</TableCell>
-
                   <TableCell class="text-xs text-muted-foreground">
                     <p
                       class="max-w-[220px] truncate"
@@ -1086,7 +1171,7 @@ onActivated(async () => {
 
                 <EmptyTablePlaceholder
                   v-if="customers.length === 0"
-                  :colspan="19"
+                  :colspan="18"
                 />
               </template>
             </TableBody>

@@ -19,8 +19,10 @@ export interface FollowMethod {
 }
 
 export interface SystemSettings {
+  customerAutoDropEnabled: boolean;
   followUpDropDays: number;
   dealDropDays: number;
+  claimFreezeDays: number;
   holidayModeEnabled: boolean;
   customerLimit: number;
   showFullContact: boolean;
@@ -30,8 +32,10 @@ export interface SystemSettings {
 }
 
 export interface UpdateSystemSettingsRequest {
+  customerAutoDropEnabled?: boolean;
   followUpDropDays?: number;
   dealDropDays?: number;
+  claimFreezeDays?: number;
   holidayModeEnabled?: boolean;
   customerLimit?: number;
   showFullContact?: boolean;

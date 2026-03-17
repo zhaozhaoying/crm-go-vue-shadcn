@@ -40,8 +40,10 @@ const removingSource = ref(false);
 const removingMethod = ref(false);
 
 const settings = ref<SystemSettings>({
+  customerAutoDropEnabled: true,
   followUpDropDays: 30,
   dealDropDays: 90,
+  claimFreezeDays: 7,
   holidayModeEnabled: false,
   customerLimit: 100,
   showFullContact: true,
@@ -133,18 +135,22 @@ const saveRules = async () => {
     toast.error("合同编号前缀不能为空");
     return;
   }
+  const claimFreezeDays = Math.max(0, Number(settings.value.claimFreezeDays) || 0);
 
   savingRules.value = true;
   try {
     await updateSystemSettings({
+      customerAutoDropEnabled: settings.value.customerAutoDropEnabled,
       followUpDropDays: settings.value.followUpDropDays,
       dealDropDays: settings.value.dealDropDays,
+      claimFreezeDays,
       holidayModeEnabled: settings.value.holidayModeEnabled,
       customerLimit: settings.value.customerLimit,
       showFullContact: settings.value.showFullContact,
       contractNumberPrefix: prefix,
     });
     settings.value.contractNumberPrefix = prefix;
+    settings.value.claimFreezeDays = claimFreezeDays;
     toast.success("规则设置已保存");
   } catch (error) {
     toast.error(getRequestErrorMessage(error, "保存失败"));
@@ -383,11 +389,27 @@ onMounted(() => {
             </div>
           </CardHeader>
           <CardContent class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="space-y-1">
+                <Label for="customerAutoDropEnabled" class="text-sm">自动掉库开关</Label>
+              </div>
+              <Switch
+                id="customerAutoDropEnabled"
+                v-model:checked="settings.customerAutoDropEnabled"
+              />
+            </div>
+
             <div class="flex items-center justify-between gap-4">
               <Label for="followUpDropDays" class="text-sm whitespace-nowrap">未跟进自动掉库</Label>
               <div class="relative w-32">
-                <Input id="followUpDropDays" v-model.number="settings.followUpDropDays" type="number" min="1"
-                  class="h-9 pr-8" />
+                <Input
+                  id="followUpDropDays"
+                  v-model.number="settings.followUpDropDays"
+                  type="number"
+                  min="1"
+                  :disabled="!settings.customerAutoDropEnabled"
+                  class="h-9 pr-8"
+                />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">天</span>
               </div>
             </div>
@@ -395,14 +417,41 @@ onMounted(() => {
             <div class="flex items-center justify-between gap-4">
               <Label for="dealDropDays" class="text-sm whitespace-nowrap">未签单自动掉库</Label>
               <div class="relative w-32">
-                <Input id="dealDropDays" v-model.number="settings.dealDropDays" type="number" min="1" class="h-9 pr-8" />
+                <Input
+                  id="dealDropDays"
+                  v-model.number="settings.dealDropDays"
+                  type="number"
+                  min="1"
+                  :disabled="!settings.customerAutoDropEnabled"
+                  class="h-9 pr-8"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">天</span>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-4">
+              <div class="space-y-1">
+                <Label for="claimFreezeDays" class="text-sm whitespace-nowrap">回捡冷冻期</Label>
+              </div>
+              <div class="relative w-32">
+                <Input
+                  id="claimFreezeDays"
+                  v-model.number="settings.claimFreezeDays"
+                  type="number"
+                  min="0"
+                  class="h-9 pr-8"
+                />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">天</span>
               </div>
             </div>
 
             <div class="flex items-center justify-between">
               <Label for="holidayMode" class="text-sm">节假日不掉库</Label>
-              <Switch id="holidayMode" v-model:checked="settings.holidayModeEnabled" />
+              <Switch
+                id="holidayMode"
+                v-model:checked="settings.holidayModeEnabled"
+                :disabled="!settings.customerAutoDropEnabled"
+              />
             </div>
 
             <div class="flex items-center justify-between gap-4">

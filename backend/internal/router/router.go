@@ -42,8 +42,6 @@ func New(
 
 	v1 := api.Group("/v1")
 	{
-		v1.POST("/tasks/customer-drop/run", crontabHandler.RunAutoDropTask)
-
 		auth := v1.Group("/auth")
 		{
 			auth.GET("/captcha", authHandler.Captcha)
@@ -57,6 +55,7 @@ func New(
 		protected := v1.Group("")
 		protected.Use(middleware.JWTAuth(cfg.JWTSecret, tokenChecker))
 		{
+			protected.POST("/tasks/customer-drop/run", crontabHandler.RunAutoDropTask)
 			protected.GET("/dashboard/overview", dashboardHandler.GetOverview)
 
 			protected.GET("/notifications/activity-logs", notificationHandler.ListActivityLogs)

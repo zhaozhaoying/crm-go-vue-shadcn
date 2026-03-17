@@ -83,6 +83,7 @@ type customerListRow struct {
 	CollectTimeUnix    sql.NullInt64 `gorm:"column:collect_time_unix"`
 	DropTimeUnix       sql.NullInt64 `gorm:"column:drop_time_unix"`
 	DropUserID         sql.NullInt64 `gorm:"column:drop_user_id"`
+	DropUserName       string        `gorm:"column:drop_user_name"`
 	IsInPool           bool          `gorm:"column:is_in_pool"`
 }
 
@@ -138,9 +139,23 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 	}
 
 	where, args := buildCustomerListWhere(filter)
+	dropUserExpr := `
+		COALESCE(
+			c.drop_user_id,
+			(
+				SELECT COALESCE(l.from_owner_user_id, l.operator_user_id)
+				FROM customer_owner_logs l
+				WHERE l.customer_id = c.id
+					AND l.action = 'release'
+				ORDER BY l.created_at DESC, l.id DESC
+				LIMIT 1
+			)
+		)
+	`
 	base := r.db.WithContext(ctx).
 		Table("customers AS c").
 		Joins("LEFT JOIN users u ON c.owner_user_id = u.id").
+		Joins("LEFT JOIN users du ON du.id = " + dropUserExpr).
 		Joins("LEFT JOIN customer_levels cl ON c.customer_level_id = cl.id").
 		Joins("LEFT JOIN customer_sources cs ON c.customer_source_id = cs.id")
 	if len(where) > 0 {
@@ -172,7 +187,10 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 			COALESCE(c.detail_address, '') AS detail_address,
 			COALESCE(c.remark, '') AS remark,
 			c.status AS status,
-			c.deal_status AS deal_status,
+			CASE
+				WHEN EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id) THEN 'done'
+				ELSE 'undone'
+			END AS deal_status,
 			c.owner_user_id AS owner_user_id,
 			COALESCE(u.nickname, '') AS owner_user_name,
 			c.created_at AS created_at,
@@ -181,7 +199,8 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 			NULLIF(c.follow_time, 0) AS follow_time_unix,
 			NULLIF(c.collect_time, 0) AS collect_time_unix,
 			NULLIF(c.drop_time, 0) AS drop_time_unix,
-			c.drop_user_id AS drop_user_id,
+			` + dropUserExpr + ` AS drop_user_id,
+			COALESCE(NULLIF(du.nickname, ''), NULLIF(du.username, ''), '') AS drop_user_name,
 			CASE WHEN c.owner_user_id IS NULL OR c.status = 'pool' THEN 1 ELSE 0 END AS is_in_pool
 		`).
 		Order(orderBy).
@@ -213,6 +232,7 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 			Status:             row.Status,
 			DealStatus:         row.DealStatus,
 			OwnerUserName:      row.OwnerUserName,
+			DropUserName:       row.DropUserName,
 			CreatedAt:          row.CreatedAt,
 			UpdatedAt:          row.UpdatedAt,
 			IsInPool:           row.IsInPool,
@@ -451,7 +471,7 @@ func (r *gormCustomerRepository) CountOwnedActiveByOwner(ctx context.Context, ow
 		Table("customers").
 		Where("owner_user_id = ?", ownerUserID).
 		Where("status = ?", model.CustomerStatusOwned).
-		Where("deal_status <> ?", model.CustomerDealStatusDone).
+		Where("NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = customers.id)").
 		Where("(delete_time IS NULL OR delete_time = 0)").
 		Count(&total).Error
 	if err != nil {
@@ -537,6 +557,7 @@ func buildCustomerListWhere(filter model.CustomerListFilter) ([]string, []interf
 
 	switch filter.Category {
 	case "my":
+		where = append(where, "NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id)")
 		if filter.HasViewer {
 			if !filter.IncludePoolInMyScope {
 				where = append(where, "c.status != 'pool'")
@@ -585,10 +606,32 @@ func buildCustomerListWhere(filter model.CustomerListFilter) ([]string, []interf
 		}
 	case "partner":
 		if filter.HasViewer {
-			where = append(where, "c.deal_status = 'done'")
-			where = append(where, "c.owner_user_id = ?")
+			where = append(where, "EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id)")
 			where = append(where, "c.status != 'pool'")
-			args = append(args, filter.ViewerID)
+			switch {
+			case filter.ForceServiceUserID != nil:
+				where = append(where, "EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id AND ct.service_user_id = ?)")
+				args = append(args, *filter.ForceServiceUserID)
+			case len(filter.AllowedServiceUserIDs) > 0:
+				serviceUserIDs := uniquePositiveInt64(filter.AllowedServiceUserIDs)
+				if len(serviceUserIDs) == 0 {
+					where = append(where, "1 = 0")
+				} else {
+					where = append(where, "EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id AND ct.service_user_id IN ?)")
+					args = append(args, serviceUserIDs)
+				}
+			case len(filter.AllowedOwnerUserIDs) > 0:
+				ownerUserIDs := uniquePositiveInt64(filter.AllowedOwnerUserIDs)
+				if len(ownerUserIDs) == 0 {
+					where = append(where, "1 = 0")
+				} else {
+					where = append(where, "c.owner_user_id IN ?")
+					args = append(args, ownerUserIDs)
+				}
+			default:
+				where = append(where, "c.owner_user_id = ?")
+				args = append(args, filter.ViewerID)
+			}
 		} else {
 			where = append(where, "1 = 0")
 		}
@@ -622,6 +665,7 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 		CreateUserID     int64     `gorm:"column:create_user_id"`
 		OperateUserID    int64     `gorm:"column:operate_user_id"`
 		CollectTime      *int64    `gorm:"column:collect_time"`
+		NextTime         *int64    `gorm:"column:next_time"`
 		CreatedAt        time.Time `gorm:"column:created_at"`
 		UpdatedAt        time.Time `gorm:"column:updated_at"`
 	}
@@ -658,9 +702,11 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 
 	now := time.Now().UTC()
 	var collectTime *int64
+	var nextTime *int64
 	if ownerUserID != nil {
 		collectAt := now.Unix()
 		collectTime = &collectAt
+		nextTime = &collectAt
 	}
 
 	row := customerCreateRow{
@@ -682,6 +728,7 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 		CreateUserID:     input.OperatorUserID,
 		OperateUserID:    input.OperatorUserID,
 		CollectTime:      collectTime,
+		NextTime:         nextTime,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -824,6 +871,8 @@ func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, operator
 			"owner_user_id": operatorUserID,
 			"status":        "owned",
 			"collect_time":  now.Unix(),
+			"follow_time":   nil,
+			"next_time":     now.Unix(),
 			"drop_time":     nil,
 			"updated_at":    now,
 		}).Error; err != nil {
@@ -883,6 +932,7 @@ func (r *gormCustomerRepository) Release(ctx context.Context, customerID, operat
 			"owner_user_id": nil,
 			"status":        "pool",
 			"drop_time":     now.Unix(),
+			"drop_user_id":  operatorUserID,
 			"updated_at":    now,
 		}).Error; err != nil {
 		return nil, err
@@ -978,7 +1028,27 @@ func (r *gormCustomerRepository) getCustomerForUpdate(tx *gorm.DB, customerID in
 
 	var row customerLockRow
 	if err := tx.Table("customers").
-		Select("id", "name", "email", "status", "deal_status", "owner_user_id", "drop_user_id", "created_at", "updated_at").
+		Select(`
+			id,
+			name,
+			email,
+			status,
+			deal_status,
+			owner_user_id,
+			COALESCE(
+				drop_user_id,
+				(
+					SELECT COALESCE(l.from_owner_user_id, l.operator_user_id)
+					FROM customer_owner_logs l
+					WHERE l.customer_id = customers.id
+						AND l.action = 'release'
+					ORDER BY l.created_at DESC, l.id DESC
+					LIMIT 1
+				)
+			) AS drop_user_id,
+			created_at,
+			updated_at
+		`).
 		Where("id = ?", customerID).
 		Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1027,19 +1097,44 @@ func (r *gormCustomerRepository) getCustomer(ctx context.Context, customerID int
 			COALESCE(c.detail_address, '') AS detail_address,
 			COALESCE(c.remark, '') AS remark,
 			c.status AS status,
-			c.deal_status AS deal_status,
+			CASE
+				WHEN EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id) THEN 'done'
+				ELSE 'undone'
+			END AS deal_status,
 			c.owner_user_id AS owner_user_id,
 			COALESCE(u.nickname, '') AS owner_user_name,
-			c.created_at AS created_at,
-			c.updated_at AS updated_at,
-			NULLIF(c.next_time, 0) AS next_time_unix,
-			NULLIF(c.follow_time, 0) AS follow_time_unix,
-			NULLIF(c.collect_time, 0) AS collect_time_unix,
-			NULLIF(c.drop_time, 0) AS drop_time_unix,
-			c.drop_user_id AS drop_user_id,
-			CASE WHEN c.owner_user_id IS NULL OR c.status = 'pool' THEN 1 ELSE 0 END AS is_in_pool
+			COALESCE(NULLIF(du.nickname, ''), NULLIF(du.username, ''), '') AS drop_user_name,
+				c.created_at AS created_at,
+				c.updated_at AS updated_at,
+				NULLIF(c.next_time, 0) AS next_time_unix,
+				NULLIF(c.follow_time, 0) AS follow_time_unix,
+				NULLIF(c.collect_time, 0) AS collect_time_unix,
+				NULLIF(c.drop_time, 0) AS drop_time_unix,
+				COALESCE(
+					c.drop_user_id,
+					(
+						SELECT COALESCE(l.from_owner_user_id, l.operator_user_id)
+						FROM customer_owner_logs l
+						WHERE l.customer_id = c.id
+							AND l.action = 'release'
+						ORDER BY l.created_at DESC, l.id DESC
+						LIMIT 1
+					)
+				) AS drop_user_id,
+				CASE WHEN c.owner_user_id IS NULL OR c.status = 'pool' THEN 1 ELSE 0 END AS is_in_pool
 		`).
 		Joins("LEFT JOIN users u ON c.owner_user_id = u.id").
+		Joins(`LEFT JOIN users du ON du.id = COALESCE(
+			c.drop_user_id,
+			(
+				SELECT COALESCE(l.from_owner_user_id, l.operator_user_id)
+				FROM customer_owner_logs l
+				WHERE l.customer_id = c.id
+					AND l.action = 'release'
+				ORDER BY l.created_at DESC, l.id DESC
+				LIMIT 1
+			)
+		)`).
 		Joins("LEFT JOIN customer_levels cl ON c.customer_level_id = cl.id").
 		Joins("LEFT JOIN customer_sources cs ON c.customer_source_id = cs.id").
 		Where("c.id = ?", customerID).
@@ -1070,6 +1165,7 @@ func (r *gormCustomerRepository) getCustomer(ctx context.Context, customerID int
 		Status:             row.Status,
 		DealStatus:         row.DealStatus,
 		OwnerUserName:      row.OwnerUserName,
+		DropUserName:       row.DropUserName,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 		IsInPool:           row.IsInPool,

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -517,6 +518,11 @@ func (h *CustomerHandler) Claim(c *gin.Context) {
 
 	customer, err := h.service.ClaimCustomer(c.Request.Context(), id, userID)
 	if err != nil {
+		var freezeErr *service.CustomerClaimFreezeError
+		if errors.As(err, &freezeErr) {
+			Error(c, http.StatusForbidden, 10044, buildClaimFreezeMessage(freezeErr))
+			return
+		}
 		if errors.Is(err, service.ErrCustomerNotFound) {
 			Error(c, http.StatusNotFound, 10003, "客户不存在")
 			return
@@ -530,7 +536,7 @@ func (h *CustomerHandler) Claim(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, service.ErrCustomerSameDepartmentClaimForbidden) {
-			Error(c, http.StatusForbidden, 10044, "同部门客户不可领取")
+			Error(c, http.StatusForbidden, 10044, "该客户原归属于你所在销售团队，当前不支持本团队再次领取，请由其他销售总监团队领取")
 			return
 		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 10005, "领取客户失败", err)
@@ -983,4 +989,42 @@ func isSalesOrOperationRole(role string) bool {
 	default:
 		return false
 	}
+}
+
+func buildClaimFreezeMessage(freezeErr *service.CustomerClaimFreezeError) string {
+	if freezeErr == nil {
+		return "当前客户对你处于回捡冷冻期，暂不可领取"
+	}
+
+	return "当前客户刚从你名下进入公海，现处于回捡冷冻期。冷冻时长为" +
+		strconv.Itoa(freezeErr.FreezeDays) +
+		"天，剩余" + formatClaimFreezeRemain(freezeErr.Remaining) +
+		"，冷冻结束时间为" + freezeErr.FrozenUntil.Local().Format("2006-01-02 15:04:05") +
+		"，冷冻期内暂不可领取。"
+}
+
+func formatClaimFreezeRemain(remaining time.Duration) string {
+	if remaining <= 0 {
+		return "0小时"
+	}
+
+	totalMinutes := int((remaining + time.Minute - 1) / time.Minute)
+	days := totalMinutes / (24 * 60)
+	hours := (totalMinutes % (24 * 60)) / 60
+	minutes := totalMinutes % 60
+
+	parts := make([]string, 0, 3)
+	if days > 0 {
+		parts = append(parts, strconv.Itoa(days)+"天")
+	}
+	if hours > 0 {
+		parts = append(parts, strconv.Itoa(hours)+"小时")
+	}
+	if minutes > 0 && days == 0 {
+		parts = append(parts, strconv.Itoa(minutes)+"分钟")
+	}
+	if len(parts) == 0 {
+		return "不足1分钟"
+	}
+	return strings.Join(parts, "")
 }

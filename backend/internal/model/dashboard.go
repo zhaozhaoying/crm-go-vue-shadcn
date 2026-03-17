@@ -33,6 +33,13 @@ type DashboardSalesAdminOverview struct {
 	TodayFollowRecordRanks []DashboardRankingItem `json:"todayFollowRecordRanks"`
 }
 
+type DashboardAutoDropOverview struct {
+	FollowUpDueSoonCount   int64 `json:"followUpDueSoonCount"`
+	DealDueSoonCount       int64 `json:"dealDueSoonCount"`
+	MonthlyFollowUpDropped int64 `json:"monthlyFollowUpDropped"`
+	MonthlyDealDropped     int64 `json:"monthlyDealDropped"`
+}
+
 type DashboardRecentDeal struct {
 	ID            int64     `json:"id"`
 	UserName      string    `json:"userName"`
@@ -60,6 +67,7 @@ type DashboardOverview struct {
 	ConversionRate     DashboardStat                   `json:"conversionRate"`
 	MonthlyRevenue     []DashboardMonthlyRevenue       `json:"monthlyRevenue"`
 	MonthlyContracts   []DashboardMonthlyContractCount `json:"monthlyContracts"`
+	AutoDropOverview   DashboardAutoDropOverview       `json:"autoDropOverview"`
 	SalesAdminOverview *DashboardSalesAdminOverview    `json:"salesAdminOverview,omitempty"`
 	RecentDeals        []DashboardRecentDeal           `json:"recentDeals"`
 	RecentActivities   []DashboardRecentActivity       `json:"recentActivities"`

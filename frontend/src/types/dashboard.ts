@@ -29,6 +29,13 @@ export interface DashboardSalesAdminOverview {
   todayFollowRecordRanks: DashboardRankingItem[]
 }
 
+export interface DashboardAutoDropOverview {
+  followUpDueSoonCount: number
+  dealDueSoonCount: number
+  monthlyFollowUpDropped: number
+  monthlyDealDropped: number
+}
+
 export interface DashboardRecentDeal {
   id: number
   customerName: string
@@ -55,6 +62,7 @@ export interface DashboardOverview {
   conversionRate: DashboardStat
   monthlyRevenue: DashboardMonthlyRevenue[]
   monthlyContracts: DashboardMonthlyContractCount[]
+  autoDropOverview: DashboardAutoDropOverview
   salesAdminOverview?: DashboardSalesAdminOverview | null
   recentDeals: DashboardRecentDeal[]
   recentActivities: DashboardRecentActivity[]

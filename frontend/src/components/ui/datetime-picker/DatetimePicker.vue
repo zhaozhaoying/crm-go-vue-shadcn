@@ -17,12 +17,14 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   id?: string;
+  contentAlign?: "start" | "center" | "end";
 }
 
 const props = withDefaults(defineProps<Props>(), {
   placeholder: "请选择日期时间",
   disabled: false,
   id: undefined,
+  contentAlign: "start",
 });
 
 const emit = defineEmits<{
@@ -163,10 +165,15 @@ const displayText = computed(() => {
       </Button>
     </PopoverTrigger>
 
-    <PopoverContent class="w-auto p-0" align="start" :side-offset="6">
+    <PopoverContent
+      class="w-auto max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+      :align="contentAlign"
+      :collision-padding="16"
+      :side-offset="6"
+    >
       <div class="bg-background">
-        <div class="flex">
-          <div class="border-r p-3">
+        <div class="flex flex-col md:flex-row">
+          <div class="border-b p-3 md:border-b-0 md:border-r">
             <Calendar
               mode="single"
               :model-value="tempDate"
@@ -175,7 +182,7 @@ const displayText = computed(() => {
             />
           </div>
 
-          <div class="w-[248px]">
+          <div class="w-full md:w-[248px]">
             <div class="flex h-11 items-center justify-center border-b text-base font-semibold">
               选择时间
             </div>

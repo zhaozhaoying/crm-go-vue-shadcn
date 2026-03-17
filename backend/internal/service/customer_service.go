@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -33,9 +34,21 @@ var phoneRegex = regexp.MustCompile(`^1[3-9]\d{9}$`)
 const (
 	customerLimitSettingKey     = "customer_limit"
 	defaultCustomerLimitSetting = 100
+	claimFreezeSettingKey       = "claim_freeze_days"
+	defaultClaimFreezeDays      = 7
 	roleSalesInside             = "sales_inside"
 	roleSalesOutside            = "sales_outside"
 )
+
+var partnerSalesOwnerRoleNames = []string{
+	"sales_director", "sales_manager", "sales_staff", roleSalesInside, roleSalesOutside,
+	"销售总监", "销售经理", "销售员工", "销售", "Inside销售", "Outside销售",
+}
+
+var partnerOperationRoleNames = []string{
+	"ops_manager", "operation_manager", "ops_staff", "operation_staff",
+	"运营经理", "运营员工", "运营",
+}
 
 type CustomerService interface {
 	ListCustomers(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListResult, error)
@@ -55,6 +68,16 @@ type CustomerService interface {
 	// Status log management
 	CreateStatusLog(ctx context.Context, log *model.CustomerStatusLog) error
 	ListStatusLogs(ctx context.Context, customerID int64, page, pageSize int) ([]model.CustomerStatusLog, error)
+}
+
+type CustomerClaimFreezeError struct {
+	FreezeDays  int
+	Remaining   time.Duration
+	FrozenUntil time.Time
+}
+
+func (e *CustomerClaimFreezeError) Error() string {
+	return "customer claim is frozen"
 }
 
 type customerService struct {
@@ -79,11 +102,22 @@ func NewCustomerService(repo repository.CustomerRepository, settingReader custom
 }
 
 func (s *customerService) ListCustomers(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListResult, error) {
-	scoped, err := s.applyMyCustomerScopeByRole(ctx, filter)
+	scoped, err := s.applyCustomerListScopeByRole(ctx, filter)
 	if err != nil {
 		return model.CustomerListResult{}, err
 	}
 	return s.repo.List(ctx, scoped)
+}
+
+func (s *customerService) applyCustomerListScopeByRole(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListFilter, error) {
+	switch strings.ToLower(strings.TrimSpace(filter.Category)) {
+	case "my":
+		return s.applyMyCustomerScopeByRole(ctx, filter)
+	case "partner":
+		return s.applyPartnerCustomerScopeByRole(ctx, filter)
+	default:
+		return filter, nil
+	}
 }
 
 func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListFilter, error) {
@@ -149,6 +183,103 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 	}
 
 	return filter, nil
+}
+
+func (s *customerService) applyPartnerCustomerScopeByRole(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListFilter, error) {
+	if !strings.EqualFold(strings.TrimSpace(filter.Category), "partner") {
+		return filter, nil
+	}
+	if !filter.HasViewer || filter.ViewerID <= 0 {
+		return filter, nil
+	}
+
+	scope, err := s.resolvePartnerCustomerAccessScope(ctx, filter.ViewerID, filter.ActorRole)
+	if err != nil {
+		return model.CustomerListFilter{}, err
+	}
+
+	if len(scope.allowedOwnerUserIDs) > 0 {
+		filter.AllowedOwnerUserIDs = scope.allowedOwnerUserIDs
+		filter.AllowedServiceUserIDs = nil
+		filter.ForceServiceUserID = nil
+		return filter, nil
+	}
+	if len(scope.allowedServiceUserIDs) > 0 {
+		filter.AllowedOwnerUserIDs = nil
+		filter.AllowedServiceUserIDs = scope.allowedServiceUserIDs
+		filter.ForceServiceUserID = nil
+		return filter, nil
+	}
+	if scope.forceServiceUserID != nil {
+		filter.AllowedOwnerUserIDs = nil
+		filter.AllowedServiceUserIDs = nil
+		filter.ForceServiceUserID = scope.forceServiceUserID
+		return filter, nil
+	}
+
+	filter.AllowedOwnerUserIDs = []int64{filter.ViewerID}
+	return filter, nil
+}
+
+type partnerCustomerAccessScope struct {
+	allowedOwnerUserIDs   []int64
+	allowedServiceUserIDs []int64
+	forceServiceUserID    *int64
+}
+
+func (s *customerService) resolvePartnerCustomerAccessScope(ctx context.Context, actorUserID int64, actorRole string) (partnerCustomerAccessScope, error) {
+	scope := partnerCustomerAccessScope{}
+	role := strings.TrimSpace(actorRole)
+	if actorUserID <= 0 {
+		return scope, nil
+	}
+
+	switch {
+	case isRole(role, "admin", "管理员", "finance_manager", "finance", "财务经理", "财务"):
+		salesIDs, err := s.repo.ListUserIDsByRoleNames(ctx, partnerSalesOwnerRoleNames)
+		if err != nil {
+			return partnerCustomerAccessScope{}, err
+		}
+		scope.allowedOwnerUserIDs = uniquePositiveInt64(salesIDs)
+		if len(scope.allowedOwnerUserIDs) == 0 {
+			scope.allowedOwnerUserIDs = []int64{-1}
+		}
+		return scope, nil
+	case isRole(role, "sales_director", "销售总监", "sales_manager", "销售经理"):
+		descendantIDs, err := s.listAllDescendantUserIDs(ctx, actorUserID)
+		if err != nil {
+			return partnerCustomerAccessScope{}, err
+		}
+		salesIDs, err := s.repo.ListUserIDsByRoleNames(ctx, partnerSalesOwnerRoleNames)
+		if err != nil {
+			return partnerCustomerAccessScope{}, err
+		}
+		scope.allowedOwnerUserIDs = intersectPositiveInt64(
+			uniquePositiveInt64(append([]int64{actorUserID}, descendantIDs...)),
+			uniquePositiveInt64(salesIDs),
+		)
+		if len(scope.allowedOwnerUserIDs) == 0 {
+			scope.allowedOwnerUserIDs = []int64{-1}
+		}
+		return scope, nil
+	case isRole(role, "ops_manager", "operation_manager", "运营经理"):
+		operationIDs, err := s.repo.ListUserIDsByRoleNames(ctx, partnerOperationRoleNames)
+		if err != nil {
+			return partnerCustomerAccessScope{}, err
+		}
+		scope.allowedServiceUserIDs = uniquePositiveInt64(operationIDs)
+		if len(scope.allowedServiceUserIDs) == 0 {
+			scope.allowedServiceUserIDs = []int64{-1}
+		}
+		return scope, nil
+	case isRole(role, "ops_staff", "operation_staff", "运营员工", "运营"):
+		force := actorUserID
+		scope.forceServiceUserID = &force
+		return scope, nil
+	default:
+		scope.allowedOwnerUserIDs = []int64{actorUserID}
+		return scope, nil
+	}
 }
 
 func normalizeOwnershipScope(raw string) string {
@@ -354,6 +485,15 @@ func (s *customerService) ClaimCustomer(ctx context.Context, customerID, operato
 		return nil, ErrCustomerNotInPool
 	}
 	if customer.DropUserID != nil && *customer.DropUserID > 0 {
+		if *customer.DropUserID == operatorUserID {
+			freezeErr, err := s.buildClaimFreezeError(customer)
+			if err != nil {
+				return nil, err
+			}
+			if freezeErr != nil {
+				return nil, freezeErr
+			}
+		}
 		sameDepartment, err := s.isSameDepartment(ctx, operatorUserID, *customer.DropUserID)
 		if err != nil {
 			return nil, err
@@ -386,11 +526,11 @@ func (s *customerService) isSameDepartment(ctx context.Context, leftUserID, righ
 		return false, nil
 	}
 
-	leftAnchorID, err := s.repo.ResolveDepartmentAnchorUserID(ctx, leftUserID)
+	leftAnchorID, err := resolveSalesDirectorUserID(ctx, s.repo, leftUserID)
 	if err != nil {
 		return false, err
 	}
-	rightAnchorID, err := s.repo.ResolveDepartmentAnchorUserID(ctx, rightUserID)
+	rightAnchorID, err := resolveSalesDirectorUserID(ctx, s.repo, rightUserID)
 	if err != nil {
 		return false, err
 	}
@@ -568,6 +708,33 @@ func (s *customerService) validateCustomerLimitByOwner(ctx context.Context, owne
 	return nil
 }
 
+func (s *customerService) buildClaimFreezeError(customer *model.Customer) (*CustomerClaimFreezeError, error) {
+	if customer == nil || customer.DropTime == nil {
+		return nil, nil
+	}
+
+	freezeDays, err := s.getClaimFreezeDays()
+	if err != nil {
+		return nil, err
+	}
+	if freezeDays <= 0 {
+		return nil, nil
+	}
+
+	now := time.Now().UTC()
+	frozenUntil := customer.DropTime.Add(time.Duration(freezeDays) * 24 * time.Hour)
+	remaining := frozenUntil.Sub(now)
+	if remaining <= 0 {
+		return nil, nil
+	}
+
+	return &CustomerClaimFreezeError{
+		FreezeDays:  freezeDays,
+		Remaining:   remaining,
+		FrozenUntil: frozenUntil,
+	}, nil
+}
+
 func (s *customerService) getCustomerLimit() (int, error) {
 	if s.settingReader == nil {
 		return defaultCustomerLimitSetting, nil
@@ -584,6 +751,29 @@ func (s *customerService) getCustomerLimit() (int, error) {
 	value, err := strconv.Atoi(strings.TrimSpace(setting.Value))
 	if err != nil {
 		return defaultCustomerLimitSetting, nil
+	}
+	return value, nil
+}
+
+func (s *customerService) getClaimFreezeDays() (int, error) {
+	if s.settingReader == nil {
+		return defaultClaimFreezeDays, nil
+	}
+
+	setting, err := s.settingReader.GetSetting(claimFreezeSettingKey)
+	if err != nil {
+		return 0, err
+	}
+	if setting == nil {
+		return defaultClaimFreezeDays, nil
+	}
+
+	value, err := strconv.Atoi(strings.TrimSpace(setting.Value))
+	if err != nil {
+		return defaultClaimFreezeDays, nil
+	}
+	if value < 0 {
+		return 0, nil
 	}
 	return value, nil
 }

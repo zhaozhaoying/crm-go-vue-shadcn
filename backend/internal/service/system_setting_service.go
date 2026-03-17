@@ -16,8 +16,10 @@ func NewSystemSettingService(repo *repository.SystemSettingRepository) *SystemSe
 }
 
 func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, error) {
+	customerAutoDropEnabled := s.getBoolSetting("customer_auto_drop_enabled", true)
 	followUpDays := s.getIntSetting("follow_up_drop_days", 30)
 	dealDays := s.getIntSetting("deal_drop_days", 90)
+	claimFreezeDays := s.getIntSetting("claim_freeze_days", 7)
 	holidayMode := s.getBoolSetting("holiday_mode_enabled", false)
 	customerLimit := s.getIntSetting("customer_limit", 100)
 	showFullContact := s.getBoolSetting("show_full_contact", true)
@@ -34,18 +36,29 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 	}
 
 	return &model.SystemSettingsResponse{
-		FollowUpDropDays:     followUpDays,
-		DealDropDays:         dealDays,
-		HolidayModeEnabled:   holidayMode,
-		CustomerLimit:        customerLimit,
-		ShowFullContact:      showFullContact,
-		ContractNumberPrefix: contractNumberPrefix,
-		CustomerLevels:       levels,
-		CustomerSources:      sources,
+		CustomerAutoDropEnabled: customerAutoDropEnabled,
+		FollowUpDropDays:        followUpDays,
+		DealDropDays:            dealDays,
+		ClaimFreezeDays:         claimFreezeDays,
+		HolidayModeEnabled:      holidayMode,
+		CustomerLimit:           customerLimit,
+		ShowFullContact:         showFullContact,
+		ContractNumberPrefix:    contractNumberPrefix,
+		CustomerLevels:          levels,
+		CustomerSources:         sources,
 	}, nil
 }
 
 func (s *SystemSettingService) UpdateSettings(req *model.UpdateSystemSettingsRequest) error {
+	if req.CustomerAutoDropEnabled != nil {
+		val := "false"
+		if *req.CustomerAutoDropEnabled {
+			val = "true"
+		}
+		if err := s.repo.UpsertSetting("customer_auto_drop_enabled", val, "客户自动掉库总开关"); err != nil {
+			return err
+		}
+	}
 	if req.FollowUpDropDays != nil {
 		if err := s.repo.UpsertSetting("follow_up_drop_days", strconv.Itoa(*req.FollowUpDropDays), "多少天不跟进自动掉库"); err != nil {
 			return err
@@ -53,6 +66,15 @@ func (s *SystemSettingService) UpdateSettings(req *model.UpdateSystemSettingsReq
 	}
 	if req.DealDropDays != nil {
 		if err := s.repo.UpsertSetting("deal_drop_days", strconv.Itoa(*req.DealDropDays), "多少天不签单自动掉库"); err != nil {
+			return err
+		}
+	}
+	if req.ClaimFreezeDays != nil {
+		value := *req.ClaimFreezeDays
+		if value < 0 {
+			value = 0
+		}
+		if err := s.repo.UpsertSetting("claim_freeze_days", strconv.Itoa(value), "本人客户进入公海后的回捡冷冻天数"); err != nil {
 			return err
 		}
 	}

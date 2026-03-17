@@ -207,10 +207,15 @@ func (r *gormContractRepository) Create(ctx context.Context, input model.Contrac
 		UpdatedAt:            now,
 	}
 
-	if err := r.db.WithContext(ctx).Table("contracts").Create(&row).Error; err != nil {
-		if isContractNumberUniqueErr(err) {
-			return nil, ErrContractNumberExists
+	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("contracts").Create(&row).Error; err != nil {
+			if isContractNumberUniqueErr(err) {
+				return ErrContractNumberExists
+			}
+			return err
 		}
+		return r.syncCustomerDealStatusTx(tx, row.CustomerID, now)
+	}); err != nil {
 		return nil, err
 	}
 	return r.GetByID(ctx, row.ID)
@@ -218,55 +223,133 @@ func (r *gormContractRepository) Create(ctx context.Context, input model.Contrac
 
 func (r *gormContractRepository) Update(ctx context.Context, id int64, input model.ContractUpdateInput) (*model.Contract, error) {
 	now := time.Now().UTC()
-	result := r.db.WithContext(ctx).Table("contracts").Where("id = ?", id).Updates(map[string]interface{}{
-		"contract_image":         input.ContractImage,
-		"payment_image":          input.PaymentImage,
-		"payment_status":         input.PaymentStatus,
-		"remark":                 input.Remark,
-		"user_id":                input.UserID,
-		"customer_id":            input.CustomerID,
-		"cooperation_type":       input.CooperationType,
-		"contract_number":        input.ContractNumber,
-		"contract_name":          input.ContractName,
-		"contract_amount":        input.ContractAmount,
-		"payment_amount":         input.PaymentAmount,
-		"cooperation_years":      input.CooperationYears,
-		"node_count":             input.NodeCount,
-		"service_user_id":        input.ServiceUserID,
-		"website_name":           input.WebsiteName,
-		"website_url":            input.WebsiteURL,
-		"website_username":       input.WebsiteUsername,
-		"is_online":              input.IsOnline,
-		"start_date":             input.StartDate,
-		"end_date":               input.EndDate,
-		"audit_status":           input.AuditStatus,
-		"audit_comment":          input.AuditComment,
-		"audited_by":             input.AuditedBy,
-		"audited_at":             input.AuditedAt,
-		"expiry_handling_status": input.ExpiryHandlingStatus,
-		"updated_at":             now,
-	})
-	if result.Error != nil {
-		if isContractNumberUniqueErr(result.Error) {
-			return nil, ErrContractNumberExists
-		}
-		return nil, result.Error
+	type contractCustomerRow struct {
+		CustomerID int64 `gorm:"column:customer_id"`
 	}
-	if result.RowsAffected == 0 {
-		return nil, ErrContractNotFound
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing contractCustomerRow
+		if err := tx.Table("contracts").Select("customer_id").Where("id = ?", id).Take(&existing).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrContractNotFound
+			}
+			return err
+		}
+
+		result := tx.Table("contracts").Where("id = ?", id).Updates(map[string]interface{}{
+			"contract_image":         input.ContractImage,
+			"payment_image":          input.PaymentImage,
+			"payment_status":         input.PaymentStatus,
+			"remark":                 input.Remark,
+			"user_id":                input.UserID,
+			"customer_id":            input.CustomerID,
+			"cooperation_type":       input.CooperationType,
+			"contract_number":        input.ContractNumber,
+			"contract_name":          input.ContractName,
+			"contract_amount":        input.ContractAmount,
+			"payment_amount":         input.PaymentAmount,
+			"cooperation_years":      input.CooperationYears,
+			"node_count":             input.NodeCount,
+			"service_user_id":        input.ServiceUserID,
+			"website_name":           input.WebsiteName,
+			"website_url":            input.WebsiteURL,
+			"website_username":       input.WebsiteUsername,
+			"is_online":              input.IsOnline,
+			"start_date":             input.StartDate,
+			"end_date":               input.EndDate,
+			"audit_status":           input.AuditStatus,
+			"audit_comment":          input.AuditComment,
+			"audited_by":             input.AuditedBy,
+			"audited_at":             input.AuditedAt,
+			"expiry_handling_status": input.ExpiryHandlingStatus,
+			"updated_at":             now,
+		})
+		if result.Error != nil {
+			if isContractNumberUniqueErr(result.Error) {
+				return ErrContractNumberExists
+			}
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrContractNotFound
+		}
+
+		if err := r.syncCustomerDealStatusTx(tx, existing.CustomerID, now); err != nil {
+			return err
+		}
+		if input.CustomerID != existing.CustomerID {
+			if err := r.syncCustomerDealStatusTx(tx, input.CustomerID, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return r.GetByID(ctx, id)
 }
 
 func (r *gormContractRepository) Delete(ctx context.Context, id int64) error {
-	result := r.db.WithContext(ctx).Table("contracts").Where("id = ?", id).Delete(nil)
-	if result.Error != nil {
-		return result.Error
+	type contractCustomerRow struct {
+		CustomerID int64 `gorm:"column:customer_id"`
 	}
-	if result.RowsAffected == 0 {
-		return ErrContractNotFound
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing contractCustomerRow
+		if err := tx.Table("contracts").Select("customer_id").Where("id = ?", id).Take(&existing).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrContractNotFound
+			}
+			return err
+		}
+
+		result := tx.Table("contracts").Where("id = ?", id).Delete(nil)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrContractNotFound
+		}
+
+		return r.syncCustomerDealStatusTx(tx, existing.CustomerID, time.Now().UTC())
+	})
+}
+
+func (r *gormContractRepository) syncCustomerDealStatusTx(tx *gorm.DB, customerID int64, now time.Time) error {
+	if customerID <= 0 {
+		return nil
 	}
-	return nil
+
+	type contractSummary struct {
+		ContractCount          int64        `gorm:"column:contract_count"`
+		FirstContractCreatedAt sql.NullTime `gorm:"column:first_contract_created_at"`
+	}
+
+	var summary contractSummary
+	if err := tx.Table("contracts").
+		Select("COUNT(*) AS contract_count, MIN(created_at) AS first_contract_created_at").
+		Where("customer_id = ?", customerID).
+		Scan(&summary).Error; err != nil {
+		return err
+	}
+
+	updates := map[string]interface{}{
+		"updated_at": now,
+	}
+	if summary.ContractCount > 0 {
+		updates["deal_status"] = model.CustomerDealStatusDone
+		if summary.FirstContractCreatedAt.Valid {
+			updates["deal_time"] = summary.FirstContractCreatedAt.Time.Unix()
+		} else {
+			updates["deal_time"] = now.Unix()
+		}
+	} else {
+		updates["deal_status"] = model.CustomerDealStatusUndone
+		updates["deal_time"] = nil
+	}
+
+	return tx.Table("customers").Where("id = ?", customerID).Updates(updates).Error
 }
 
 func (r *gormContractRepository) ExistsContractNumber(ctx context.Context, contractNumber string, excludeID int64) (bool, error) {

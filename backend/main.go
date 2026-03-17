@@ -76,7 +76,8 @@ func main() {
 	)
 	contractService := service.NewContractService(contractRepo, systemSettingRepo, activityLogRepo)
 	dashboardService := service.NewDashboardService(dashboardRepo)
-	customerAutoDropService := service.NewCustomerAutoDropService(db, systemSettingRepo)
+	customerAutoDropService := service.NewCustomerAutoDropService(db, systemSettingRepo, activityLogRepo)
+	customerAutoDropRuntime := service.NewCustomerAutoDropRuntime(customerAutoDropService, time.Minute)
 	captchaService := service.NewCaptchaService(2*time.Minute, 5)
 	externalCompanySearchHub := service.NewExternalCompanySearchHub(64)
 	externalCompanySearchHTTPClient := companysearch.NewDefaultHTTPClient()
@@ -142,7 +143,9 @@ func main() {
 		cfg.FrontendOrigin,
 	)
 
-	externalCompanySearchRuntime.Start(context.Background())
+	appCtx := context.Background()
+	customerAutoDropRuntime.Start(appCtx)
+	externalCompanySearchRuntime.Start(appCtx)
 
 	engine := router.New(
 		cfg,
