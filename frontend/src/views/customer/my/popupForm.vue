@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Loader2, Plus, Trash2 } from "lucide-vue-next";
 import { toTypedSchema } from "@vee-validate/zod";
-import { useForm, useFieldArray } from "vee-validate";
+import { useForm, useFieldArray, useField } from "vee-validate";
 import * as z from "zod";
 
 import { validateCustomerUnique } from "@/api/modules/customers";
@@ -103,6 +103,18 @@ const { handleSubmit, errors, setValues, setFieldError, resetForm, values } =
     validationSchema: formSchema,
   });
 
+const { value: name } = useField<string>("name");
+const { value: legalName } = useField<string>("legalName");
+const { value: contactName } = useField<string>("contactName");
+const { value: email } = useField<string>("email");
+const { value: weixin } = useField<string>("weixin");
+const { value: province } = useField<string>("province");
+const { value: city } = useField<string>("city");
+const { value: area } = useField<string>("area");
+const { value: detailAddress } = useField<string>("detailAddress");
+const { value: nextTime } = useField<string>("nextTime");
+const { value: remark } = useField<string>("remark");
+
 interface FormState {
   name: string;
   legalName?: string;
@@ -138,12 +150,14 @@ let uniqueCheckSeq = 0;
 
 const provinceOptions = chinaPcaCode;
 const cityOptions = computed<ChinaPcaNode[]>(() => {
-  const province = provinceOptions.find((item) => item.code === values.province);
-  return province?.children ?? [];
+  const provinceCode = province.value;
+  const provinceItem = provinceOptions.find((item) => item.code === provinceCode);
+  return provinceItem?.children ?? [];
 });
 const areaOptions = computed<ChinaPcaNode[]>(() => {
-  const city = cityOptions.value.find((item) => item.code === values.city);
-  return city?.children ?? [];
+  const cityCode = city.value;
+  const cityItem = cityOptions.value.find((item) => item.code === cityCode);
+  return cityItem?.children ?? [];
 });
 
 const dialogTitle = computed(() =>
@@ -161,16 +175,16 @@ const runUniqueCheck = async () => {
   const seq = ++uniqueCheckSeq;
   checkingUnique.value = true;
 
-  const phonesToCheck = values.phones
-    ?.map((p) => p.phone)
+  const phonesToCheck = phoneFields.value
+    ?.map((p) => p.value.phone)
     .filter((p): p is string => !!p && CN_MOBILE_PHONE_REGEX.test(p));
 
   try {
     const result = await validateCustomerUnique({
       excludeCustomerId: getExcludeCustomerId(),
-      name: values.name,
-      legalName: values.legalName,
-      weixin: values.weixin,
+      name: name.value,
+      legalName: legalName.value,
+      weixin: weixin.value,
       phones: phonesToCheck,
     });
 
@@ -239,37 +253,39 @@ watch(
 );
 
 watch(
-  () => values.province,
+  () => province.value,
   (provinceCode) => {
     if (!provinceCode) {
-      setValues({ ...values, city: "", area: "" });
+      city.value = "";
+      area.value = "";
       return;
     }
-    if (!cityOptions.value.some((item) => item.code === values.city)) {
-      setValues({ ...values, city: "", area: "" });
+    if (!cityOptions.value.some((item) => item.code === city.value)) {
+      city.value = "";
+      area.value = "";
     }
   }
 );
 
 watch(
-  () => values.city,
+  () => city.value,
   (cityCode) => {
     if (!cityCode) {
-      setValues({ ...values, area: "" });
+      area.value = "";
       return;
     }
-    if (!areaOptions.value.some((item) => item.code === values.area)) {
-      setValues({ ...values, area: "" });
+    if (!areaOptions.value.some((item) => item.code === area.value)) {
+      area.value = "";
     }
   }
 );
 
 watch(
   () => [
-    values.name,
-    values.legalName,
-    values.weixin,
-    ...(values.phones?.map((p) => p.phone) ?? []),
+    name.value,
+    legalName.value,
+    weixin.value,
+    ...(phoneFields.value?.map((p) => p.value.phone) ?? []),
   ],
   () => {
     if (!props.open) return;
@@ -345,7 +361,7 @@ const onSubmit = handleSubmit(async (formValues) => {
               </Label>
               <Input
                 id="customer-name"
-                v-model="values.name"
+                v-model="name"
                 placeholder="请输入客户名称"
                 :disabled="submitting"
               />
@@ -358,7 +374,7 @@ const onSubmit = handleSubmit(async (formValues) => {
               <Label for="customer-legal-name">法人</Label>
               <Input
                 id="customer-legal-name"
-                v-model="values.legalName"
+                v-model="legalName"
                 placeholder="请输入法人姓名"
                 :disabled="submitting"
               />
@@ -371,7 +387,7 @@ const onSubmit = handleSubmit(async (formValues) => {
               <Label for="customer-contact">联系人</Label>
               <Input
                 id="customer-contact"
-                v-model="values.contactName"
+                v-model="contactName"
                 placeholder="请输入联系人"
                 :disabled="submitting"
               />
@@ -437,7 +453,7 @@ const onSubmit = handleSubmit(async (formValues) => {
               <Label for="customer-weixin">微信</Label>
               <Input
                 id="customer-weixin"
-                v-model="values.weixin"
+                v-model="weixin"
                 placeholder="请输入微信号"
                 :disabled="submitting"
               />
@@ -450,7 +466,7 @@ const onSubmit = handleSubmit(async (formValues) => {
               <Label for="customer-email">邮箱</Label>
               <Input
                 id="customer-email"
-                v-model="values.email"
+                v-model="email"
                 type="email"
                 placeholder="请输入邮箱"
                 :disabled="submitting"
@@ -462,18 +478,18 @@ const onSubmit = handleSubmit(async (formValues) => {
 
             <div class="space-y-1.5">
               <Label for="customer-province">省份</Label>
-              <Select v-model="values.province" :disabled="submitting">
+              <Select v-model="province" :disabled="submitting">
                 <SelectTrigger id="customer-province" class="h-10">
                   <SelectValue placeholder="请选择省份" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem
-                      v-for="province in provinceOptions"
-                      :key="province.code"
-                      :value="province.code"
+                      v-for="prov in provinceOptions"
+                      :key="prov.code"
+                      :value="prov.code"
                     >
-                      {{ province.name }}
+                      {{ prov.name }}
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -483,8 +499,8 @@ const onSubmit = handleSubmit(async (formValues) => {
             <div class="space-y-1.5">
               <Label for="customer-city">城市</Label>
               <Select
-                v-model="values.city"
-                :disabled="submitting || !values.province"
+                v-model="city"
+                :disabled="submitting || !province"
               >
                 <SelectTrigger id="customer-city" class="h-10">
                   <SelectValue placeholder="请选择城市" />
@@ -492,11 +508,11 @@ const onSubmit = handleSubmit(async (formValues) => {
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem
-                      v-for="city in cityOptions"
-                      :key="city.code"
-                      :value="city.code"
+                      v-for="cityOption in cityOptions"
+                      :key="cityOption.code"
+                      :value="cityOption.code"
                     >
-                      {{ city.name }}
+                      {{ cityOption.name }}
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -505,18 +521,18 @@ const onSubmit = handleSubmit(async (formValues) => {
 
             <div class="space-y-1.5">
               <Label for="customer-area">区县</Label>
-              <Select v-model="values.area" :disabled="submitting || !values.city">
+              <Select v-model="area" :disabled="submitting || !city">
                 <SelectTrigger id="customer-area" class="h-10">
                   <SelectValue placeholder="请选择区县" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem
-                      v-for="area in areaOptions"
-                      :key="area.code"
-                      :value="area.code"
+                      v-for="areaOption in areaOptions"
+                      :key="areaOption.code"
+                      :value="areaOption.code"
                     >
-                      {{ area.name }}
+                      {{ areaOption.name }}
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -527,7 +543,7 @@ const onSubmit = handleSubmit(async (formValues) => {
               <Label for="customer-next-time">下次跟进时间</Label>
               <DatetimePicker
                 id="customer-next-time"
-                v-model="values.nextTime"
+                v-model="nextTime"
                 placeholder="请选择下次跟进时间"
                 :disabled="submitting"
               />
@@ -537,7 +553,7 @@ const onSubmit = handleSubmit(async (formValues) => {
               <Label for="customer-detail-address">详细地址</Label>
               <textarea
                 id="customer-detail-address"
-                v-model="values.detailAddress"
+                v-model="detailAddress"
                 class="flex min-h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 placeholder="请输入详细地址"
                 :disabled="submitting"
@@ -548,7 +564,7 @@ const onSubmit = handleSubmit(async (formValues) => {
               <Label for="customer-remark">备注</Label>
               <textarea
                 id="customer-remark"
-                v-model="values.remark"
+                v-model="remark"
                 class="flex min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 placeholder="请输入备注"
                 :disabled="submitting"
