@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
+import { resolveUserAvatar } from '@/lib/user-avatar'
 import { useRouter } from 'vue-router'
 import { computed, onMounted, ref, watch } from 'vue'
 import {
@@ -36,7 +37,7 @@ const displayName = computed(() =>
   authStore.user?.nickname || authStore.user?.username || '用户'
 )
 
-const avatarUrl = computed(() => authStore.user?.avatar || '')
+const avatarUrl = computed(() => resolveUserAvatar(authStore.user?.avatar))
 const avatarLoaded = ref(false)
 const avatarLoadFailed = ref(false)
 

@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Loader2, Upload, Trash2, Camera, X } from "lucide-vue-next"
 import { createUser, updateUser, uploadUserAvatar } from "@/api/modules/users"
+import { requiredString } from "@/lib/form-validation"
+import { DEFAULT_USER_AVATAR, resolveUserAvatar } from "@/lib/user-avatar"
 import type { Role, UserWithRole } from "@/types/user"
 
 const props = defineProps<{
@@ -33,14 +35,14 @@ const emit = defineEmits<{
 }>()
 
 const formSchema = computed(() => toTypedSchema(z.object({
-  username: z.string().min(1, { message: "请填写登录账号" }),
+  username: requiredString("登录账号"),
   password: props.mode === "create"
-    ? z.string().min(6, { message: "密码至少需要6位" })
+    ? requiredString("密码").min(6, { message: "密码至少需要6位" })
     : z.string().optional(),
   nickname: z.string().optional(),
   email: z.string().email({ message: "请输入有效的邮箱地址" }).optional().or(z.literal('')),
-  mobile: z.string().optional(),
-  roleId: z.string().min(1, { message: "请选择系统角色" }),
+  mobile: requiredString("手机号码").regex(/^1\d{10}$/, { message: "手机号必须为11位数字" }),
+  roleId: requiredString("系统角色"),
   parentId: z.string(),
   status: z.string(),
   avatar: z.string().optional(),
@@ -78,7 +80,7 @@ const initialValues = computed(() => {
     return {
       username: "", password: "", nickname: "", email: "", mobile: "",
       roleId: props.roles[0]?.id ? String(props.roles[0].id) : "",
-      parentId: "none", status: "enabled", avatar: ""
+      parentId: "none", status: "enabled", avatar: DEFAULT_USER_AVATAR
     }
   } else if (props.userData) {
     return {
@@ -89,7 +91,7 @@ const initialValues = computed(() => {
       roleId: props.userData.roleId ? String(props.userData.roleId) : "",
       parentId: props.userData.parentId ? String(props.userData.parentId) : "none",
       status: props.userData.status || "enabled",
-      avatar: props.userData.avatar || ""
+      avatar: resolveUserAvatar(props.userData.avatar)
     }
   }
   return {}
@@ -102,12 +104,11 @@ watch(() => props.open, (val) => {
     return
   }
   resetForm({ values: initialValues.value })
-  previewUrl.value = initialValues.value.avatar || ""
+  previewUrl.value = resolveUserAvatar(initialValues.value.avatar)
   selectedAvatarFile.value = null
   clearLocalPreviewObjectUrl()
   if (props.mode === "edit" && props.userData) {
-    previewUrl.value = props.userData.avatar ||
-      `https://api.dicebear.com/7.x/notionists/svg?seed=${props.userData.username}&backgroundColor=ffffff`
+    previewUrl.value = resolveUserAvatar(props.userData.avatar)
   }
 })
 
@@ -144,22 +145,28 @@ const onFileSelected = (event: Event) => {
 const removeAvatar = () => {
   selectedAvatarFile.value = null
   clearLocalPreviewObjectUrl()
-  previewUrl.value = ""
-  avatar.value = ""
+  previewUrl.value = DEFAULT_USER_AVATAR
+  avatar.value = DEFAULT_USER_AVATAR
 }
 
 const onSubmit = handleSubmit(async (values) => {
   formSubmitting.value = true
   try {
+    const roleIdValue = Number(values.roleId)
     const parentIdValue = values.parentId && values.parentId !== "none" ? Number(values.parentId) : null
-    let avatarUrl = values.avatar
+    let avatarUrl = resolveUserAvatar(values.avatar)
 
     if (selectedAvatarFile.value) {
       const uploadResult = await uploadUserAvatar(selectedAvatarFile.value)
       avatarUrl = uploadResult.url
     }
 
-    const payload = { ...values, parentId: parentIdValue, avatar: avatarUrl }
+    const payload = {
+      ...values,
+      roleId: roleIdValue,
+      parentId: parentIdValue,
+      avatar: avatarUrl,
+    }
 
     if (props.mode === "create") {
       await createUser(payload as any)
@@ -225,7 +232,7 @@ onBeforeUnmount(() => {
                   <Button type="button" variant="outline" size="sm" class="h-7 text-xs" @click="triggerUpload">
                     <Upload class="h-3 w-3 mr-1.5" /> 上传头像
                   </Button>
-                  <Button v-if="previewUrl && !previewUrl.includes('dicebear')" type="button" variant="ghost" size="sm" class="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-50" @click="removeAvatar">
+                  <Button v-if="previewUrl && previewUrl !== DEFAULT_USER_AVATAR" type="button" variant="ghost" size="sm" class="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-50" @click="removeAvatar">
                     <Trash2 class="h-3 w-3 mr-1.5" /> 移除
                   </Button>
                 </div>
@@ -280,7 +287,7 @@ onBeforeUnmount(() => {
                   <p v-if="errors.email" class="text-sm text-red-600">{{ errors.email }}</p>
                 </div>
                 <div class="space-y-1.5">
-                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="mobile">手机号码</Label>
+                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="mobile">手机号码 <span class="text-red-500">*</span></Label>
                   <Input v-model="mobile" id="mobile" placeholder="138xxxx8888" class="h-10" />
                   <p v-if="errors.mobile" class="text-sm text-red-600">{{ errors.mobile }}</p>
                 </div>

@@ -10,6 +10,25 @@ go run .
 
 Default listen address: `:8080`
 
+## Hot Reload
+
+后端本地热更新推荐使用 `air`：
+
+```bash
+go install github.com/air-verse/air@latest
+cd backend
+air
+```
+
+项目已内置 [`.air.toml`](/Users/zhangyang/dev/zhaozhaoying/crm-go-vue-shadcn/backend/.air.toml) 配置，修改 `.go` 文件后会自动重新编译并重启服务。
+
+前端本身已支持热更新：
+
+```bash
+cd frontend
+pnpm dev
+```
+
 ## Environment
 
 Core auth variables:

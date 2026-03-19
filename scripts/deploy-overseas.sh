@@ -15,6 +15,9 @@ set -euo pipefail
 # - 默认在执行时安全输入密码
 # - 或者通过环境变量 DEPLOY_SUDO_PASSWORD 传入
 #
+# 默认不会上传本地 .env，避免覆盖线上环境变量。
+# 只有显式传 --with-env 时，才会上传 DEPLOY_ENV_FILE 指向的文件。
+#
 # 常见用法：
 #   bash ./scripts/deploy-overseas.sh
 #   bash ./scripts/deploy-overseas.sh --clean-build
@@ -25,6 +28,7 @@ set -euo pipefail
 # ============================================================
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-${ROOT_DIR}/backend/.env}"
 
 # ----------------------------
 # 远端连接与部署目标默认值
@@ -65,7 +69,7 @@ usage() {
   bash ./scripts/deploy-overseas.sh [选项]
 
 选项：
-  --with-env       连同 release/.env 一起上传到远端 .env
+  --with-env       显式上传 DEPLOY_ENV_FILE 到远端 .env（默认不会覆盖线上 .env）
   --clean-build    先清理 Go 构建缓存，再重新打包 overseas_linux
   --skip-build     跳过本地打包，直接复用已有 release/ 产物
   --frontend-only  只发布前端 dist
@@ -81,6 +85,7 @@ usage() {
   DEPLOY_REMOTE_HEALTH_URL 默认: http://127.0.0.1:8080/api/health
   DEPLOY_RELEASE_DIR       默认: release
   DEPLOY_BACKEND_BIN_NAME  默认: overseas_linux
+  DEPLOY_ENV_FILE          默认: backend/.env，仅在 --with-env 时使用
   GOOS_TARGET              默认: linux
   GOARCH_TARGET            默认: amd64
   CGO_ENABLED_TARGET       默认: 0
@@ -92,7 +97,7 @@ usage() {
 示例：
   bash ./scripts/deploy-overseas.sh
   bash ./scripts/deploy-overseas.sh --clean-build
-  bash ./scripts/deploy-overseas.sh --with-env
+  DEPLOY_ENV_FILE=./backend/.env.staging bash ./scripts/deploy-overseas.sh --with-env
   bash ./scripts/deploy-overseas.sh --frontend-only
   DEPLOY_SUDO_PASSWORD='你的sudo密码' bash ./scripts/deploy-overseas.sh
   DEPLOY_SSH_TARGET=root@your-server DEPLOY_SSH_KEY=~/.ssh/id_rsa bash ./scripts/deploy-overseas.sh
@@ -175,7 +180,6 @@ fi
 
 require_command bash
 require_command ssh
-require_command scp
 require_command rsync
 require_command stat
 require_command base64
@@ -190,14 +194,20 @@ prompt_sudo_password_if_needed
 LOCAL_RELEASE_DIR="${ROOT_DIR}/${DEPLOY_RELEASE_DIR}"
 LOCAL_DIST_DIR="${LOCAL_RELEASE_DIR}/dist/"
 LOCAL_BIN_PATH="${LOCAL_RELEASE_DIR}/${DEPLOY_BACKEND_BIN_NAME}"
-LOCAL_ENV_PATH="${LOCAL_RELEASE_DIR}/.env"
+LOCAL_ENV_PATH="${DEPLOY_ENV_FILE}"
 REMOTE_BIN_PATH="${DEPLOY_REMOTE_DIR}/${DEPLOY_BACKEND_BIN_NAME}"
-REMOTE_BIN_TMP_PATH="${REMOTE_BIN_PATH}.new"
+# 为每次后端上传生成唯一临时文件名，避免复用旧的 .new 文件时碰到残留句柄。
+REMOTE_BIN_TMP_PATH="${REMOTE_BIN_PATH}.new.$(date +%s).$$"
 
 # 这里统一封装 SSH / SCP / RSYNC 的连接参数，避免多处重复。
 RSYNC_SSH_COMMAND="$(printf 'ssh -i %q -o StrictHostKeyChecking=accept-new' "$DEPLOY_SSH_KEY")"
 SSH_CMD=(ssh -i "$DEPLOY_SSH_KEY" -o StrictHostKeyChecking=accept-new)
-SCP_CMD=(scp -i "$DEPLOY_SSH_KEY" -o StrictHostKeyChecking=accept-new)
+
+RSYNC_PROGRESS_ARGS=(--human-readable --progress --stats)
+
+run_rsync() {
+  rsync "${RSYNC_PROGRESS_ARGS[@]}" "$@"
+}
 
 # 如果需要远端 sudo，就把密码做一次 base64 编码再传过去。
 # 原因：
@@ -218,6 +228,9 @@ echo "backend_bin=${DEPLOY_BACKEND_BIN_NAME}"
 echo "deploy_frontend=${DEPLOY_FRONTEND}"
 echo "deploy_backend=${DEPLOY_BACKEND}"
 echo "deploy_env=${DEPLOY_SYNC_ENV}"
+if [ "$DEPLOY_SYNC_ENV" = "1" ]; then
+  echo "env_file=${LOCAL_ENV_PATH}"
+fi
 echo "clean_build=${DEPLOY_CLEAN_BUILD}"
 echo "restart_service=${DEPLOY_RESTART_SERVICE}"
 echo "release_dir=${LOCAL_RELEASE_DIR}"
@@ -246,7 +259,7 @@ fi
 
 if [ "$DEPLOY_SYNC_ENV" = "1" ] && [ ! -f "$LOCAL_ENV_PATH" ]; then
   echo "环境变量文件不存在: $LOCAL_ENV_PATH" >&2
-  echo "提示：如果要上传 .env，请先确认本地 backend/.env 存在，然后不要加 --skip-build" >&2
+  echo "提示：只有显式传 --with-env 时才会上传 .env，请确认 DEPLOY_ENV_FILE 指向正确文件" >&2
   exit 1
 fi
 
@@ -256,27 +269,29 @@ echo "==> 第二步：预创建远端目录"
 if [ "$DEPLOY_FRONTEND" -eq 1 ]; then
   echo "==> 第三步：上传前端 dist"
   # 这里使用 rsync --delete，保证远端 dist 和本地 release/dist 一致。
-  rsync -az --delete -e "$RSYNC_SSH_COMMAND" "$LOCAL_DIST_DIR" "${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_DIR}/dist/"
+  run_rsync -az --delete -e "$RSYNC_SSH_COMMAND" "$LOCAL_DIST_DIR" "${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_DIR}/dist/"
 fi
 
 if [ "$DEPLOY_BACKEND" -eq 1 ]; then
   echo "==> 第四步：上传后端二进制到临时文件"
-  # 先上传成 overseas_linux.new，避免直接覆盖正在运行的文件。
-  "${SCP_CMD[@]}" "$LOCAL_BIN_PATH" "${DEPLOY_SSH_TARGET}:${REMOTE_BIN_TMP_PATH}"
+  # 后端发布改用 rsync，而不是默认 scp/sftp。
+  # 原因：线上曾出现 sftp-server 残留句柄，导致目标二进制 Text file busy。
+  run_rsync -az -e "$RSYNC_SSH_COMMAND" "$LOCAL_BIN_PATH" "${DEPLOY_SSH_TARGET}:${REMOTE_BIN_TMP_PATH}"
 fi
 
 if [ "$DEPLOY_SYNC_ENV" = "1" ]; then
-  echo "==> 第五步：上传根目录 .env"
-  "${SCP_CMD[@]}" "$LOCAL_ENV_PATH" "${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_DIR}/.env"
+  echo "==> 第五步：显式上传根目录 .env"
+  run_rsync -az -e "$RSYNC_SSH_COMMAND" "$LOCAL_ENV_PATH" "${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_DIR}/.env"
 fi
 
 echo "==> 第六步：远端切换产物并按需重启服务"
 "${SSH_CMD[@]}" "$DEPLOY_SSH_TARGET" \
-  "DEPLOY_REMOTE_DIR='$DEPLOY_REMOTE_DIR' DEPLOY_REMOTE_SERVICE='$DEPLOY_REMOTE_SERVICE' DEPLOY_REMOTE_HEALTH_URL='$DEPLOY_REMOTE_HEALTH_URL' DEPLOY_RESTART_SERVICE='$DEPLOY_RESTART_SERVICE' DEPLOY_SUDO_PASSWORD_B64='$DEPLOY_SUDO_PASSWORD_B64' BACKEND_BIN_NAME='$DEPLOY_BACKEND_BIN_NAME' DEPLOY_BACKEND='$DEPLOY_BACKEND' DEPLOY_FRONTEND='$DEPLOY_FRONTEND' DEPLOY_SYNC_ENV='$DEPLOY_SYNC_ENV' bash -s" <<'EOF'
+  "DEPLOY_REMOTE_DIR='$DEPLOY_REMOTE_DIR' DEPLOY_REMOTE_SERVICE='$DEPLOY_REMOTE_SERVICE' DEPLOY_REMOTE_HEALTH_URL='$DEPLOY_REMOTE_HEALTH_URL' DEPLOY_RESTART_SERVICE='$DEPLOY_RESTART_SERVICE' DEPLOY_SUDO_PASSWORD_B64='$DEPLOY_SUDO_PASSWORD_B64' BACKEND_BIN_NAME='$DEPLOY_BACKEND_BIN_NAME' REMOTE_BIN_TMP_PATH='$REMOTE_BIN_TMP_PATH' DEPLOY_BACKEND='$DEPLOY_BACKEND' DEPLOY_FRONTEND='$DEPLOY_FRONTEND' DEPLOY_SYNC_ENV='$DEPLOY_SYNC_ENV' bash -s" <<'EOF'
 set -euo pipefail
 
 remote_bin_path="${DEPLOY_REMOTE_DIR}/${BACKEND_BIN_NAME}"
-remote_bin_tmp_path="${remote_bin_path}.new"
+remote_bin_tmp_path="${REMOTE_BIN_TMP_PATH}"
+should_restart_service=0
 
 decode_sudo_password() {
   if [ -z "${DEPLOY_SUDO_PASSWORD_B64:-}" ]; then
@@ -295,15 +310,53 @@ run_sudo() {
   fi
 }
 
+cleanup_remote_artifacts() {
+  echo "    - 清理远端无关测试文件和脚本"
+  find "$DEPLOY_REMOTE_DIR" -maxdepth 1 -type f \( \
+    -name "*.sh" -o \
+    -name "*_test.go" -o \
+    -name "*.test" -o \
+    -name "go-test.out" -o \
+    -name "coverage*.out" \
+  \) -print -delete || true
+
+  find "$DEPLOY_REMOTE_DIR" -maxdepth 1 -type d \( \
+    -name "__tests__" -o \
+    -name "tests" \
+  \) -prune -print | while IFS= read -r path; do
+    rm -rf "$path"
+  done
+}
+
+if [ "$DEPLOY_RESTART_SERVICE" = "1" ] && { [ "$DEPLOY_BACKEND" = "1" ] || [ "$DEPLOY_SYNC_ENV" = "1" ]; }; then
+  should_restart_service=1
+  # 如果服务正处于自动重启或运行中，先停掉再切换产物，
+  # 避免 systemd 在我们替换文件或读取新环境变量时抢先拉起旧状态。
+  echo "    - 停止远端服务"
+  run_sudo systemctl stop "$DEPLOY_REMOTE_SERVICE" || true
+  run_sudo systemctl reset-failed "$DEPLOY_REMOTE_SERVICE" || true
+fi
+
 if [ "$DEPLOY_BACKEND" = "1" ]; then
   # 先赋予执行权限，再原子替换正式二进制。
+  echo "    - 切换后端二进制"
   chmod 755 "$remote_bin_tmp_path"
   mv "$remote_bin_tmp_path" "$remote_bin_path"
 fi
 
-if [ "$DEPLOY_RESTART_SERVICE" = "1" ] && { [ "$DEPLOY_BACKEND" = "1" ] || [ "$DEPLOY_SYNC_ENV" = "1" ]; }; then
-  run_sudo systemctl restart "$DEPLOY_REMOTE_SERVICE"
-  run_sudo systemctl status "$DEPLOY_REMOTE_SERVICE" --no-pager
+cleanup_remote_artifacts
+
+if [ "$should_restart_service" = "1" ]; then
+  echo "    - 启动远端服务"
+  run_sudo systemctl start "$DEPLOY_REMOTE_SERVICE"
+  sleep 1
+  if ! run_sudo systemctl is-active --quiet "$DEPLOY_REMOTE_SERVICE"; then
+    echo "==> 服务启动失败，打印诊断信息"
+    run_sudo systemctl status "$DEPLOY_REMOTE_SERVICE" --no-pager -l || true
+    run_sudo journalctl -u "$DEPLOY_REMOTE_SERVICE" -n 50 --no-pager || true
+    exit 1
+  fi
+  run_sudo systemctl status "$DEPLOY_REMOTE_SERVICE" --no-pager -l
 fi
 
 if [ "$DEPLOY_BACKEND" = "1" ]; then

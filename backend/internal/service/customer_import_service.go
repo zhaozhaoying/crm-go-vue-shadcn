@@ -64,28 +64,30 @@ type customerImportRow struct {
 }
 
 type customerCreateImportRow struct {
-	ID               int64      `gorm:"column:id;primaryKey;autoIncrement"`
-	Name             string     `gorm:"column:name"`
-	LegalName        string     `gorm:"column:legal_name"`
-	ContactName      string     `gorm:"column:contact_name"`
-	Weixin           string     `gorm:"column:weixin"`
-	Email            string     `gorm:"column:email"`
-	CustomerLevelID  int        `gorm:"column:customer_level_id"`
-	CustomerSourceID int        `gorm:"column:customer_source_id"`
-	Province         int        `gorm:"column:province"`
-	City             int        `gorm:"column:city"`
-	Area             int        `gorm:"column:area"`
-	DetailAddress    string     `gorm:"column:detail_address"`
-	Remark           string     `gorm:"column:remark"`
-	Status           string     `gorm:"column:status"`
-	DealStatus       string     `gorm:"column:deal_status"`
-	OwnerUserID      *int64     `gorm:"column:owner_user_id"`
-	CreateUserID     int64      `gorm:"column:create_user_id"`
-	OperateUserID    int64      `gorm:"column:operate_user_id"`
-	CollectTime      *int64     `gorm:"column:collect_time"`
-	CreatedAt        time.Time  `gorm:"column:created_at"`
-	UpdatedAt        time.Time  `gorm:"column:updated_at"`
-	DeleteTime       *time.Time `gorm:"column:delete_time"`
+	ID                int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	Name              string     `gorm:"column:name"`
+	LegalName         string     `gorm:"column:legal_name"`
+	ContactName       string     `gorm:"column:contact_name"`
+	Weixin            string     `gorm:"column:weixin"`
+	Email             string     `gorm:"column:email"`
+	CustomerLevelID   int        `gorm:"column:customer_level_id"`
+	CustomerSourceID  int        `gorm:"column:customer_source_id"`
+	Province          int        `gorm:"column:province"`
+	City              int        `gorm:"column:city"`
+	Area              int        `gorm:"column:area"`
+	DetailAddress     string     `gorm:"column:detail_address"`
+	Remark            string     `gorm:"column:remark"`
+	Status            string     `gorm:"column:status"`
+	DealStatus        string     `gorm:"column:deal_status"`
+	OwnerUserID       *int64     `gorm:"column:owner_user_id"`
+	InsideSalesUserID *int64     `gorm:"column:inside_sales_user_id"`
+	ConvertedAt       *time.Time `gorm:"column:converted_at"`
+	CreateUserID      int64      `gorm:"column:create_user_id"`
+	OperateUserID     int64      `gorm:"column:operate_user_id"`
+	CollectTime       *int64     `gorm:"column:collect_time"`
+	CreatedAt         time.Time  `gorm:"column:created_at"`
+	UpdatedAt         time.Time  `gorm:"column:updated_at"`
+	DeleteTime        *time.Time `gorm:"column:delete_time"`
 }
 
 type customerPhoneImportRow struct {
@@ -102,6 +104,8 @@ type customerOwnerLogImportRow struct {
 	FromOwnerUserID *int64    `gorm:"column:from_owner_user_id"`
 	ToOwnerUserID   *int64    `gorm:"column:to_owner_user_id"`
 	Action          string    `gorm:"column:action"`
+	Reason          string    `gorm:"column:reason"`
+	Content         string    `gorm:"column:content"`
 	OperatorUserID  int64     `gorm:"column:operator_user_id"`
 	CreatedAt       time.Time `gorm:"column:created_at"`
 }
@@ -333,27 +337,36 @@ func (s *customerImportService) applyImportBatch(
 		if err != nil {
 			return err
 		}
+		var insideSalesUserID *int64
+		status := row.Status
+		if isInsideSalesRole(operatorRole) {
+			insideSalesOperatorID := input.OperatorUserID
+			insideSalesUserID = &insideSalesOperatorID
+			status = model.CustomerStatusPool
+		}
 		customerRow := customerCreateImportRow{
-			Name:             row.Name,
-			LegalName:        row.LegalName,
-			ContactName:      row.ContactName,
-			Weixin:           row.Weixin,
-			Email:            row.Email,
-			CustomerLevelID:  row.CustomerLevelID,
-			CustomerSourceID: row.CustomerSourceID,
-			Province:         row.Province,
-			City:             row.City,
-			Area:             row.Area,
-			DetailAddress:    row.DetailAddress,
-			Remark:           row.Remark,
-			Status:           row.Status,
-			DealStatus:       model.CustomerDealStatusUndone,
-			OwnerUserID:      ownerUserID,
-			CreateUserID:     input.OperatorUserID,
-			OperateUserID:    input.OperatorUserID,
-			CollectTime:      collectTime,
-			CreatedAt:        now,
-			UpdatedAt:        now,
+			Name:              row.Name,
+			LegalName:         row.LegalName,
+			ContactName:       row.ContactName,
+			Weixin:            row.Weixin,
+			Email:             row.Email,
+			CustomerLevelID:   row.CustomerLevelID,
+			CustomerSourceID:  row.CustomerSourceID,
+			Province:          row.Province,
+			City:              row.City,
+			Area:              row.Area,
+			DetailAddress:     row.DetailAddress,
+			Remark:            row.Remark,
+			Status:            status,
+			DealStatus:        model.CustomerDealStatusUndone,
+			OwnerUserID:       ownerUserID,
+			InsideSalesUserID: insideSalesUserID,
+			ConvertedAt:       nil,
+			CreateUserID:      input.OperatorUserID,
+			OperateUserID:     input.OperatorUserID,
+			CollectTime:       collectTime,
+			CreatedAt:         now,
+			UpdatedAt:         now,
 		}
 
 		if err := tx.Table("customers").Create(&customerRow).Error; err != nil {
@@ -414,6 +427,8 @@ func (s *customerImportService) applyImportBatch(
 				FromOwnerUserID: nil,
 				ToOwnerUserID:   ownerUserID,
 				Action:          "claim",
+				Reason:          model.CustomerOwnerLogReasonImportInitialAssign,
+				Content:         "导入客户时初始分配负责人",
 				OperatorUserID:  input.OperatorUserID,
 				CreatedAt:       now,
 			}
@@ -452,11 +467,7 @@ func (s *customerImportService) resolveImportOwner(ctx context.Context, assignme
 		return nil, nil, nil
 	}
 	if isInsideSalesRole(operatorRole) {
-		owner, err := pickBalancedSalesOwnerUserID(ctx, assignmentRepo, operatorUserID)
-		if err != nil {
-			return nil, nil, err
-		}
-		return &owner, &nowUnix, nil
+		return nil, nil, nil
 	}
 	if isOutsideSalesRole(operatorRole) {
 		owner := operatorUserID

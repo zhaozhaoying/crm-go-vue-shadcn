@@ -28,15 +28,27 @@ func (s *customerSettingReaderStub) GetSetting(key string) (*model.SystemSetting
 }
 
 type customerScopeRepoStub struct {
-	roleUsers    map[string][]int64
-	userRoles    map[int64]string
-	subordinates map[int64][]int64
-	parents      map[int64]int64
-	findByID     *model.Customer
-	findByIDErr  error
-	claimResult  *model.Customer
-	claimErr     error
-	claimCalled  bool
+	roleUsers                            map[string][]int64
+	userRoles                            map[int64]string
+	subordinates                         map[int64][]int64
+	parents                              map[int64]int64
+	activeBlockedUntilByDepartmentAnchor map[int64]time.Time
+	findByID                             *model.Customer
+	findByIDErr                          error
+	createResult                         *model.Customer
+	createErr                            error
+	lastCreateInput                      model.CustomerCreateInput
+	claimResult                          *model.Customer
+	claimErr                             error
+	claimCalled                          bool
+	claimOwnerUserID                     int64
+	claimOperatorUserID                  int64
+	claimInsideSalesUserID               *int64
+	convertResult                        *model.Customer
+	convertErr                           error
+	convertCalled                        bool
+	convertOwner                         int64
+	convertBy                            int64
 }
 
 func (s *customerScopeRepoStub) List(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListResult, error) {
@@ -104,11 +116,31 @@ func (s *customerScopeRepoStub) ResolveDepartmentAnchorUserID(ctx context.Contex
 	return 0, nil
 }
 
+func (s *customerScopeRepoStub) GetActiveBlockedUntilByDepartmentAnchor(ctx context.Context, customerID, departmentAnchorUserID int64, now time.Time) (*time.Time, error) {
+	if s.activeBlockedUntilByDepartmentAnchor == nil {
+		return nil, nil
+	}
+	blockedUntil, ok := s.activeBlockedUntilByDepartmentAnchor[departmentAnchorUserID]
+	if !ok || !blockedUntil.After(now) {
+		return nil, nil
+	}
+	result := blockedUntil
+	return &result, nil
+}
+
 func (s *customerScopeRepoStub) CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error) {
 	return 0, nil
 }
 
 func (s *customerScopeRepoStub) Create(ctx context.Context, input model.CustomerCreateInput) (*model.Customer, error) {
+	s.lastCreateInput = input
+	if s.createErr != nil {
+		return nil, s.createErr
+	}
+	if s.createResult != nil {
+		customer := *s.createResult
+		return &customer, nil
+	}
 	return nil, nil
 }
 
@@ -120,8 +152,11 @@ func (s *customerScopeRepoStub) CheckUnique(ctx context.Context, input model.Cus
 	return model.CustomerUniqueCheckResult{}, nil
 }
 
-func (s *customerScopeRepoStub) Claim(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error) {
+func (s *customerScopeRepoStub) Claim(ctx context.Context, customerID, ownerUserID, operatorUserID int64, insideSalesUserID *int64) (*model.Customer, error) {
 	s.claimCalled = true
+	s.claimOwnerUserID = ownerUserID
+	s.claimOperatorUserID = operatorUserID
+	s.claimInsideSalesUserID = insideSalesUserID
 	if s.claimErr != nil {
 		return nil, s.claimErr
 	}
@@ -137,6 +172,20 @@ func (s *customerScopeRepoStub) Release(ctx context.Context, customerID, operato
 }
 
 func (s *customerScopeRepoStub) Transfer(ctx context.Context, input model.CustomerTransferInput) (*model.Customer, error) {
+	return nil, nil
+}
+
+func (s *customerScopeRepoStub) Convert(ctx context.Context, customerID, ownerUserID, operatorUserID int64) (*model.Customer, error) {
+	s.convertCalled = true
+	s.convertOwner = ownerUserID
+	s.convertBy = operatorUserID
+	if s.convertErr != nil {
+		return nil, s.convertErr
+	}
+	if s.convertResult != nil {
+		customer := *s.convertResult
+		return &customer, nil
+	}
 	return nil, nil
 }
 
@@ -283,6 +332,83 @@ func TestApplyPartnerCustomerScopeByRole(t *testing.T) {
 	}
 }
 
+func TestApplyMyCustomerScopeByRoleForInsideSalesDepartment(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sales_inside": {21, 22},
+		},
+		userRoles: map[int64]string{
+			1:  "admin",
+			10: "sales_manager",
+			21: "sales_inside",
+			22: "sales_inside",
+			30: "sales_staff",
+		},
+		subordinates: map[int64][]int64{
+			10: {21, 30},
+		},
+	}
+
+	svc := &customerService{repo: repoStub}
+
+	adminFilter, err := svc.applyMyCustomerScopeByRole(context.Background(), model.CustomerListFilter{
+		Category:       "my",
+		OwnershipScope: "inside_sales",
+		ViewerID:       1,
+		HasViewer:      true,
+		ActorRole:      "admin",
+	})
+	if err != nil {
+		t.Fatalf("applyMyCustomerScopeByRole(admin) returned error: %v", err)
+	}
+	assertSameIDs(t, adminFilter.AllowedInsideSalesUserIDs, []int64{21, 22})
+	assertSameIDs(t, adminFilter.AllowedOwnerUserIDs, []int64{21, 22})
+	if !adminFilter.IncludePoolInMyScope {
+		t.Fatalf("expected inside-sales scope to include pending pool customers for admin")
+	}
+	if !adminFilter.IncludePendingConvertScope {
+		t.Fatalf("expected inside-sales scope to include pending conversion records for admin")
+	}
+
+	managerFilter, err := svc.applyMyCustomerScopeByRole(context.Background(), model.CustomerListFilter{
+		Category:       "my",
+		OwnershipScope: "inside_sales",
+		ViewerID:       10,
+		HasViewer:      true,
+		ActorRole:      "sales_manager",
+	})
+	if err != nil {
+		t.Fatalf("applyMyCustomerScopeByRole(manager) returned error: %v", err)
+	}
+	assertSameIDs(t, managerFilter.AllowedInsideSalesUserIDs, []int64{21})
+	assertSameIDs(t, managerFilter.AllowedOwnerUserIDs, []int64{21})
+}
+
+func TestApplyMyCustomerScopeByRoleForInsideSalesSelfOnly(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			21: "sales_inside",
+		},
+	}
+
+	svc := &customerService{repo: repoStub}
+	filter, err := svc.applyMyCustomerScopeByRole(context.Background(), model.CustomerListFilter{
+		Category:       "my",
+		OwnershipScope: "all",
+		ViewerID:       21,
+		HasViewer:      true,
+		ActorRole:      "sales_inside",
+	})
+	if err != nil {
+		t.Fatalf("applyMyCustomerScopeByRole(inside-sales) returned error: %v", err)
+	}
+	assertSameIDs(t, filter.AllowedOwnerUserIDs, []int64{21})
+	assertSameIDs(t, filter.AllowedInsideSalesUserIDs, []int64{21})
+	if !filter.IncludePendingConvertScope {
+		t.Fatalf("expected inside-sales self scope to include pending conversion records")
+	}
+}
+
 func TestClaimCustomerReturnsFreezeErrorForSelfDroppedCustomer(t *testing.T) {
 	dropTime := time.Now().UTC().Add(-24 * time.Hour)
 	repoStub := &customerScopeRepoStub{
@@ -321,16 +447,16 @@ func TestClaimCustomerReturnsFreezeErrorForSelfDroppedCustomer(t *testing.T) {
 }
 
 func TestClaimCustomerReturnsSameDepartmentForbidden(t *testing.T) {
+	blockedUntil := time.Now().UTC().Add(48 * time.Hour)
 	repoStub := &customerScopeRepoStub{
 		userRoles: map[int64]string{
 			1: "sales_staff",
-			9: "sales_staff",
 			4: "sales_director",
 		},
 		parents: map[int64]int64{
 			1: 4,
-			9: 4,
 		},
+		activeBlockedUntilByDepartmentAnchor: map[int64]time.Time{4: blockedUntil},
 		findByID: &model.Customer{
 			ID:         1002,
 			Name:       "测试客户2",
@@ -342,11 +468,65 @@ func TestClaimCustomerReturnsSameDepartmentForbidden(t *testing.T) {
 	svc := &customerService{repo: repoStub}
 
 	_, err := svc.ClaimCustomer(context.Background(), 1002, 1)
-	if !errors.Is(err, ErrCustomerSameDepartmentClaimForbidden) {
-		t.Fatalf("expected ErrCustomerSameDepartmentClaimForbidden, got %v", err)
+	var freezeErr *CustomerClaimFreezeError
+	if !errors.As(err, &freezeErr) {
+		t.Fatalf("expected CustomerClaimFreezeError, got %v", err)
+	}
+	if freezeErr.BlockType != customerClaimFreezeBlockTypeDepartment {
+		t.Fatalf("expected department freeze error, got %q", freezeErr.BlockType)
+	}
+	if freezeErr.Remaining <= 0 {
+		t.Fatalf("expected positive remaining duration, got %v", freezeErr.Remaining)
 	}
 	if repoStub.claimCalled {
 		t.Fatalf("claim repository should not be called when same-department customer is forbidden")
+	}
+}
+
+func TestClaimCustomerReturnsHistoricalDepartmentForbidden(t *testing.T) {
+	blockedUntil := time.Now().UTC().Add(72 * time.Hour)
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_staff",
+			2: "sales_staff",
+			4: "sales_director",
+			8: "sales_staff",
+			9: "sales_staff",
+			7: "sales_director",
+		},
+		parents: map[int64]int64{
+			1: 4,
+			2: 4,
+			8: 7,
+			9: 7,
+		},
+		activeBlockedUntilByDepartmentAnchor: map[int64]time.Time{
+			7: blockedUntil,
+			4: blockedUntil,
+		},
+		findByID: &model.Customer{
+			ID:         1003,
+			Name:       "测试客户3",
+			IsInPool:   true,
+			DropUserID: int64Ptr(9),
+		},
+	}
+
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ClaimCustomer(context.Background(), 1003, 2)
+	var freezeErr *CustomerClaimFreezeError
+	if !errors.As(err, &freezeErr) {
+		t.Fatalf("expected CustomerClaimFreezeError, got %v", err)
+	}
+	if freezeErr.BlockType != customerClaimFreezeBlockTypeDepartment {
+		t.Fatalf("expected department freeze error, got %q", freezeErr.BlockType)
+	}
+	if freezeErr.FrozenUntil.Before(time.Now().UTC()) {
+		t.Fatalf("expected future frozen until, got %v", freezeErr.FrozenUntil)
+	}
+	if repoStub.claimCalled {
+		t.Fatalf("claim repository should not be called when historical same-department customer is forbidden")
 	}
 }
 
@@ -415,6 +595,226 @@ func TestIsSameDepartmentUsesSalesDirectorScope(t *testing.T) {
 	}
 }
 
+func TestCreateCustomerInsideSalesAutoAssignsBalancedOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		userRoles: map[int64]string{
+			1: "sales_director",
+			3: "sales_staff",
+			4: "sales_staff",
+			9: "sales_inside",
+		},
+		parents: map[int64]int64{
+			9: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {9, 3, 4},
+		},
+		createResult: &model.Customer{
+			ID:   2001,
+			Name: "自动转化客户",
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.CreateCustomer(context.Background(), model.CustomerCreateInput{
+		Name:           "自动转化客户",
+		LegalName:      "张三",
+		ContactName:    "李四",
+		Status:         model.CustomerStatusPool,
+		OperatorUserID: 9,
+		Phones: []model.CustomerPhoneInput{{
+			Phone:     "13800138000",
+			IsPrimary: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateCustomer returned error: %v", err)
+	}
+	if repoStub.lastCreateInput.Status != model.CustomerStatusOwned {
+		t.Fatalf("expected inside-sales create status %q, got %q", model.CustomerStatusOwned, repoStub.lastCreateInput.Status)
+	}
+	if repoStub.lastCreateInput.OwnerUserID == nil || *repoStub.lastCreateInput.OwnerUserID != 1 {
+		t.Fatalf("expected inside-sales create owner 1, got %v", repoStub.lastCreateInput.OwnerUserID)
+	}
+	if repoStub.lastCreateInput.InsideSalesUserID == nil || *repoStub.lastCreateInput.InsideSalesUserID != 9 {
+		t.Fatalf("expected inside-sales create to bind insideSalesUserID 9, got %v", repoStub.lastCreateInput.InsideSalesUserID)
+	}
+	if repoStub.lastCreateInput.ConvertedAt == nil {
+		t.Fatalf("expected inside-sales create convertedAt to be set")
+	}
+}
+
+func TestClaimCustomerInsideSalesAutoAssignsBalancedOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		findByID: &model.Customer{
+			ID:       2101,
+			Name:     "公海客户",
+			IsInPool: true,
+		},
+		claimResult: &model.Customer{
+			ID:       2101,
+			Name:     "公海客户",
+			IsInPool: false,
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ClaimCustomer(context.Background(), 2101, 2)
+	if err != nil {
+		t.Fatalf("ClaimCustomer returned error: %v", err)
+	}
+	if !repoStub.claimCalled {
+		t.Fatalf("expected Claim repository method to be called")
+	}
+	if repoStub.claimOwnerUserID != 1 {
+		t.Fatalf("expected inside-sales claim owner 1, got %d", repoStub.claimOwnerUserID)
+	}
+	if repoStub.claimOperatorUserID != 2 {
+		t.Fatalf("expected inside-sales claim operator 2, got %d", repoStub.claimOperatorUserID)
+	}
+	if repoStub.claimInsideSalesUserID == nil || *repoStub.claimInsideSalesUserID != 2 {
+		t.Fatalf("expected inside-sales claim to bind insideSalesUserID 2, got %v", repoStub.claimInsideSalesUserID)
+	}
+}
+
+func TestConvertCustomerInsideSalesAssignsBalancedOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		findByID: &model.Customer{
+			ID:           3001,
+			Name:         "电销待转化客户",
+			CreateUserID: 2,
+			IsInPool:     true,
+		},
+		convertResult: &model.Customer{
+			ID:           3001,
+			Name:         "电销待转化客户",
+			CreateUserID: 2,
+			IsInPool:     false,
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ConvertCustomer(context.Background(), 3001, 2)
+	if err != nil {
+		t.Fatalf("ConvertCustomer returned error: %v", err)
+	}
+	if !repoStub.convertCalled {
+		t.Fatalf("expected Convert repository method to be called")
+	}
+	if repoStub.convertOwner != 1 {
+		t.Fatalf("expected balanced owner 1, got %d", repoStub.convertOwner)
+	}
+}
+
+func TestConvertCustomerRejectsAlreadyConvertedLead(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			2: "sales_inside",
+		},
+		findByID: &model.Customer{
+			ID:           3002,
+			Name:         "已转化客户",
+			CreateUserID: 2,
+			IsInPool:     true,
+			ConvertedAt:  timePtr(time.Now().UTC()),
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ConvertCustomer(context.Background(), 3002, 2)
+	if !errors.Is(err, ErrCustomerConvertForbidden) {
+		t.Fatalf("expected ErrCustomerConvertForbidden, got %v", err)
+	}
+	if repoStub.convertCalled {
+		t.Fatalf("convert repository should not be called for already converted lead")
+	}
+}
+
+func TestConvertCustomerAllowsAdminToConvertInsideSalesLead(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			9: "admin",
+		},
+		parents: map[int64]int64{
+			2: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2},
+		},
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+		},
+		findByID: &model.Customer{
+			ID:           3003,
+			Name:         "管理员代转化客户",
+			CreateUserID: 2,
+			IsInPool:     true,
+		},
+		convertResult: &model.Customer{
+			ID:           3003,
+			Name:         "管理员代转化客户",
+			CreateUserID: 2,
+			IsInPool:     false,
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ConvertCustomer(context.Background(), 3003, 9)
+	if err != nil {
+		t.Fatalf("ConvertCustomer(admin) returned error: %v", err)
+	}
+	if !repoStub.convertCalled {
+		t.Fatalf("expected admin convert to call repository")
+	}
+	if repoStub.convertOwner != 1 {
+		t.Fatalf("expected admin convert to use creator team owner 1, got %d", repoStub.convertOwner)
+	}
+}
+
 func assertSameIDs(t *testing.T, got, want []int64) {
 	t.Helper()
 	got = uniquePositiveInt64(got)
@@ -430,5 +830,9 @@ func assertSameIDs(t *testing.T, got, want []int64) {
 }
 
 func int64Ptr(value int64) *int64 {
+	return &value
+}
+
+func timePtr(value time.Time) *time.Time {
 	return &value
 }

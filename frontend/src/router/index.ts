@@ -7,7 +7,6 @@ import ForgotPasswordView from "@/views/auth/ForgotPassword.vue";
 import UsersView from "@/views/user/index.vue";
 import RolesView from "@/views/role/index.vue";
 import NotificationsView from "@/views/notification/index.vue";
-import NotificationDetailView from "@/views/notification/detail.vue";
 import ProfileView from "@/views/profile/index.vue";
 import SettingsView from "@/views/settings/index.vue";
 import CustomerPoolView from "@/views/customer/pool/index.vue";
@@ -114,12 +113,6 @@ const router = createRouter({
           name: "notifications",
           component: NotificationsView,
           meta: { title: "通知中心", requiresAuth: true },
-        },
-        {
-          path: "notifications/:id",
-          name: "notification-detail",
-          component: NotificationDetailView,
-          meta: { title: "通知详情", requiresAuth: true },
         },
         {
           path: "profile",

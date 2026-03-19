@@ -22,6 +22,7 @@ import { toast } from "vue-sonner";
 
 import {
   listMyCustomers,
+  convertCustomer,
   createCustomer,
   releaseCustomer,
   updateCustomer,
@@ -59,7 +60,7 @@ import {
   getDealDropCountdown,
   getFollowUpDropCountdown,
 } from "@/lib/customer-display";
-import { isAdminUser } from "@/lib/auth-role";
+import { isAdminUser, isInsideSalesUser } from "@/lib/auth-role";
 import { getRequestErrorMessage } from "@/lib/http-error";
 import { chinaPcaCode } from "@/data/china-pca-code";
 import { useAuthStore } from "@/stores/auth";
@@ -76,6 +77,7 @@ const authStore = useAuthStore();
 
 const loading = ref(false);
 const submitting = ref(false);
+const convertingId = ref<number | null>(null);
 const discardingId = ref<number | null>(null);
 const batchDiscarding = ref(false);
 const error = ref("");
@@ -86,13 +88,14 @@ const pageIndex = ref(0);
 const pageSize = ref(10);
 const selectedIds = ref<number[]>([]);
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null);
-type OwnershipScope = "all" | "mine" | "sales" | "subordinates";
+type OwnershipScope = "all" | "mine" | "sales" | "inside_sales" | "subordinates";
 const ownershipScope = ref<OwnershipScope>("all");
 const hasSubordinates = ref(false);
 const ALL_OWNERSHIP_SCOPE_TABS: Array<{ value: OwnershipScope; label: string }> = [
   { value: "all", label: "全部客户" },
   { value: "mine", label: "我的" },
   { value: "sales", label: "销售部" },
+  { value: "inside_sales", label: "电销部" },
   { value: "subordinates", label: "下属" },
 ];
 const ownershipScopeTabs = computed(() => {
@@ -101,6 +104,18 @@ const ownershipScopeTabs = computed(() => {
   }
   return ALL_OWNERSHIP_SCOPE_TABS;
 });
+const showOwnershipTabs = computed(() => !isInsideSales.value);
+
+const ownershipScopeDotClassMap: Record<OwnershipScope, string> = {
+  all: "bg-[#ff4d6d]",
+  mine: "bg-[#ef4444]",
+  sales: "bg-[#f97316]",
+  inside_sales: "bg-[#0ea5a4]",
+  subordinates: "bg-[#f59e0b]",
+};
+
+const getOwnershipScopeDotClass = (scope: OwnershipScope) =>
+  ownershipScopeDotClassMap[scope];
 
 // 如果当前选中的 tab 因无下属而被移除，自动重置为"全部"
 watch(ownershipScopeTabs, (tabs) => {
@@ -179,37 +194,54 @@ const totalPages = computed(() =>
   Math.max(1, Math.ceil(totalCount.value / pageSize.value)),
 );
 const isAdmin = computed(() => isAdminUser(authStore.user));
+const isInsideSales = computed(() => isInsideSalesUser(authStore.user));
+const currentUserId = computed(() => Number(authStore.user?.id || 0));
 const followUpDropDays = ref(30);
 const dealDropDays = ref(90);
 const countdownNowMs = ref(Date.now());
 let countdownTimer: number | null = null;
+const isPoolCustomer = (customer: Customer) => {
+  if (customer.isInPool === true) return true;
+  if (customer.ownerUserId === null || customer.ownerUserId === undefined)
+    return true;
+  return customer.status === "pool" || customer.status === "公海";
+};
+const canDiscardCustomer = (customer: Customer) =>
+  !isPoolCustomer(customer) &&
+  currentUserId.value > 0 &&
+  Number(customer.ownerUserId || 0) === currentUserId.value;
+const selectableCustomerIds = computed(() =>
+  customers.value
+    .filter((customer) => canDiscardCustomer(customer))
+    .map((customer) => customer.id),
+);
 const allPageSelected = computed(
   () =>
-    customers.value.length > 0 &&
-    customers.value.every((customer) =>
-      selectedIds.value.includes(customer.id),
-    ),
+    selectableCustomerIds.value.length > 0 &&
+    selectableCustomerIds.value.every((id) => selectedIds.value.includes(id)),
 );
 const somePageSelected = computed(
   () =>
-    customers.value.some((customer) =>
-      selectedIds.value.includes(customer.id),
-    ) && !allPageSelected.value,
+    selectableCustomerIds.value.some((id) => selectedIds.value.includes(id)) &&
+    !allPageSelected.value,
 );
 const selectedCustomers = computed(() =>
-  customers.value.filter((customer) => selectedIds.value.includes(customer.id)),
+  customers.value.filter(
+    (customer) => selectedIds.value.includes(customer.id) && canDiscardCustomer(customer),
+  ),
 );
 
 const toggleAllPage = (val: boolean | "indeterminate") => {
   const checked = val === true;
   if (checked) {
-    selectedIds.value = customers.value.map((customer) => customer.id);
+    selectedIds.value = [...selectableCustomerIds.value];
     return;
   }
   selectedIds.value = [];
 };
 
 const toggleRow = (id: number, val: boolean | "indeterminate") => {
+  if (!selectableCustomerIds.value.includes(id)) return;
   const checked = val === true;
   if (checked) {
     if (!selectedIds.value.includes(id)) {
@@ -220,13 +252,6 @@ const toggleRow = (id: number, val: boolean | "indeterminate") => {
   selectedIds.value = selectedIds.value.filter((item) => item !== id);
 };
 
-const isPoolCustomer = (customer: Customer) => {
-  if (customer.isInPool === true) return true;
-  if (customer.ownerUserId === null || customer.ownerUserId === undefined)
-    return true;
-  return customer.status === "pool" || customer.status === "公海";
-};
-
 const renderOwner = (customer: Customer) => {
   if (isPoolCustomer(customer)) return "公海";
   return (
@@ -234,6 +259,30 @@ const renderOwner = (customer: Customer) => {
     (customer.ownerUserId ? `用户 #${customer.ownerUserId}` : "未分配")
   );
 };
+
+const isPendingConvertCustomer = (customer: Customer) =>
+  (() => {
+    const insideSalesUserId = Number(customer.insideSalesUserId || 0);
+    if (insideSalesUserId <= 0 || customer.convertedAt) return false;
+    if (isAdmin.value) {
+      if (ownershipScope.value !== "inside_sales") return false;
+      return (
+        isPoolCustomer(customer) ||
+        Number(customer.ownerUserId || 0) === insideSalesUserId
+      );
+    }
+    if (
+      !isInsideSales.value ||
+      currentUserId.value <= 0 ||
+      insideSalesUserId !== currentUserId.value
+    ) {
+      return false;
+    }
+    return (
+      isPoolCustomer(customer) ||
+      Number(customer.ownerUserId || 0) === insideSalesUserId
+    );
+  })();
 
 const getPrimaryPhone = (customer: Customer) => {
   if (!customer.phones?.length) return "-";
@@ -482,6 +531,7 @@ const handleOperationFollowUpSubmit = () => {
 };
 
 const handleDiscard = async (customer: Customer) => {
+  if (isPoolCustomer(customer)) return;
   const confirmed = await confirmDialog.value?.open({
     title: "丢弃客户到公海",
     description: `确定要将客户「${customer.name}」丢弃到公海吗？丢弃后该客户将不再归属于你。`,
@@ -553,6 +603,19 @@ const handleBatchDiscard = async () => {
 
 const refreshList = () => {
   fetchCustomers();
+};
+
+const handleConvert = async (customer: Customer) => {
+  convertingId.value = customer.id;
+  try {
+    await convertCustomer(customer.id);
+    toast.success("转化成功，客户已按原分配规则分配");
+    await fetchCustomers();
+  } catch (err) {
+    toast.error(getRequestErrorMessage(err, "转化失败"));
+  } finally {
+    convertingId.value = null;
+  }
 };
 
 const handleOwnershipScopeChange = (scope: OwnershipScope) => {
@@ -641,7 +704,11 @@ const handleSubmit = async (payload: CustomerFormPayload) => {
     dialogOpen.value = false;
     await fetchCustomers();
     toast.success(
-      dialogMode.value === "create" ? "客户添加成功" : "客户更新成功",
+      dialogMode.value === "create"
+        ? isInsideSales.value
+          ? "客户添加成功，已自动分配负责人"
+          : "客户添加成功"
+        : "客户更新成功",
     );
   } catch (err) {
     toast.error(getRequestErrorMessage(err, "保存失败"));
@@ -818,23 +885,41 @@ onUnmounted(() => {
         </div>
       </CardHeader>
       <CardContent class="pt-4">
-        <div class="mb-4 w-full overflow-x-auto pb-1">
+        <div v-if="showOwnershipTabs" class="mb-4 w-full overflow-x-auto pb-1">
           <div
-            class="inline-flex h-9 min-w-full md:min-w-fit items-center justify-start md:justify-center rounded-lg bg-muted p-1 text-muted-foreground"
+            class="inline-flex w-max min-w-full items-center gap-1.5  p-1.5"
           >
             <button
               v-for="tab in ownershipScopeTabs"
               :key="tab.value"
               type="button"
-              class="inline-flex flex-1 md:flex-none items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              :aria-pressed="ownershipScope === tab.value"
+              class="group inline-flex min-h-[26px] min-w-[84px] flex-none items-center justify-start gap-2.5 whitespace-nowrap rounded-[12px] border px-3.5 py-2.5 text-left ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               :class="
                 ownershipScope === tab.value
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'hover:bg-background/50 hover:text-foreground'
+                  ? 'border-slate-900 bg-slate-900 text-white shadow-[0_12px_20px_-18px_rgba(15,23,42,0.9)]'
+                  : 'border-slate-200 bg-white text-slate-600 shadow-[0_6px_14px_-14px_rgba(15,23,42,0.45)] hover:-translate-y-0.5 hover:border-slate-300 hover:text-slate-900 hover:shadow-[0_12px_20px_-18px_rgba(15,23,42,0.4)]'
               "
               @click="handleOwnershipScopeChange(tab.value)"
             >
-              {{ tab.label }}
+              <span
+                class="h-2.5 w-2.5 shrink-0 rounded-full transition-all duration-200"
+                :class="
+                  ownershipScope === tab.value
+                    ? `${getOwnershipScopeDotClass(tab.value)} shadow-[0_0_0_4px_rgba(255,255,255,0.08)]`
+                    : `${getOwnershipScopeDotClass(tab.value)} shadow-[0_0_0_3px_rgba(248,250,252,1)]`
+                "
+              />
+              <span
+                class="text-[14px] font-semibold leading-none tracking-[-0.02em]"
+                :class="
+                  ownershipScope === tab.value
+                    ? 'text-white'
+                    : 'text-slate-600 group-hover:text-slate-900'
+                "
+              >
+                {{ tab.label }}
+              </span>
             </button>
           </div>
         </div>
@@ -899,7 +984,9 @@ onUnmounted(() => {
                       "
                       class="border-black/70 data-[state=checked]:border-black data-[state=checked]:bg-black data-[state=checked]:text-white data-[state=indeterminate]:border-black data-[state=indeterminate]:bg-black data-[state=indeterminate]:text-white focus-visible:ring-black/30"
                       :disabled="
-                        batchDiscarding || loading || customers.length === 0
+                        batchDiscarding ||
+                        loading ||
+                        selectableCustomerIds.length === 0
                       "
                       aria-label="全选客户"
                       @update:checked="toggleAllPage"
@@ -923,9 +1010,9 @@ onUnmounted(() => {
                 <TableHead>区县</TableHead>
                 <TableHead>备注</TableHead>
                 <TableHead
-                  class="sticky right-0 z-30 w-[180px] min-w-[180px] border-l border-border bg-muted/95 text-center"
+                  class="sticky right-0 z-30 w-[180px] min-w-[180px] bg-muted/95 text-center border-l border-border before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                 >
-                  <div class="inline-flex items-center justify-center gap-1">
+                  <div class="inline-flex w-full items-center justify-end gap-1">
                     <SquarePen class="h-3.5 w-3.5 text-muted-foreground" />
                     <span>操作</span>
                   </div>
@@ -958,8 +1045,10 @@ onUnmounted(() => {
                         :checked="selectedIds.includes(customer.id)"
                         class="border-black/70 data-[state=checked]:border-black data-[state=checked]:bg-black data-[state=checked]:text-white data-[state=indeterminate]:border-black data-[state=indeterminate]:bg-black data-[state=indeterminate]:text-white focus-visible:ring-black/30"
                         :disabled="
+                          !canDiscardCustomer(customer) ||
                           batchDiscarding ||
                           discardingId === customer.id ||
+                          convertingId === customer.id ||
                           submitting ||
                           salesOrderSubmitting
                         "
@@ -1007,6 +1096,14 @@ onUnmounted(() => {
                   <TableCell class="font-medium">
                     <span class="block mb-2">{{ customer.name }}</span>
                     <Badge
+                      v-if="isPendingConvertCustomer(customer)"
+                      variant="secondary"
+                      class="mt-1 w-fit whitespace-nowrap bg-amber-100 text-amber-700 hover:bg-amber-100"
+                    >
+                      待转化
+                    </Badge>
+                    <Badge
+                      v-else
                       class="mt-1 w-fit whitespace-nowrap"
                       :variant="
                         customer.dealStatus === 'done' ? 'default' : 'secondary'
@@ -1078,9 +1175,12 @@ onUnmounted(() => {
                     </p>
                   </TableCell>
                   <TableCell
-                    class="sticky right-0 z-10 w-[180px] min-w-[180px] border-l border-border bg-background text-center"
+                    class="sticky right-0 z-10 w-[180px] min-w-[180px] border-l border-border bg-background text-center before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                   >
-                    <div class="grid grid-cols-2 gap-1.5">
+                    <div
+                      v-if="isPendingConvertCustomer(customer)"
+                      class="ml-auto grid w-fit grid-cols-2 gap-1.5"
+                    >
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1088,6 +1188,48 @@ onUnmounted(() => {
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
+                          convertingId === customer.id ||
+                          submitting
+                        "
+                        @click="handleConvert(customer)"
+                      >
+                        <Loader2
+                          v-if="convertingId === customer.id"
+                          class="h-4 w-4 flex-shrink-0 animate-spin"
+                        />
+                        <span>{{
+                          convertingId === customer.id ? "转化中" : "转化"
+                        }}</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="w-full justify-start gap-2"
+                        :disabled="
+                          batchDiscarding ||
+                          discardingId === customer.id ||
+                          convertingId === customer.id ||
+                          submitting
+                        "
+                        @click="openEdit(customer)"
+                      >
+                        <SquarePen class="h-4 w-4 flex-shrink-0" />
+                        <span>编辑</span>
+                      </Button>
+                    </div>
+                    <div
+                      v-else
+                      class="ml-auto flex w-fit flex-wrap justify-end gap-1.5"
+                    >
+                      <Button
+                        v-if="!isInsideSales"
+                        variant="ghost"
+                        size="sm"
+                        class="justify-start gap-2"
+                        :disabled="
+                          batchDiscarding ||
+                          discardingId === customer.id ||
+                          convertingId === customer.id ||
                           submitting ||
                           salesOrderLoadingCustomerId === customer.id ||
                           salesOrderSubmitting
@@ -1107,10 +1249,11 @@ onUnmounted(() => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        class="w-full justify-start gap-2"
+                        class="justify-start gap-2"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
+                          convertingId === customer.id ||
                           submitting
                         "
                         @click="openFollowUp(customer)"
@@ -1121,10 +1264,11 @@ onUnmounted(() => {
                         v-if="isAdmin"
                         variant="ghost"
                         size="sm"
-                        class="w-full justify-start gap-2"
+                        class="justify-start gap-2"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
+                          convertingId === customer.id ||
                           submitting
                         "
                         @click="openOperationFollowUp(customer)"
@@ -1134,10 +1278,11 @@ onUnmounted(() => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        class="w-full justify-start gap-2"
+                        class="justify-start gap-2"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
+                          convertingId === customer.id ||
                           submitting
                         "
                         @click="openEdit(customer)"
@@ -1146,12 +1291,14 @@ onUnmounted(() => {
                         <span>编辑</span>
                       </Button>
                       <Button
+                        v-if="canDiscardCustomer(customer)"
                         variant="ghost"
                         size="sm"
-                        class="w-full justify-start gap-2 text-destructive hover:text-destructive"
+                        class="justify-start gap-2 text-destructive hover:text-destructive"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
+                          convertingId === customer.id ||
                           submitting
                         "
                         @click="handleDiscard(customer)"

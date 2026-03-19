@@ -4,6 +4,7 @@ import (
 	"backend/internal/service"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -13,12 +14,14 @@ type UserHandler struct {
 	service service.UserService
 }
 
+var userMobileRegex = regexp.MustCompile(`^1\d{10}$`)
+
 type CreateUserRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=32" example:"zhangsan"`
 	Password string `json:"password" binding:"required,min=6,max=64" example:"123456"`
 	Nickname string `json:"nickname" example:"张三"`
 	Email    string `json:"email" example:"zhangsan@example.com"`
-	Mobile   string `json:"mobile" example:"13800138000"`
+	Mobile   string `json:"mobile" binding:"required" example:"13800138000"`
 	Avatar   string `json:"avatar"`
 	RoleID   int64  `json:"roleId" binding:"required" example:"1"`
 	ParentID *int64 `json:"parentId"`
@@ -29,7 +32,7 @@ type UpdateUserRequest struct {
 	Password string `json:"password"`
 	Nickname string `json:"nickname"`
 	Email    string `json:"email"`
-	Mobile   string `json:"mobile"`
+	Mobile   string `json:"mobile" binding:"required"`
 	Avatar   string `json:"avatar"`
 	RoleID   int64  `json:"roleId" binding:"required"`
 	ParentID *int64 `json:"parentId"`
@@ -115,6 +118,10 @@ func (h *UserHandler) Create(c *gin.Context) {
 		ErrorWithDetail(c, http.StatusBadRequest, 40004, "参数错误", err)
 		return
 	}
+	if !userMobileRegex.MatchString(req.Mobile) {
+		Error(c, http.StatusBadRequest, 40004, "参数错误: 手机号必须为11位数字")
+		return
+	}
 	user, err := h.service.Create(c.Request.Context(), service.CreateUserInput{
 		Username: req.Username,
 		Password: req.Password,
@@ -159,6 +166,10 @@ func (h *UserHandler) Update(c *gin.Context) {
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		ErrorWithDetail(c, http.StatusBadRequest, 40004, "参数错误", err)
+		return
+	}
+	if !userMobileRegex.MatchString(req.Mobile) {
+		Error(c, http.StatusBadRequest, 40004, "参数错误: 手机号必须为11位数字")
 		return
 	}
 	user, err := h.service.Update(c.Request.Context(), id, service.UpdateUserInput{

@@ -16,11 +16,15 @@ var (
 	ErrCustomerNotInPool                    = errors.New("customer not in pool")
 	ErrCustomerAlreadyInPool                = errors.New("customer already in pool")
 	ErrCustomerNotOwned                     = errors.New("customer not owned")
+	ErrCustomerConvertForbidden             = errors.New("customer convert forbidden")
 	ErrCustomerNameExists                   = errors.New("customer name already exists")
-	ErrCustomerLegalExists                  = errors.New("customer legal name already exists")
 	ErrCustomerWeixinExists                 = errors.New("customer weixin already exists")
 	ErrCustomerPhoneExists                  = errors.New("customer phone already exists")
 	ErrCustomerNameRequired                 = errors.New("customer name is required")
+	ErrCustomerLegalNameRequired            = errors.New("customer legal name is required")
+	ErrCustomerContactNameRequired          = errors.New("customer contact name is required")
+	ErrCustomerLegalNameTooShort            = errors.New("customer legal name is too short")
+	ErrCustomerContactNameTooShort          = errors.New("customer contact name is too short")
 	ErrCustomerLimitExceeded                = errors.New("customer limit exceeded")
 	ErrCustomerSameDepartmentClaimForbidden = errors.New("same department customer cannot be claimed")
 	ErrCustomerNoOutsideSalesAvailable      = errors.New("no outside sales available")
@@ -58,6 +62,7 @@ type CustomerService interface {
 	ClaimCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 	ReleaseCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 	TransferCustomer(ctx context.Context, input model.CustomerTransferInput) (*model.Customer, error)
+	ConvertCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 
 	// Phone management
 	AddPhone(ctx context.Context, phone *model.CustomerPhone) error
@@ -74,11 +79,17 @@ type CustomerClaimFreezeError struct {
 	FreezeDays  int
 	Remaining   time.Duration
 	FrozenUntil time.Time
+	BlockType   string
 }
 
 func (e *CustomerClaimFreezeError) Error() string {
 	return "customer claim is frozen"
 }
+
+const (
+	customerClaimFreezeBlockTypeSelf       = "self"
+	customerClaimFreezeBlockTypeDepartment = "department"
+)
 
 type customerService struct {
 	repo            repository.CustomerRepository
@@ -130,9 +141,11 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 
 	role := strings.TrimSpace(filter.ActorRole)
 	isAdmin := isRole(role, "admin", "管理员")
-	// Inside-sales staff should also see customers they created and assigned to outside-sales.
 	if isInsideSalesRole(role) {
-		filter.IncludeCreatorScope = true
+		filter.AllowedOwnerUserIDs = []int64{filter.ViewerID}
+		filter.AllowedInsideSalesUserIDs = []int64{filter.ViewerID}
+		filter.IncludePendingConvertScope = true
+		return filter, nil
 	}
 	scope := normalizeOwnershipScope(filter.OwnershipScope)
 
@@ -153,6 +166,23 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 		filter.AllowedOwnerUserIDs = []int64{filter.ViewerID}
 	case "subordinates":
 		filter.AllowedOwnerUserIDs = directSubordinateIDs
+	case "inside_sales":
+		insideSalesIDs, err := s.repo.ListUserIDsByRoleNames(ctx, []string{
+			roleSalesInside, "sale_inside", "Inside销售", "inside销售", "电销员工",
+		})
+		if err != nil {
+			return model.CustomerListFilter{}, err
+		}
+		insideSalesIDs = uniquePositiveInt64(insideSalesIDs)
+		filter.IncludePoolInMyScope = true
+		filter.IncludePendingConvertScope = true
+		if isAdmin {
+			filter.AllowedOwnerUserIDs = insideSalesIDs
+			filter.AllowedInsideSalesUserIDs = insideSalesIDs
+			break
+		}
+		filter.AllowedInsideSalesUserIDs = intersectPositiveInt64(selfAndSubordinates, insideSalesIDs)
+		filter.AllowedOwnerUserIDs = filter.AllowedInsideSalesUserIDs
 	case "sales":
 		salesIDs, err := s.repo.ListUserIDsByRoleNames(ctx, []string{
 			"sales_director", "sales_manager", "sales_staff", roleSalesInside, roleSalesOutside,
@@ -176,6 +206,14 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 			return filter, nil
 		}
 		filter.AllowedOwnerUserIDs = selfAndSubordinates
+	}
+
+	if scope == "inside_sales" {
+		if len(filter.AllowedInsideSalesUserIDs) == 0 {
+			filter.AllowedInsideSalesUserIDs = []int64{-1}
+			filter.AllowedOwnerUserIDs = []int64{-1}
+		}
+		return filter, nil
 	}
 
 	if len(filter.AllowedOwnerUserIDs) == 0 {
@@ -291,6 +329,8 @@ func normalizeOwnershipScope(raw string) string {
 		return "mine"
 	case "sales", "sales_department", "sales-department", "salesdept", "销售", "销售部":
 		return "sales"
+	case "inside_sales", "inside-sales", "inside_sales_department", "telemarketing", "电销", "电销部":
+		return "inside_sales"
 	case "subordinate", "subordinates", "team", "下属", "团队":
 		return "subordinates"
 	default:
@@ -364,7 +404,7 @@ func (s *customerService) CreateCustomer(ctx context.Context, input model.Custom
 	if err != nil {
 		return nil, err
 	}
-	normalized, err = s.applyCreateOwnerAssignment(ctx, normalized)
+	normalized, err = s.applyCreateOwnershipPolicy(ctx, normalized)
 	if err != nil {
 		return nil, err
 	}
@@ -375,9 +415,6 @@ func (s *customerService) CreateCustomer(ctx context.Context, input model.Custom
 	}
 	if result.NameExists {
 		return nil, ErrCustomerNameExists
-	}
-	if result.LegalNameExists {
-		return nil, ErrCustomerLegalExists
 	}
 	if result.WeixinExists {
 		return nil, ErrCustomerWeixinExists
@@ -397,8 +434,8 @@ func (s *customerService) CreateCustomer(ctx context.Context, input model.Custom
 	return customer, nil
 }
 
-func (s *customerService) applyCreateOwnerAssignment(ctx context.Context, input model.CustomerCreateInput) (model.CustomerCreateInput, error) {
-	if strings.TrimSpace(input.Status) != model.CustomerStatusOwned || input.OperatorUserID <= 0 {
+func (s *customerService) applyCreateOwnershipPolicy(ctx context.Context, input model.CustomerCreateInput) (model.CustomerCreateInput, error) {
+	if input.OperatorUserID <= 0 {
 		return input, nil
 	}
 
@@ -407,13 +444,24 @@ func (s *customerService) applyCreateOwnerAssignment(ctx context.Context, input 
 		return model.CustomerCreateInput{}, err
 	}
 
-	switch {
-	case isInsideSalesRole(operatorRole):
-		ownerUserID, err := pickBalancedSalesOwnerUserID(ctx, s.repo, input.OperatorUserID)
+	if isInsideSalesRole(operatorRole) {
+		ownerUserID, err := s.resolveConvertedCustomerOwnerUserID(ctx, input.OperatorUserID, input.OperatorUserID, operatorRole)
 		if err != nil {
 			return model.CustomerCreateInput{}, err
 		}
+		now := time.Now().UTC()
+		insideSalesUserID := input.OperatorUserID
+		input.Status = model.CustomerStatusOwned
 		input.OwnerUserID = &ownerUserID
+		input.InsideSalesUserID = &insideSalesUserID
+		input.ConvertedAt = &now
+		return input, nil
+	}
+	if strings.TrimSpace(input.Status) != model.CustomerStatusOwned {
+		return input, nil
+	}
+
+	switch {
 	case isOutsideSalesRole(operatorRole):
 		ownerUserID := input.OperatorUserID
 		input.OwnerUserID = &ownerUserID
@@ -434,9 +482,6 @@ func (s *customerService) UpdateCustomer(ctx context.Context, customerID int64, 
 	}
 	if result.NameExists {
 		return nil, ErrCustomerNameExists
-	}
-	if result.LegalNameExists {
-		return nil, ErrCustomerLegalExists
 	}
 	if result.WeixinExists {
 		return nil, ErrCustomerWeixinExists
@@ -460,6 +505,7 @@ func (s *customerService) CheckUnique(ctx context.Context, input model.CustomerU
 		ExcludeCustomerID: input.ExcludeCustomerID,
 		Name:              strings.TrimSpace(input.Name),
 		LegalName:         strings.TrimSpace(input.LegalName),
+		ContactName:       strings.TrimSpace(input.ContactName),
 		Weixin:            strings.TrimSpace(input.Weixin),
 		Phones:            make([]string, 0, len(input.Phones)),
 	}
@@ -494,20 +540,35 @@ func (s *customerService) ClaimCustomer(ctx context.Context, customerID, operato
 				return nil, freezeErr
 			}
 		}
-		sameDepartment, err := s.isSameDepartment(ctx, operatorUserID, *customer.DropUserID)
-		if err != nil {
-			return nil, err
-		}
-		if sameDepartment {
-			return nil, ErrCustomerSameDepartmentClaimForbidden
-		}
+	}
+	departmentFreezeErr, err := s.buildDepartmentClaimFreezeError(ctx, customerID, operatorUserID)
+	if err != nil {
+		return nil, err
+	}
+	if departmentFreezeErr != nil {
+		return nil, departmentFreezeErr
 	}
 
-	if err := s.validateCustomerLimitByOwner(ctx, operatorUserID); err != nil {
+	operatorRole, err := s.repo.GetUserRoleName(ctx, operatorUserID)
+	if err != nil {
 		return nil, err
 	}
 
-	customer, err = s.repo.Claim(ctx, customerID, operatorUserID)
+	claimOwnerUserID := operatorUserID
+	var insideSalesUserID *int64
+	if isInsideSalesRole(operatorRole) {
+		ownerUserID, err := s.resolveConvertedCustomerOwnerUserID(ctx, operatorUserID, operatorUserID, operatorRole)
+		if err != nil {
+			return nil, err
+		}
+		claimOwnerUserID = ownerUserID
+		insideSalesUserID = &operatorUserID
+	}
+	if err := s.validateCustomerLimitByOwner(ctx, claimOwnerUserID); err != nil {
+		return nil, err
+	}
+
+	customer, err = s.repo.Claim(ctx, customerID, claimOwnerUserID, operatorUserID, insideSalesUserID)
 	if err == nil {
 		s.logActivity(ctx, operatorUserID, model.ActionClaimCustomer, model.TargetTypeCustomer, customer.ID, customer.Name, "")
 		return customer, nil
@@ -519,6 +580,44 @@ func (s *customerService) ClaimCustomer(ctx context.Context, customerID, operato
 		return nil, ErrCustomerNotInPool
 	}
 	return nil, err
+}
+
+func (s *customerService) buildDepartmentClaimFreezeError(ctx context.Context, customerID, operatorUserID int64) (*CustomerClaimFreezeError, error) {
+	if customerID <= 0 || operatorUserID <= 0 {
+		return nil, nil
+	}
+
+	operatorAnchorUserID, err := resolveSalesDirectorUserID(ctx, s.repo, operatorUserID)
+	if err != nil {
+		return nil, err
+	}
+	if operatorAnchorUserID <= 0 {
+		return nil, nil
+	}
+
+	now := time.Now().UTC()
+	blockedUntil, err := s.repo.GetActiveBlockedUntilByDepartmentAnchor(ctx, customerID, operatorAnchorUserID, now)
+	if err != nil {
+		return nil, err
+	}
+	if blockedUntil == nil || !blockedUntil.After(now) {
+		return nil, nil
+	}
+
+	freezeDays, err := s.getClaimFreezeDays()
+	if err != nil {
+		return nil, err
+	}
+	if freezeDays <= 0 {
+		freezeDays = defaultClaimFreezeDays
+	}
+
+	return &CustomerClaimFreezeError{
+		FreezeDays:  freezeDays,
+		Remaining:   blockedUntil.Sub(now),
+		FrozenUntil: *blockedUntil,
+		BlockType:   customerClaimFreezeBlockTypeDepartment,
+	}, nil
 }
 
 func (s *customerService) isSameDepartment(ctx context.Context, leftUserID, rightUserID int64) (bool, error) {
@@ -575,6 +674,73 @@ func (s *customerService) TransferCustomer(ctx context.Context, input model.Cust
 	}
 	if errors.Is(err, repository.ErrCustomerNotOwned) {
 		return nil, ErrCustomerNotOwned
+	}
+	return nil, err
+}
+
+func (s *customerService) ConvertCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error) {
+	customer, err := s.repo.FindByID(ctx, customerID)
+	if err != nil {
+		if errors.Is(err, repository.ErrCustomerNotFound) {
+			return nil, ErrCustomerNotFound
+		}
+		return nil, err
+	}
+	operatorRole, err := s.repo.GetUserRoleName(ctx, operatorUserID)
+	if err != nil {
+		return nil, err
+	}
+	isAdmin := isRole(operatorRole, "admin", "管理员")
+
+	associatedInsideSalesUserID := int64(0)
+	if customer.InsideSalesUserID != nil && *customer.InsideSalesUserID > 0 {
+		associatedInsideSalesUserID = *customer.InsideSalesUserID
+	} else if customer.OwnerUserID != nil && *customer.OwnerUserID > 0 {
+		ownerRole, roleErr := s.repo.GetUserRoleName(ctx, *customer.OwnerUserID)
+		if roleErr != nil {
+			return nil, roleErr
+		}
+		if isInsideSalesRole(ownerRole) {
+			associatedInsideSalesUserID = *customer.OwnerUserID
+		}
+	}
+	if associatedInsideSalesUserID <= 0 && customer.CreateUserID > 0 {
+		associatedInsideSalesUserID = customer.CreateUserID
+	}
+	if associatedInsideSalesUserID <= 0 {
+		return nil, ErrCustomerConvertForbidden
+	}
+	if !isAdmin && associatedInsideSalesUserID != operatorUserID {
+		return nil, ErrCustomerConvertForbidden
+	}
+	if customer.ConvertedAt != nil {
+		return nil, ErrCustomerConvertForbidden
+	}
+	if len(customer.HistoricalOwnerIDs) > 0 && customer.ConvertedAt == nil {
+		return nil, ErrCustomerConvertForbidden
+	}
+	if customer.OwnerUserID != nil && *customer.OwnerUserID > 0 && *customer.OwnerUserID != associatedInsideSalesUserID {
+		return nil, ErrCustomerConvertForbidden
+	}
+
+	ownerUserID, err := s.resolveConvertedCustomerOwnerUserID(ctx, operatorUserID, associatedInsideSalesUserID, operatorRole)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.validateCustomerLimitByOwner(ctx, ownerUserID); err != nil {
+		return nil, err
+	}
+
+	customer, err = s.repo.Convert(ctx, customerID, ownerUserID, operatorUserID)
+	if err == nil {
+		s.logActivity(ctx, operatorUserID, model.ActionTransferCustomer, model.TargetTypeCustomer, customer.ID, customer.Name, "")
+		return customer, nil
+	}
+	if errors.Is(err, repository.ErrCustomerNotFound) {
+		return nil, ErrCustomerNotFound
+	}
+	if errors.Is(err, repository.ErrCustomerNotInPool) {
+		return nil, ErrCustomerNotInPool
 	}
 	return nil, err
 }
@@ -663,6 +829,18 @@ func normalizeCreateInput(input model.CustomerCreateInput) (model.CustomerCreate
 	if normalized.Name == "" {
 		return model.CustomerCreateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerNameRequired
 	}
+	if normalized.LegalName == "" {
+		return model.CustomerCreateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerLegalNameRequired
+	}
+	if normalized.ContactName == "" {
+		return model.CustomerCreateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerContactNameRequired
+	}
+	if len([]rune(normalized.LegalName)) < 2 {
+		return model.CustomerCreateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerLegalNameTooShort
+	}
+	if len([]rune(normalized.ContactName)) < 2 {
+		return model.CustomerCreateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerContactNameTooShort
+	}
 
 	phoneValues := make([]string, 0, len(normalizedPhones))
 	for _, phone := range normalizedPhones {
@@ -670,10 +848,11 @@ func normalizeCreateInput(input model.CustomerCreateInput) (model.CustomerCreate
 	}
 
 	return normalized, model.CustomerUniqueCheckInput{
-		Name:      normalized.Name,
-		LegalName: normalized.LegalName,
-		Weixin:    normalized.Weixin,
-		Phones:    phoneValues,
+		Name:        normalized.Name,
+		LegalName:   normalized.LegalName,
+		ContactName: normalized.ContactName,
+		Weixin:      normalized.Weixin,
+		Phones:      phoneValues,
 	}, nil
 }
 
@@ -732,6 +911,7 @@ func (s *customerService) buildClaimFreezeError(customer *model.Customer) (*Cust
 		FreezeDays:  freezeDays,
 		Remaining:   remaining,
 		FrozenUntil: frozenUntil,
+		BlockType:   customerClaimFreezeBlockTypeSelf,
 	}, nil
 }
 
@@ -791,6 +971,32 @@ func resolveOwnedCustomerOwner(input model.CustomerCreateInput) (int64, bool) {
 	return 0, false
 }
 
+func (s *customerService) resolveConvertedCustomerOwnerUserID(ctx context.Context, operatorUserID, createUserID int64, operatorRole string) (int64, error) {
+	if operatorUserID <= 0 {
+		return 0, ErrCustomerConvertForbidden
+	}
+
+	assignmentUserID := operatorUserID
+	assignmentRole := operatorRole
+	if isRole(operatorRole, "admin", "管理员") && createUserID > 0 {
+		assignmentUserID = createUserID
+		roleName, err := s.repo.GetUserRoleName(ctx, createUserID)
+		if err != nil {
+			return 0, err
+		}
+		assignmentRole = roleName
+	}
+
+	switch {
+	case isInsideSalesRole(assignmentRole):
+		return pickBalancedSalesOwnerUserID(ctx, s.repo, assignmentUserID)
+	case isOutsideSalesRole(assignmentRole):
+		return assignmentUserID, nil
+	default:
+		return 0, ErrCustomerConvertForbidden
+	}
+}
+
 func normalizeUpdateInput(customerID int64, input model.CustomerUpdateInput) (model.CustomerUpdateInput, model.CustomerUniqueCheckInput, error) {
 	normalizedPhones, err := normalizePhones(input.Phones)
 	if err != nil {
@@ -815,6 +1021,18 @@ func normalizeUpdateInput(customerID int64, input model.CustomerUpdateInput) (mo
 	if normalized.Name == "" {
 		return model.CustomerUpdateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerNameRequired
 	}
+	if normalized.LegalName == "" {
+		return model.CustomerUpdateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerLegalNameRequired
+	}
+	if normalized.ContactName == "" {
+		return model.CustomerUpdateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerContactNameRequired
+	}
+	if len([]rune(normalized.LegalName)) < 2 {
+		return model.CustomerUpdateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerLegalNameTooShort
+	}
+	if len([]rune(normalized.ContactName)) < 2 {
+		return model.CustomerUpdateInput{}, model.CustomerUniqueCheckInput{}, ErrCustomerContactNameTooShort
+	}
 
 	phoneValues := make([]string, 0, len(normalizedPhones))
 	for _, phone := range normalizedPhones {
@@ -824,7 +1042,6 @@ func normalizeUpdateInput(customerID int64, input model.CustomerUpdateInput) (mo
 	return normalized, model.CustomerUniqueCheckInput{
 		ExcludeCustomerID: &excludeID,
 		Name:              normalized.Name,
-		LegalName:         normalized.LegalName,
 		Weixin:            normalized.Weixin,
 		Phones:            phoneValues,
 	}, nil

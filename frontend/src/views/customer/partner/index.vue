@@ -529,7 +529,7 @@ onActivated(fetchCustomers);
                 <TableHead>下次跟进时间</TableHead>
                 <TableHead>备注</TableHead>
                 <TableHead
-                  class="sticky right-0 z-30 w-[180px] min-w-[180px] border-l border-border bg-muted/95 text-center"
+                  class="sticky right-0 z-30 w-[180px] min-w-[180px] border-l border-border bg-muted/95 text-center before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                   >操作</TableHead
                 >
               </TableRow>
@@ -606,7 +606,7 @@ onActivated(fetchCustomers);
                     </p>
                   </TableCell>
                   <TableCell
-                    class="sticky right-0 z-10 w-[180px] min-w-[180px] border-l border-border bg-background text-center"
+                    class="sticky right-0 z-10 w-[180px] min-w-[180px] border-l border-border bg-background text-center before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                   >
                     <div class="grid gap-1.5 grid-cols-2">
                       <Button

@@ -79,6 +79,21 @@ func getMySQLMigrations() []Migration {
 			Name:    "seed_customer_rule_settings",
 			Up:      upSeedCustomerRuleSettingsMySQL,
 		},
+		{
+			Version: 2026031801,
+			Name:    "add_customer_owner_log_reason_and_content",
+			Up:      upAddCustomerOwnerLogReasonAndContentMySQL,
+		},
+		{
+			Version: 2026031802,
+			Name:    "add_customer_inside_sales_fields",
+			Up:      upAddCustomerInsideSalesFieldsMySQL,
+		},
+		{
+			Version: 2026031901,
+			Name:    "add_customer_owner_log_claim_block_fields",
+			Up:      upAddCustomerOwnerLogClaimBlockFieldsMySQL,
+		},
 	}
 }
 
@@ -118,6 +133,8 @@ func upCreateBaseSchemaMySQL(tx *gorm.DB) error {
 			status VARCHAR(32) NOT NULL DEFAULT 'pool',
 			deal_status VARCHAR(32) NOT NULL DEFAULT 'undone',
 			owner_user_id BIGINT NULL,
+			inside_sales_user_id BIGINT NULL,
+			converted_at DATETIME NULL,
 			customer_level_id INT NOT NULL DEFAULT 0,
 			customer_source_id INT NOT NULL DEFAULT 0,
 			province INT NOT NULL DEFAULT 0,
@@ -140,7 +157,8 @@ func upCreateBaseSchemaMySQL(tx *gorm.DB) error {
 			delete_time BIGINT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (owner_user_id) REFERENCES users(id)
+			FOREIGN KEY (owner_user_id) REFERENCES users(id),
+			FOREIGN KEY (inside_sales_user_id) REFERENCES users(id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS customer_owner_logs (
 			id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -148,6 +166,10 @@ func upCreateBaseSchemaMySQL(tx *gorm.DB) error {
 			from_owner_user_id BIGINT NULL,
 			to_owner_user_id BIGINT NULL,
 			action VARCHAR(32) NOT NULL,
+			reason VARCHAR(64) NOT NULL DEFAULT '',
+			content TEXT NULL,
+			blocked_department_anchor_user_id BIGINT NULL,
+			blocked_until DATETIME NULL,
 			operator_user_id BIGINT NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
@@ -251,6 +273,8 @@ func upCreateBaseSchemaMySQL(tx *gorm.DB) error {
 		unique  bool
 	}{
 		{"customers", "idx_customers_owner_user_id", "owner_user_id", false},
+		{"customers", "idx_customers_inside_sales_user_id", "inside_sales_user_id", false},
+		{"customers", "idx_customers_converted_at", "converted_at", false},
 		{"customers", "idx_customers_status", "status", false},
 		{"customers", "idx_customers_deal_status", "deal_status", false},
 		{"customer_owner_logs", "idx_customer_owner_logs_customer_id", "customer_id", false},
@@ -293,6 +317,8 @@ func upAddMissingColumnsAndIndexesMySQL(tx *gorm.DB) error {
 		{"customers", "lng", "DOUBLE NOT NULL DEFAULT 0"},
 		{"customers", "lat", "DOUBLE NOT NULL DEFAULT 0"},
 		{"customers", "next_time", "BIGINT NOT NULL DEFAULT 0"},
+		{"customers", "inside_sales_user_id", "BIGINT NULL"},
+		{"customers", "converted_at", "DATETIME NULL"},
 		{"customers", "follow_time", "BIGINT NULL"},
 		{"customers", "remark", "TEXT NULL"},
 		{"customers", "deal_time", "BIGINT NULL"},
@@ -318,6 +344,8 @@ func upAddMissingColumnsAndIndexesMySQL(tx *gorm.DB) error {
 		unique  bool
 	}{
 		{"customers", "idx_customers_owner_user_id", "owner_user_id", false},
+		{"customers", "idx_customers_inside_sales_user_id", "inside_sales_user_id", false},
+		{"customers", "idx_customers_converted_at", "converted_at", false},
 		{"customers", "idx_customers_status", "status", false},
 		{"customers", "idx_customers_deal_status", "deal_status", false},
 		{"customer_owner_logs", "idx_customer_owner_logs_customer_id", "customer_id", false},
@@ -411,6 +439,42 @@ func upSeedCustomerRuleSettingsMySQL(tx *gorm.DB) error {
 		`INSERT IGNORE INTO system_settings(` + "`key`" + `, value, description) VALUES ('claim_freeze_days','7','本人客户进入公海后的回捡冷冻天数')`,
 	}
 	return execStatements(tx, stmts)
+}
+
+func upAddCustomerOwnerLogReasonAndContentMySQL(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "customer_owner_logs", "reason", "VARCHAR(64) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return addColumnIfNotExists(tx, "customer_owner_logs", "content", "TEXT NULL")
+}
+
+func upAddCustomerInsideSalesFieldsMySQL(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "customers", "inside_sales_user_id", "BIGINT NULL"); err != nil {
+		return err
+	}
+	if err := addColumnIfNotExists(tx, "customers", "converted_at", "DATETIME NULL"); err != nil {
+		return err
+	}
+	if err := addIndexIfNotExists(tx, "customers", "idx_customers_inside_sales_user_id", "inside_sales_user_id", false); err != nil {
+		return err
+	}
+	return addIndexIfNotExists(tx, "customers", "idx_customers_converted_at", "converted_at", false)
+}
+
+func upAddCustomerOwnerLogClaimBlockFieldsMySQL(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "customer_owner_logs", "blocked_department_anchor_user_id", "BIGINT NULL"); err != nil {
+		return err
+	}
+	if err := addColumnIfNotExists(tx, "customer_owner_logs", "blocked_until", "DATETIME NULL"); err != nil {
+		return err
+	}
+	return addIndexIfNotExists(
+		tx,
+		"customer_owner_logs",
+		"idx_customer_owner_logs_customer_blocked_until_anchor",
+		"customer_id, blocked_until, blocked_department_anchor_user_id",
+		false,
+	)
 }
 
 func upAddContractRemarkColumnMySQL(tx *gorm.DB) error {

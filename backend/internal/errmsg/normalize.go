@@ -17,6 +17,7 @@ var (
 	invalidSubClaimType       = regexp.MustCompile(`(?i)invalid sub claim type:\s*(.+)`)
 	providerNotConfigured     = regexp.MustCompile(`(?i)provider for platform\s+(\d+)\s+is not configured`)
 	baiduStatusPattern        = regexp.MustCompile(`(?i)baidu status=(\d+)\s+message=(.+)`)
+	mysqlColumnNullPattern    = regexp.MustCompile(`(?i)(?:error\s+\d+\s+\([^)]+\):\s*)?column\s+'([^']+)'\s+cannot\s+be\s+null`)
 	chinesePattern            = regexp.MustCompile(`[\p{Han}]`)
 )
 
@@ -56,12 +57,13 @@ var exactTranslations = map[string]string{
 	"customer not owned":                                    "当前用户不是该客户负责人",
 	"customer name already exists":                          "客户名称已存在",
 	"customer legal name already exists":                    "法人名称已存在",
+	"customer contact name already exists":                  "联系人已存在",
 	"customer weixin already exists":                        "微信号已存在",
 	"customer phone already exists":                         "客户手机号已存在",
 	"customer name is required":                             "客户名称不能为空",
 	"customer limit exceeded":                               "个人客户池已达上限",
 	"customer claim is frozen":                              "当前客户对你处于回捡冷冻期，暂不可领取",
-	"same department customer cannot be claimed":            "同销售总监团队客户不可领取，请由其他销售总监团队领取",
+	"same department customer cannot be claimed":            "该客户历史上已被你所在销售团队放弃，禁止再次领取，冷冻期结束后可再领取",
 	"no outside sales available":                            "当前团队下暂无可分配的销售负责人",
 	"no assignable sales owner available":                   "当前团队下暂无可分配的销售负责人",
 	"phone not found":                                       "电话不存在",
@@ -190,6 +192,10 @@ var fieldTranslations = map[string]string{
 	"customer_source_id": "客户来源ID",
 	"nextfollowtime":     "下次跟进时间",
 	"next_follow_time":   "下次跟进时间",
+	"nexttime":           "下次跟进时间",
+	"next_time":          "下次跟进时间",
+	"collecttime":        "领取时间",
+	"collect_time":       "领取时间",
 	"appointmenttime":    "约见时间",
 	"appointment_time":   "约见时间",
 	"shootingtime":       "拍摄时间",
@@ -277,6 +283,9 @@ func normalizeByPattern(detail string) string {
 }
 
 func normalizeDatabaseError(detail, lower string) string {
+	if matches := mysqlColumnNullPattern.FindStringSubmatch(detail); len(matches) == 2 {
+		return fmt.Sprintf("%s不能为空", translateFieldName(matches[1]))
+	}
 	if matches := duplicateEntryPattern.FindStringSubmatch(detail); len(matches) == 3 {
 		return fmt.Sprintf("数据重复，违反唯一约束（%s）", strings.TrimSpace(matches[2]))
 	}

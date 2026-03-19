@@ -13,6 +13,32 @@ GIT_COMMIT="${GIT_COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/nul
 BUILD_TIME="${BUILD_TIME:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 LDFLAGS="-X main.version=$APP_VERSION -X main.gitCommit=$GIT_COMMIT -X main.buildTime=$BUILD_TIME"
 
+cleanup_release_artifacts() {
+  local target_dir="$1"
+  if [ ! -d "$target_dir" ]; then
+    return 0
+  fi
+
+  find "$target_dir" \
+    -path "$target_dir/.git" -prune -o \
+    -type f \( \
+      -name "*.sh" -o \
+      -name "*_test.go" -o \
+      -name "*.test" -o \
+      -name "go-test.out" -o \
+      -name "coverage*.out" \
+    \) -print -delete
+
+  find "$target_dir" \
+    -path "$target_dir/.git" -prune -o \
+    -type d \( \
+      -name "__tests__" -o \
+      -name "tests" \
+    \) -prune -print | while IFS= read -r path; do
+      rm -rf "$path"
+    done
+}
+
 # Keep existing .git if this is a standalone release repo
 mkdir -p "$OUT_DIR"
 find "$OUT_DIR" -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
@@ -48,12 +74,8 @@ else
   cp -R "$ROOT_DIR/frontend/dist" "$OUT_DIR/dist"
 fi
 
-# Copy backend .env (if exists)
-if [ -f "$ROOT_DIR/backend/.env" ]; then
-  cp "$ROOT_DIR/backend/.env" "$OUT_DIR/.env"
-else
-  echo "backend/.env not found, skipped" >&2
-fi
+# 清理发布目录里不需要上线的测试文件和脚本。
+cleanup_release_artifacts "$OUT_DIR"
 
 echo "version=$APP_VERSION"
 echo "git_commit=$GIT_COMMIT"

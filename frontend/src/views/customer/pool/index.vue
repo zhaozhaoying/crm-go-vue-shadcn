@@ -34,14 +34,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatSevenDayCountdown } from "@/lib/customer-display";
+import { isInsideSalesUser } from "@/lib/auth-role";
 import { getRequestErrorMessage } from "@/lib/http-error";
 import { chinaPcaCode } from "@/data/china-pca-code";
+import { useAuthStore } from "@/stores/auth";
 import PopupForm from "./popupForm.vue";
 import EmptyTablePlaceholder from "@/components/custom/EmptyTablePlaceholder.vue";
 import type {
   Customer,
   CustomerFormPayload,
 } from "@/types/customer";
+
+const authStore = useAuthStore();
 
 const loading = ref(false);
 const submitting = ref(false);
@@ -53,6 +57,7 @@ const showSearch = ref(false);
 const pageIndex = ref(0);
 const pageSize = ref(10);
 const userDisplayNameMap = ref<Record<number, string>>({});
+const isInsideSales = computed(() => isInsideSalesUser(authStore.user));
 
 interface SearchForm {
   name: string;
@@ -281,7 +286,11 @@ const handleClaim = async (customer: Customer) => {
   claimingId.value = customer.id;
   try {
     await claimCustomer(customer.id);
-    toast.success("领取成功，客户已归属到我的客户");
+    toast.success(
+      isInsideSales.value
+        ? "领取成功，客户已自动分配负责人"
+        : "领取成功，客户已归属到我的客户",
+    );
     await fetchCustomers();
   } catch (err) {
     toast.error(getRequestErrorMessage(err, "领取失败"));
@@ -379,10 +388,11 @@ watch(
 const handleSubmit = async (payload: CustomerFormPayload) => {
   submitting.value = true;
   try {
+    const createStatus = isInsideSales.value ? "owned" : "pool";
     if (dialogMode.value === "create") {
       await createCustomer({
         ...payload,
-        status: "pool",
+        status: createStatus,
       });
     } else if (editingCustomer.value) {
       await updateCustomer(editingCustomer.value.id, payload);
@@ -390,7 +400,11 @@ const handleSubmit = async (payload: CustomerFormPayload) => {
     dialogOpen.value = false;
     await fetchCustomers();
     toast.success(
-      dialogMode.value === "create" ? "客户添加成功" : "客户更新成功",
+      dialogMode.value === "create"
+        ? isInsideSales.value
+          ? "客户添加成功，已自动分配负责人"
+          : "客户添加成功"
+        : "客户更新成功",
     );
   } catch (err) {
     toast.error(getRequestErrorMessage(err, "保存失败"));
@@ -601,7 +615,7 @@ onActivated(async () => {
                   <TableHead>下次跟进时间</TableHead>
                   <TableHead>备注</TableHead>
                   <TableHead
-                    class="sticky right-0 z-30 w-[180px] min-w-[180px] bg-muted/95 text-center border-l border-border"
+                    class="sticky right-0 z-30 w-[180px] min-w-[180px] bg-muted/95 text-center border-l border-border before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                     >操作</TableHead
                   >
                 </TableRow>
@@ -673,7 +687,7 @@ onActivated(async () => {
                     </p>
                   </TableCell>
                   <TableCell
-                    class="sticky right-0 z-10 w-[180px] min-w-[180px] border-l border-border bg-background text-center"
+                    class="sticky right-0 z-10 w-[180px] min-w-[180px] border-l border-border bg-background text-center before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                   >
                     <div class="grid grid-cols-2 gap-1.5">
                       <Button

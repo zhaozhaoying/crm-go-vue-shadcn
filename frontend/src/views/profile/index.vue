@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label"
 import { Loader2, Pencil } from "lucide-vue-next"
 import { updateUser, uploadUserAvatar } from "@/api/modules/users"
 import { getRequestErrorMessage } from "@/lib/http-error"
+import { requiredString } from "@/lib/form-validation"
+import { resolveUserAvatar } from "@/lib/user-avatar"
 import { useAuthStore } from "@/stores/auth"
 import { toast } from "vue-sonner"
 import { toTypedSchema } from "@vee-validate/zod"
@@ -19,7 +21,7 @@ const photoInput = ref<HTMLInputElement>()
 
 const formSchema = toTypedSchema(
   z.object({
-    nickname: z.string().min(1, { message: "昵称不能为空" }),
+    nickname: requiredString("昵称"),
     email: z.string().email({ message: "请输入有效的邮箱地址" }).optional().or(z.literal("")),
     mobile: z.string().optional(),
     password: z.string().min(6, { message: "密码至少需要6位" }).optional().or(z.literal("")),
@@ -39,7 +41,7 @@ const { value: photo } = useField<File | null>("photo")
 
 const formSubmitting = ref(false)
 
-const currentAvatar = computed(() => photoPreview.value || authStore.user?.avatar || "")
+const currentAvatar = computed(() => photoPreview.value || resolveUserAvatar(authStore.user?.avatar))
 const avatarLoaded = ref(false)
 const avatarLoadFailed = ref(false)
 const showAvatarLoading = computed(
@@ -130,7 +132,7 @@ const onSubmit = handleSubmit(async (values) => {
 
   formSubmitting.value = true
   try {
-    let avatarUrl = currentUser.avatar || ""
+    let avatarUrl = resolveUserAvatar(currentUser.avatar)
     if (values.photo) {
       const uploadResult = await uploadUserAvatar(values.photo)
       avatarUrl = uploadResult.url || ""

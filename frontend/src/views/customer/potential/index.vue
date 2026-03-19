@@ -33,11 +33,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatSevenDayCountdown } from "@/lib/customer-display";
+import { isInsideSalesUser } from "@/lib/auth-role";
 import { getRequestErrorMessage } from "@/lib/http-error";
 import { chinaPcaCode } from "@/data/china-pca-code";
+import { useAuthStore } from "@/stores/auth";
 import PopupForm from "../my/popupForm.vue";
 import EmptyTablePlaceholder from "@/components/custom/EmptyTablePlaceholder.vue";
 import type { Customer, CustomerFormPayload } from "@/types/customer";
+
+const authStore = useAuthStore();
 
 const loading = ref(false);
 const submitting = ref(false);
@@ -107,6 +111,7 @@ const areaOptions = computed(() => {
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(totalCount.value / pageSize.value)),
 );
+const isInsideSales = computed(() => isInsideSalesUser(authStore.user));
 
 const isPoolCustomer = (customer: Customer) => {
   if (customer.isInPool === true) return true;
@@ -341,7 +346,11 @@ const handleSubmit = async (payload: CustomerFormPayload) => {
     dialogOpen.value = false;
     await fetchCustomers();
     toast.success(
-      dialogMode.value === "create" ? "客户添加成功" : "客户更新成功",
+      dialogMode.value === "create"
+        ? isInsideSales.value
+          ? "客户添加成功，已自动分配负责人"
+          : "客户添加成功"
+        : "客户更新成功",
     );
   } catch (err) {
     toast.error(getRequestErrorMessage(err, "保存失败"));
@@ -531,7 +540,7 @@ onActivated(fetchCustomers);
                 <TableHead>7天倒计时</TableHead>
                 <TableHead>备注</TableHead>
                 <TableHead
-                  class="sticky right-0 z-30 w-[180px] min-w-[180px] bg-muted/95 text-center"
+                  class="sticky right-0 z-30 w-[180px] min-w-[180px] bg-muted/95 text-center before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                   >操作</TableHead
                 >
               </TableRow>
@@ -611,7 +620,7 @@ onActivated(fetchCustomers);
                     </p>
                   </TableCell>
                   <TableCell
-                    class="sticky right-0 z-10 w-[180px] min-w-[180px] bg-background text-center border-l"
+                    class="sticky right-0 z-10 w-[180px] min-w-[180px] bg-background text-center border-l before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                   >
                     <div class="grid grid-cols-2 gap-1.5">
                       <Button

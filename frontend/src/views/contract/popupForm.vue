@@ -36,6 +36,7 @@ import ImageUploadCard from "@/components/custom/ImageUploadCard.vue"
 import { useAuthStore } from "@/stores/auth"
 import { toast } from "vue-sonner"
 import { getRequestErrorMessage } from "@/lib/http-error"
+import { requiredString, requiredStringish, stringishWithDefault } from "@/lib/form-validation"
 import { hasAnyRole, isAdminUser, normalizeRole } from "@/lib/auth-role"
 import { getSystemSettings } from "@/api/modules/systemSettings"
 import { listCustomersPage, listMyCustomers } from "@/api/modules/customers"
@@ -69,20 +70,22 @@ const emit = defineEmits<{
   (e: "audit", payload: AuditContractRequest): void
 }>()
 
+const SERVICE_USER_NONE = "none"
+
 const formSchema = toTypedSchema(z.object({
   contractImage: z.string().optional(),
   paymentImage: z.string().optional(),
   paymentStatus: z.string().default("pending"),
   remark: z.string().optional(),
-  customerId: z.union([z.string(), z.number()]).transform(val => String(val)).refine(val => val !== "0" && val !== "", { message: "请选择客户" }),
+  customerId: requiredStringish("客户").refine(val => val !== "0", { message: "客户必填" }),
   cooperationType: z.string().default("domestic"),
-  contractNumberSuffix: z.union([z.string(), z.number()]).transform(val => String(val)).refine(val => val.length > 0, { message: "合同编号后缀不能为空" }),
-  contractName: z.string().min(1, { message: "合同名称不能为空" }),
-  contractAmount: z.union([z.string(), z.number()]).transform(val => String(val)),
-  paymentAmount: z.union([z.string(), z.number()]).transform(val => String(val)),
-  cooperationYears: z.union([z.string(), z.number()]).transform(val => String(val)),
-  nodeCount: z.union([z.string(), z.number()]).transform(val => String(val)),
-  serviceUserId: z.union([z.string(), z.number()]).transform(val => String(val)),
+  contractNumberSuffix: requiredStringish("合同编号后缀"),
+  contractName: requiredString("合同名称"),
+  contractAmount: stringishWithDefault("0"),
+  paymentAmount: stringishWithDefault("0"),
+  cooperationYears: stringishWithDefault("0"),
+  nodeCount: stringishWithDefault("0"),
+  serviceUserId: stringishWithDefault(SERVICE_USER_NONE),
   websiteName: z.string().optional(),
   websiteUrl: z.string().optional(),
   websiteUsername: z.string().optional(),
@@ -205,7 +208,6 @@ const remarkReadonly = computed(
 const canEditContractNumber = computed(
   () => !isAuditMode.value || isAdmin.value,
 )
-const SERVICE_USER_NONE = "none"
 const OPERATION_ROLE_NAMES = new Set(OPERATION_ROLE_CANDIDATES.map((role) => normalizeRole(role)))
 
 const customerOptions = ref<Customer[]>([])

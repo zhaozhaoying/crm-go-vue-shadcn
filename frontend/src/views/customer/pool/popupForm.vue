@@ -86,7 +86,6 @@ const form = ref<FormState>({
 })
 
 const uniqueNameError = ref("")
-const uniqueLegalNameError = ref("")
 const uniqueWeixinError = ref("")
 const duplicatePhones = ref<string[]>([])
 const checkingUnique = ref(false)
@@ -112,6 +111,11 @@ const localDuplicatePhones = computed(() => getLocalDuplicatePhones())
 const localDuplicatePhoneSet = computed(() => new Set(localDuplicatePhones.value))
 const phoneFieldErrors = computed(() => form.value.phones.map((item) => getPhoneFieldError(item.phone)))
 const hasPhoneFieldError = computed(() => phoneFieldErrors.value.some((item) => Boolean(item)))
+const isEditMode = computed(() => props.mode === "edit")
+const requiredLegalNameError = ref("")
+const requiredContactNameError = ref("")
+const legalNameErrorMessage = computed(() => requiredLegalNameError.value)
+const contactNameErrorMessage = computed(() => requiredContactNameError.value)
 
 const provinceOptions = chinaPcaCode
 const cityOptions = computed<ChinaPcaNode[]>(() => {
@@ -123,20 +127,23 @@ const areaOptions = computed<ChinaPcaNode[]>(() => {
   return city?.children ?? []
 })
 
-const dialogTitle = computed(() => props.mode === "create" ? "添加客户" : "编辑客户")
-const submitText = computed(() => props.mode === "create" ? "添加" : "保存")
+const dialogTitle = computed(() => isEditMode.value ? "编辑客户" : "添加客户")
+const submitText = computed(() => isEditMode.value ? "保存" : "添加")
 
 const clearUniqueErrors = () => {
   uniqueNameError.value = ""
-  uniqueLegalNameError.value = ""
   uniqueWeixinError.value = ""
   duplicatePhones.value = []
+}
+
+const clearRequiredErrors = () => {
+  requiredLegalNameError.value = ""
+  requiredContactNameError.value = ""
 }
 
 const hasUniqueConflict = () => {
   return Boolean(
     uniqueNameError.value
-    || uniqueLegalNameError.value
     || uniqueWeixinError.value
     || duplicatePhones.value.length > 0
     || localDuplicatePhones.value.length > 0
@@ -196,12 +203,13 @@ const runUniqueCheck = async (phonesForCheck?: string[]) => {
   const payload = {
     excludeCustomerId: getExcludeCustomerId(),
     name: form.value.name.trim(),
-    legalName: form.value.legalName.trim(),
+    legalName: "",
+    contactName: "",
     weixin: form.value.weixin.trim(),
     phones: phonesForCheck ?? normalizePhonesForCheck(),
   }
 
-  if (!payload.name && !payload.legalName && !payload.weixin && payload.phones.length === 0) {
+  if (!payload.name && !payload.weixin && payload.phones.length === 0) {
     clearUniqueErrors()
     return false
   }
@@ -214,7 +222,6 @@ const runUniqueCheck = async (phonesForCheck?: string[]) => {
       return hasUniqueConflict()
     }
     uniqueNameError.value = result.nameExists ? "公司名称已存在" : ""
-    uniqueLegalNameError.value = result.legalNameExists ? "公司法人已存在" : ""
     uniqueWeixinError.value = result.weixinExists ? "微信号已存在" : ""
     duplicatePhones.value = result.duplicatePhones ?? []
   } catch {
@@ -251,6 +258,7 @@ watch(
     if (!open) return
     formError.value = ""
     clearUniqueErrors()
+    clearRequiredErrors()
     form.value = {
       name: props.customer?.name ?? "",
       legalName: props.customer?.legalName ?? "",
@@ -292,6 +300,24 @@ watch(
 )
 
 watch(
+  () => form.value.legalName,
+  (value) => {
+    if (value.trim()) {
+      requiredLegalNameError.value = ""
+    }
+  }
+)
+
+watch(
+  () => form.value.contactName,
+  (value) => {
+    if (value.trim()) {
+      requiredContactNameError.value = ""
+    }
+  }
+)
+
+watch(
   () => form.value.city,
   (cityCode) => {
     if (!cityCode) {
@@ -309,6 +335,7 @@ watch(
     props.open,
     form.value.name,
     form.value.legalName,
+    form.value.contactName,
     form.value.weixin,
     form.value.phones.map((item) => normalizePhoneInput(item.phone)).join("|"),
   ],
@@ -390,6 +417,8 @@ const normalizePhoneList = (): CustomerFormPhone[] => {
 
 const handleSubmit = async () => {
   const phones = normalizePhoneList()
+  const legalName = form.value.legalName.trim()
+  const contactName = form.value.contactName.trim()
 
   if (phones.length === 0) {
     formError.value = "请至少填写一个联系电话"
@@ -407,20 +436,35 @@ const handleSubmit = async () => {
     return
   }
 
+  requiredLegalNameError.value = !legalName
+    ? "法人必填"
+    : legalName.length < 2
+      ? "法人至少需要2个字"
+      : ""
+  requiredContactNameError.value = !contactName
+    ? "联系人必填"
+    : contactName.length < 2
+      ? "联系人至少需要2个字"
+      : ""
+  if (requiredLegalNameError.value || requiredContactNameError.value) {
+    formError.value = ""
+    return
+  }
+
   if (uniqueCheckTimer) {
     clearTimeout(uniqueCheckTimer)
     uniqueCheckTimer = null
   }
   const hasConflict = await runUniqueCheck(phones.map((item) => item.phone))
   if (hasConflict) {
-    formError.value = "公司名称、法人、手机号或微信存在重复，请修改后再保存"
+    formError.value = "公司名称、法人、联系人、手机号或微信存在重复，请修改后再保存"
     return
   }
 
   const payload: CustomerFormPayload = {
     name: form.value.name.trim(),
-    legalName: form.value.legalName.trim() || "",
-    contactName: form.value.contactName.trim() || "",
+    legalName,
+    contactName,
     email: form.value.email.trim() || "",
     weixin: form.value.weixin.trim() || "",
     province: toCodeNumber(form.value.province),
@@ -432,7 +476,7 @@ const handleSubmit = async () => {
   }
 
   if (!payload.name) {
-    formError.value = "客户名称不能为空"
+    formError.value = "客户名称必填"
     return
   }
 
@@ -470,26 +514,35 @@ const handleSubmit = async () => {
             </div>
 
             <div class="space-y-2">
-              <Label for="customer-legal-name">法人</Label>
+              <Label for="customer-legal-name"><span class="mr-1 text-destructive">*</span>法人</Label>
               <Input
                 id="customer-legal-name"
                 v-model="form.legalName"
                 placeholder="请输入法人姓名"
                 :disabled="submitting"
               />
-              <p v-if="uniqueLegalNameError" class="text-xs text-destructive">
-                {{ uniqueLegalNameError }}
+              <p v-if="legalNameErrorMessage" class="text-xs text-destructive">
+                {{ legalNameErrorMessage }}
+              </p>
+              <p class="text-xs text-muted-foreground">
+                可重复，至少填写 2 个字
               </p>
             </div>
 
             <div class="space-y-2">
-              <Label for="customer-contact">联系人</Label>
+              <Label for="customer-contact"><span class="mr-1 text-destructive">*</span>联系人</Label>
               <Input
                 id="customer-contact"
                 v-model="form.contactName"
                 placeholder="请输入联系人"
                 :disabled="submitting"
               />
+              <p v-if="contactNameErrorMessage" class="text-xs text-destructive">
+                {{ contactNameErrorMessage }}
+              </p>
+              <p class="text-xs text-muted-foreground">
+                可重复，至少填写 2 个字
+              </p>
             </div>
             <div class="space-y-2 sm:col-span-2">
               <div class="flex items-center justify-between">

@@ -197,10 +197,6 @@ export const useNotificationStore = defineStore("notification", () => {
     }
   }
 
-  const getById = (id: number) => {
-    return notifications.value.find((n) => n.id === id) ?? null
-  }
-
   const fetchNotifications = async () => {
     if (loading.value) return
     loading.value = true
@@ -226,7 +222,6 @@ export const useNotificationStore = defineStore("notification", () => {
     unreadCount,
     markAsRead,
     markAllAsRead,
-    getById,
     fetchNotifications,
   }
 })

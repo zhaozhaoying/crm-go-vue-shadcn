@@ -75,6 +75,7 @@ func New(
 			protected.PUT("/customers/:id", customerHandler.Update)
 			protected.POST("/customers/validate-unique", customerHandler.CheckUnique)
 			protected.POST("/customers/:id/claim", customerHandler.Claim)
+			protected.POST("/customers/:id/convert", customerHandler.Convert)
 			protected.POST("/customers/:id/release", customerHandler.Release)
 			protected.POST("/customers/:id/transfer", customerHandler.Transfer)
 

@@ -43,8 +43,16 @@ const submit = async (e: Event) => {
   e.preventDefault();
   errorMsg.value = ""; // 提交时先清空之前的错误
 
+  if (!username.value.trim()) {
+    errorMsg.value = "账号必填";
+    return;
+  }
+  if (!password.value.trim()) {
+    errorMsg.value = "密码必填";
+    return;
+  }
   if (!captchaInput.value.trim()) {
-    errorMsg.value = "请输入验证码";
+    errorMsg.value = "验证码必填";
     return;
   }
   if (!captchaId.value) {
@@ -102,7 +110,6 @@ onMounted(() => {
             v-model="username"
             autocomplete="username"
             placeholder="请输入账号"
-            required
             autofocus
           />
         </div>
@@ -115,7 +122,6 @@ onMounted(() => {
               v-model="password"
               autocomplete="current-password"
               placeholder="请输入6位数以上密码"
-              required
               class="pr-10"
             />
             <button
@@ -148,7 +154,6 @@ onMounted(() => {
               type="text"
               maxlength="4"
               placeholder="请输入验证码"
-              required
               class="uppercase"
             />
             <button

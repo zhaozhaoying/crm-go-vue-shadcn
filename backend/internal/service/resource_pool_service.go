@@ -217,7 +217,7 @@ func (s *resourcePoolService) ConvertToCustomer(
 
 	customer, err := s.customerSvc.CreateCustomer(ctx, createInput)
 	if err != nil {
-		if errors.Is(err, ErrCustomerNameExists) || errors.Is(err, ErrCustomerLegalExists) {
+		if errors.Is(err, ErrCustomerNameExists) {
 			retryInput := createInput
 			retryInput.Name = fmt.Sprintf("%s-线索%d", name, item.ID)
 			retryInput.LegalName = retryInput.Name

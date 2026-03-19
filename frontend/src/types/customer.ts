@@ -63,6 +63,8 @@ export interface Customer {
   dropUserName?: string
 
   createUserId?: number
+  insideSalesUserId?: number | null
+  convertedAt?: string | null
   operateUserId?: number
 
   isLock?: boolean
@@ -155,6 +157,7 @@ export interface CustomerUniqueCheckRequest {
   excludeCustomerId?: number
   name?: string
   legalName?: string
+  contactName?: string
   weixin?: string
   phones?: string[]
 }
@@ -162,6 +165,7 @@ export interface CustomerUniqueCheckRequest {
 export interface CustomerUniqueCheckResult {
   nameExists: boolean
   legalNameExists: boolean
+  contactNameExists: boolean
   weixinExists: boolean
   duplicatePhones: string[]
 }

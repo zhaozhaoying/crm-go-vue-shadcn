@@ -39,3 +39,8 @@ export const isFinanceManagerUser = (
   user?: Pick<AuthUser, "role" | "roleName" | "roleId"> | null,
 ): boolean =>
   hasAnyRole(user || null, ["finance_manager", "finance", "财务经理", "财务"]);
+
+export const isInsideSalesUser = (
+  user?: Pick<AuthUser, "role" | "roleName" | "roleId"> | null,
+): boolean =>
+  hasAnyRole(user || null, ["sales_inside", "sale_inside", "Inside销售", "inside销售", "电销员工"]);

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import NavMain from '@/components/custom/NavMain.vue'
 import NavUser from '@/components/custom/NavUser.vue'
+import { Button } from '@/components/ui/button'
 import { hasAnyRole, isAdminUser } from '@/lib/auth-role'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
 import {
   Sidebar,
   SidebarContent,
@@ -12,8 +14,9 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar'
-import { Globe2, LayoutDashboard, Users, UserCog, Shield, Settings, ClipboardList, Headphones, FileText, MapPinned } from 'lucide-vue-next'
+import { Globe2, LayoutDashboard, Users, UserCog, Shield, Settings, ClipboardList, Headphones, FileText, MapPinned, Bell } from 'lucide-vue-next'
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 
 interface MainNavigationItem {
   title: string
@@ -47,6 +50,8 @@ const navMain: MainNavigationItem[] = [
 ]
 
 const authStore = useAuthStore()
+const notificationStore = useNotificationStore()
+const router = useRouter()
 const isAdmin = computed(() => isAdminUser(authStore.user))
 const visibleNavMain = computed(() =>
   navMain.filter((item) => !item.allowedRoles?.length || hasAnyRole(authStore.user, item.allowedRoles)),
@@ -61,6 +66,20 @@ const visibleNavMain = computed(() =>
           <img src="@/assets/favicon.ico" alt="">
         </div>
         <span class="font-semibold truncate group-data-[collapsible=icon]:hidden">招招营 CRM</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          class="relative ml-auto h-8 w-8 shrink-0"
+          @click="router.push('/notifications')"
+        >
+          <Bell class="h-4 w-4" />
+          <span
+            v-if="notificationStore.unreadCount > 0"
+            class="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white"
+          >
+            {{ notificationStore.unreadCount > 99 ? '99+' : notificationStore.unreadCount }}
+          </span>
+        </Button>
       </div>
     </SidebarHeader>
     <SidebarContent>

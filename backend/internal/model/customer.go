@@ -8,6 +8,14 @@ const (
 
 	CustomerStatusPool  = "pool"
 	CustomerStatusOwned = "owned"
+
+	CustomerOwnerLogReasonCreateInitialAssign = "create_initial_assign"
+	CustomerOwnerLogReasonImportInitialAssign = "import_initial_assign"
+	CustomerOwnerLogReasonClaimFromPool       = "claim_from_pool"
+	CustomerOwnerLogReasonInsideSalesConvert  = "inside_sales_convert"
+	CustomerOwnerLogReasonManualRelease       = "manual_release"
+	CustomerOwnerLogReasonManualTransfer      = "manual_transfer"
+	CustomerOwnerLogReasonAutoDrop            = "auto_drop"
 )
 
 type CustomerPhone struct {
@@ -71,6 +79,8 @@ type Customer struct {
 	DropUserID         *int64          `json:"dropUserId,omitempty" gorm:"column:drop_user_id"`
 	DropUserName       string          `json:"dropUserName,omitempty" gorm:"-"`
 	CreateUserID       int64           `json:"createUserId,omitempty" gorm:"column:create_user_id;not null;default:0"`
+	InsideSalesUserID  *int64          `json:"insideSalesUserId,omitempty" gorm:"column:inside_sales_user_id"`
+	ConvertedAt        *time.Time      `json:"convertedAt,omitempty" gorm:"column:converted_at"`
 	OwnerUserID        *int64          `json:"ownerUserId" gorm:"column:owner_user_id;index"`
 	OperateUserID      int64           `json:"operateUserId,omitempty" gorm:"column:operate_user_id;not null;default:0"`
 	OwnerUserName      string          `json:"ownerUserName,omitempty" gorm:"-"`
@@ -124,6 +134,14 @@ type CustomerListFilter struct {
 	// where create_user_id = ViewerID, used for inside-sales roles so they can
 	// see customers they created and assigned to outside-sales staff.
 	IncludeCreatorScope bool `gorm:"-"`
+	// IncludePendingConvertScope allows the "my" category to include pool
+	// customers created by the viewer that have not been converted yet.
+	IncludePendingConvertScope bool `gorm:"-"`
+	// AllowedCreatorUserIDs is used by creator-based customer lists such as
+	// the inside-sales department scope.
+	AllowedCreatorUserIDs []int64 `gorm:"-"`
+	// AllowedInsideSalesUserIDs is used by inside-sales association scope.
+	AllowedInsideSalesUserIDs []int64 `gorm:"-"`
 	// AllowedServiceUserIDs is used by partner customer list for ops-manager style access.
 	AllowedServiceUserIDs []int64 `gorm:"-"`
 	// ForceServiceUserID is used by partner customer list for ops-staff style access.
@@ -138,9 +156,10 @@ type CustomerListResult struct {
 }
 
 type CustomerTransferInput struct {
-	CustomerID     int64 `gorm:"-"`
-	ToOwnerUserID  int64 `gorm:"-"`
-	OperatorUserID int64 `gorm:"-"`
+	CustomerID     int64  `gorm:"-"`
+	ToOwnerUserID  int64  `gorm:"-"`
+	OperatorUserID int64  `gorm:"-"`
+	Note           string `gorm:"-"`
 }
 
 type CustomerPhoneInput struct {
@@ -150,20 +169,22 @@ type CustomerPhoneInput struct {
 }
 
 type CustomerCreateInput struct {
-	Name           string               `gorm:"-"`
-	LegalName      string               `gorm:"-"`
-	ContactName    string               `gorm:"-"`
-	Weixin         string               `gorm:"-"`
-	Email          string               `gorm:"-"`
-	Province       int                  `gorm:"-"`
-	City           int                  `gorm:"-"`
-	Area           int                  `gorm:"-"`
-	DetailAddress  string               `gorm:"-"`
-	Remark         string               `gorm:"-"`
-	Status         string               `gorm:"-"`
-	OwnerUserID    *int64               `gorm:"-"`
-	OperatorUserID int64                `gorm:"-"`
-	Phones         []CustomerPhoneInput `gorm:"-"`
+	Name              string               `gorm:"-"`
+	LegalName         string               `gorm:"-"`
+	ContactName       string               `gorm:"-"`
+	Weixin            string               `gorm:"-"`
+	Email             string               `gorm:"-"`
+	Province          int                  `gorm:"-"`
+	City              int                  `gorm:"-"`
+	Area              int                  `gorm:"-"`
+	DetailAddress     string               `gorm:"-"`
+	Remark            string               `gorm:"-"`
+	Status            string               `gorm:"-"`
+	OwnerUserID       *int64               `gorm:"-"`
+	InsideSalesUserID *int64               `gorm:"-"`
+	ConvertedAt       *time.Time           `gorm:"-"`
+	OperatorUserID    int64                `gorm:"-"`
+	Phones            []CustomerPhoneInput `gorm:"-"`
 }
 
 type CustomerUpdateInput struct {
@@ -185,15 +206,17 @@ type CustomerUniqueCheckInput struct {
 	ExcludeCustomerID *int64   `gorm:"-"`
 	Name              string   `gorm:"-"`
 	LegalName         string   `gorm:"-"`
+	ContactName       string   `gorm:"-"`
 	Weixin            string   `gorm:"-"`
 	Phones            []string `gorm:"-"`
 }
 
 type CustomerUniqueCheckResult struct {
-	NameExists      bool     `json:"nameExists" gorm:"-"`
-	LegalNameExists bool     `json:"legalNameExists" gorm:"-"`
-	WeixinExists    bool     `json:"weixinExists" gorm:"-"`
-	DuplicatePhones []string `json:"duplicatePhones" gorm:"-"`
+	NameExists        bool     `json:"nameExists" gorm:"-"`
+	LegalNameExists   bool     `json:"legalNameExists" gorm:"-"`
+	ContactNameExists bool     `json:"contactNameExists" gorm:"-"`
+	WeixinExists      bool     `json:"weixinExists" gorm:"-"`
+	DuplicatePhones   []string `json:"duplicatePhones" gorm:"-"`
 }
 
 func (Customer) TableName() string          { return "customers" }

@@ -405,17 +405,19 @@ bash ./scripts/deploy-overseas.sh
 
 - 使用 `scripts/package-release.sh` 打包
 - 生成 `release/dist` 和 `release/overseas_linux`
+- 默认不会把本地 `.env` 打进 `release/`
 - 上传前端 `dist`
-- 上传后端二进制到远端临时文件
-- 在服务器上原子替换 `overseas_linux`
-- 重启 `crm-go`
+- 使用 `rsync` 上传后端二进制到远端唯一临时文件
+- 在服务器上先停止并清理 `crm-go` 的失败状态，再原子替换 `overseas_linux`
+- 启动 `crm-go`
+- 如果启动失败，自动打印 `systemctl status` 和 `journalctl` 诊断信息
 - 打印 `stat` 和 `/api/health` 结果，确认线上是否已经切到新版本
 
 常用参数：
 
 ```bash
-# 连同 release/.env 一起上传到线上 .env
-bash ./scripts/deploy-overseas.sh --with-env
+# 只有明确需要时，才把指定 env 文件上传到线上 .env
+DEPLOY_ENV_FILE=./backend/.env.staging bash ./scripts/deploy-overseas.sh --with-env
 
 # 先清理 Go 构建缓存，再重新打包 overseas_linux
 bash ./scripts/deploy-overseas.sh --clean-build
@@ -440,9 +442,11 @@ bash ./scripts/deploy-overseas.sh --no-restart
 - 默认远端目录：`/home/shipin/crm-go.zhaozhaoying.cn`
 - 默认服务名：`crm-go`
 - 默认后端文件名：`overseas_linux`
+- 默认不会覆盖线上 `.env`
+- 如需显式上传环境变量文件：`DEPLOY_ENV_FILE=/path/to/file bash ./scripts/deploy-overseas.sh --with-env`
 - 默认构建目标：`GOOS=linux GOARCH=amd64 CGO_ENABLED=0`
 - 可选彻底重编译：`--clean-build`，会先执行 `go clean -cache -testcache`
-- 默认重启方式：执行时提示输入远端 `sudo` 密码，然后重启 `crm-go`
+- 默认服务切换方式：执行时提示输入远端 `sudo` 密码，先停止并清理失败状态，再启动 `crm-go`
 
 如果要覆盖默认值，可以这样传环境变量：
 

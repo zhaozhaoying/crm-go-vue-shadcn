@@ -132,7 +132,7 @@ const loadSettings = async () => {
 const saveRules = async () => {
   const prefix = settings.value.contractNumberPrefix.trim();
   if (!prefix) {
-    toast.error("合同编号前缀不能为空");
+    toast.error("合同编号前缀必填");
     return;
   }
   const claimFreezeDays = Math.max(0, Number(settings.value.claimFreezeDays) || 0);

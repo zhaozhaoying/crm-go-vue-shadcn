@@ -135,7 +135,6 @@ const submit = async (e: Event) => {
               v-model="username"
               autocomplete="username"
               placeholder="请输入账号"
-              required
               autofocus
               class="pr-10"
               :class="{
@@ -161,7 +160,7 @@ const submit = async (e: Event) => {
             v-if="touched.username && !isUsernameValid"
             class="text-xs text-red-500"
           >
-            请输入账号
+            账号必填
           </p>
         </div>
 
@@ -174,7 +173,6 @@ const submit = async (e: Event) => {
               type="text"
               v-model="contact"
               placeholder="请输入绑定的邮箱或手机号"
-              required
               class="pr-10"
               :class="{
                 'border-green-500 focus-visible:ring-green-500/20':
@@ -199,7 +197,7 @@ const submit = async (e: Event) => {
             v-if="touched.contact && !isContactValid"
             class="text-xs text-red-500"
           >
-            请输入绑定的邮箱或手机号
+            邮箱或手机号必填
           </p>
         </div>
 
@@ -213,7 +211,6 @@ const submit = async (e: Event) => {
               v-model="newPassword"
               autocomplete="new-password"
               placeholder="字母+数字组合，至少6位"
-              required
               class="pr-16"
               :class="{
                 'border-green-500 focus-visible:ring-green-500/20':
@@ -249,7 +246,7 @@ const submit = async (e: Event) => {
             v-if="touched.newPassword && !isNewPasswordValid"
             class="text-xs text-red-500"
           >
-            密码须包含字母和数字，至少6位
+            {{ newPassword.length === 0 ? "新密码必填" : "密码须包含字母和数字，至少6位" }}
           </p>
         </div>
 
@@ -263,7 +260,6 @@ const submit = async (e: Event) => {
               v-model="confirmPassword"
               autocomplete="new-password"
               placeholder="请再次输入新密码"
-              required
               class="pr-16"
               :class="{
                 'border-green-500 focus-visible:ring-green-500/20':
@@ -300,7 +296,7 @@ const submit = async (e: Event) => {
             class="text-xs text-red-500"
           >
             {{
-              confirmPassword.length === 0 ? "请确认密码" : "两次密码不一致"
+              confirmPassword.length === 0 ? "确认密码必填" : "两次密码不一致"
             }}
           </p>
         </div>

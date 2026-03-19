@@ -19,7 +19,8 @@ type CustomerHandler struct {
 }
 
 type TransferCustomerRequest struct {
-	ToOwnerUserID int64 `json:"toOwnerUserId" binding:"required"`
+	ToOwnerUserID int64  `json:"toOwnerUserId" binding:"required"`
+	Note          string `json:"note"`
 }
 
 type CustomerPhoneInputRequest struct {
@@ -62,6 +63,7 @@ type CheckCustomerUniqueRequest struct {
 	ExcludeCustomerID *int64   `json:"excludeCustomerId"`
 	Name              string   `json:"name"`
 	LegalName         string   `json:"legalName"`
+	ContactName       string   `json:"contactName"`
 	Weixin            string   `json:"weixin"`
 	Phones            []string `json:"phones"`
 }
@@ -287,6 +289,8 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 		ErrorWithDetail(c, http.StatusBadRequest, 10031, "请求参数错误", err)
 		return
 	}
+	req.LegalName = strings.TrimSpace(req.LegalName)
+	req.ContactName = strings.TrimSpace(req.ContactName)
 
 	customer, err := h.service.CreateCustomer(c.Request.Context(), model.CustomerCreateInput{
 		Name:           req.Name,
@@ -308,12 +312,18 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 		switch {
 		case errors.Is(err, service.ErrCustomerNameRequired):
 			Error(c, http.StatusBadRequest, 10032, "客户名称不能为空")
+		case errors.Is(err, service.ErrCustomerLegalNameRequired):
+			Error(c, http.StatusBadRequest, 10048, "法人不能为空")
+		case errors.Is(err, service.ErrCustomerContactNameRequired):
+			Error(c, http.StatusBadRequest, 10049, "联系人不能为空")
+		case errors.Is(err, service.ErrCustomerLegalNameTooShort):
+			Error(c, http.StatusBadRequest, 10050, "法人至少需要2个字")
+		case errors.Is(err, service.ErrCustomerContactNameTooShort):
+			Error(c, http.StatusBadRequest, 10051, "联系人至少需要2个字")
 		case errors.Is(err, service.ErrInvalidPhoneFormat):
 			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
 		case errors.Is(err, service.ErrCustomerNameExists):
 			Error(c, http.StatusConflict, 10033, "客户名称已存在")
-		case errors.Is(err, service.ErrCustomerLegalExists):
-			Error(c, http.StatusConflict, 10034, "法人名称已存在")
 		case errors.Is(err, service.ErrCustomerWeixinExists):
 			Error(c, http.StatusConflict, 10035, "微信号已存在")
 		case errors.Is(err, service.ErrCustomerPhoneExists):
@@ -363,6 +373,8 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 		ErrorWithDetail(c, http.StatusBadRequest, 10031, "请求参数错误", err)
 		return
 	}
+	req.LegalName = strings.TrimSpace(req.LegalName)
+	req.ContactName = strings.TrimSpace(req.ContactName)
 
 	customer, err := h.service.UpdateCustomer(c.Request.Context(), customerID, model.CustomerUpdateInput{
 		Name:           req.Name,
@@ -384,12 +396,18 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 			Error(c, http.StatusNotFound, 10003, "客户不存在")
 		case errors.Is(err, service.ErrCustomerNameRequired):
 			Error(c, http.StatusBadRequest, 10032, "客户名称不能为空")
+		case errors.Is(err, service.ErrCustomerLegalNameRequired):
+			Error(c, http.StatusBadRequest, 10048, "法人不能为空")
+		case errors.Is(err, service.ErrCustomerContactNameRequired):
+			Error(c, http.StatusBadRequest, 10049, "联系人不能为空")
+		case errors.Is(err, service.ErrCustomerLegalNameTooShort):
+			Error(c, http.StatusBadRequest, 10050, "法人至少需要2个字")
+		case errors.Is(err, service.ErrCustomerContactNameTooShort):
+			Error(c, http.StatusBadRequest, 10051, "联系人至少需要2个字")
 		case errors.Is(err, service.ErrInvalidPhoneFormat):
 			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
 		case errors.Is(err, service.ErrCustomerNameExists):
 			Error(c, http.StatusConflict, 10033, "客户名称已存在")
-		case errors.Is(err, service.ErrCustomerLegalExists):
-			Error(c, http.StatusConflict, 10034, "法人名称已存在")
 		case errors.Is(err, service.ErrCustomerWeixinExists):
 			Error(c, http.StatusConflict, 10035, "微信号已存在")
 		case errors.Is(err, service.ErrCustomerPhoneExists):
@@ -426,6 +444,7 @@ func (h *CustomerHandler) CheckUnique(c *gin.Context) {
 		ExcludeCustomerID: req.ExcludeCustomerID,
 		Name:              req.Name,
 		LegalName:         req.LegalName,
+		ContactName:       req.ContactName,
 		Weixin:            req.Weixin,
 		Phones:            req.Phones,
 	})
@@ -536,12 +555,56 @@ func (h *CustomerHandler) Claim(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, service.ErrCustomerSameDepartmentClaimForbidden) {
-			Error(c, http.StatusForbidden, 10044, "该客户原归属于你所在销售团队，当前不支持本团队再次领取，请由其他销售总监团队领取")
+			Error(c, http.StatusForbidden, 10044, "该客户历史上已被你所在销售团队放弃，禁止再次领取，冷冻期结束后可再领取")
 			return
 		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 10005, "领取客户失败", err)
 		return
 	}
+	Success(c, customer)
+}
+
+// Convert godoc
+// @Summary     转化客户
+// @Description 将待转化客户按销售分配规则转化给负责人
+// @Tags        customers
+// @Produce     json
+// @Security    BearerAuth
+// @Param       id path int true "客户ID"
+// @Success     200 {object} APIResponse{data=model.Customer}
+// @Router      /api/v1/customers/{id}/convert [post]
+func (h *CustomerHandler) Convert(c *gin.Context) {
+	userID, ok := currentUserID(c)
+	if !ok {
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
+		return
+	}
+
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, 10002, "无效的客户ID")
+		return
+	}
+
+	customer, err := h.service.ConvertCustomer(c.Request.Context(), id, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrCustomerNotFound):
+			Error(c, http.StatusNotFound, 10003, "客户不存在")
+		case errors.Is(err, service.ErrCustomerNotInPool):
+			Error(c, http.StatusConflict, 10006, "客户不在公海中，无法转化")
+		case errors.Is(err, service.ErrCustomerConvertForbidden):
+			Error(c, http.StatusForbidden, 10052, "当前客户不允许转化")
+		case errors.Is(err, service.ErrCustomerNoOutsideSalesAvailable):
+			Error(c, http.StatusConflict, 10039, "当前团队下暂无可分配的销售负责人")
+		case errors.Is(err, service.ErrCustomerLimitExceeded):
+			Error(c, http.StatusConflict, 10038, "个人客户池已达上限，已成交客户不计入")
+		default:
+			ErrorWithDetail(c, http.StatusInternalServerError, 10053, "转化客户失败", err)
+		}
+		return
+	}
+
 	Success(c, customer)
 }
 
@@ -617,6 +680,7 @@ func (h *CustomerHandler) Transfer(c *gin.Context) {
 		CustomerID:     id,
 		ToOwnerUserID:  req.ToOwnerUserID,
 		OperatorUserID: userID,
+		Note:           strings.TrimSpace(req.Note),
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrCustomerNotFound) {
@@ -994,6 +1058,14 @@ func isSalesOrOperationRole(role string) bool {
 func buildClaimFreezeMessage(freezeErr *service.CustomerClaimFreezeError) string {
 	if freezeErr == nil {
 		return "当前客户对你处于回捡冷冻期，暂不可领取"
+	}
+
+	if freezeErr.BlockType == "department" {
+		return "该客户历史上已被你所在销售团队放弃，当前仍处于团队禁领冷冻期。冷冻时长为" +
+			strconv.Itoa(freezeErr.FreezeDays) +
+			"天，剩余" + formatClaimFreezeRemain(freezeErr.Remaining) +
+			"，冷冻结束时间为" + freezeErr.FrozenUntil.Local().Format("2006-01-02 15:04:05") +
+			"，冷冻期结束后可再次领取。"
 	}
 
 	return "当前客户刚从你名下进入公海，现处于回捡冷冻期。冷冻时长为" +

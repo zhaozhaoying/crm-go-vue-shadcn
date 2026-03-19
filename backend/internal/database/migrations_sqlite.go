@@ -74,6 +74,21 @@ func getSQLiteMigrations() []Migration {
 			Name:    "seed_customer_rule_settings",
 			Up:      upSeedCustomerRuleSettings,
 		},
+		{
+			Version: 2026031801,
+			Name:    "add_customer_owner_log_reason_and_content",
+			Up:      upAddCustomerOwnerLogReasonAndContent,
+		},
+		{
+			Version: 2026031802,
+			Name:    "add_customer_inside_sales_fields",
+			Up:      upAddCustomerInsideSalesFields,
+		},
+		{
+			Version: 2026031901,
+			Name:    "add_customer_owner_log_claim_block_fields",
+			Up:      upAddCustomerOwnerLogClaimBlockFields,
+		},
 	}
 }
 
@@ -113,6 +128,8 @@ func upCreateBaseSchema(tx *gorm.DB) error {
 			status TEXT NOT NULL DEFAULT 'pool',
 			deal_status TEXT NOT NULL DEFAULT 'undone',
 			owner_user_id INTEGER,
+			inside_sales_user_id INTEGER,
+			converted_at DATETIME,
 			customer_level_id INTEGER NOT NULL DEFAULT 0,
 			customer_source_id INTEGER NOT NULL DEFAULT 0,
 			province INTEGER NOT NULL DEFAULT 0,
@@ -135,7 +152,8 @@ func upCreateBaseSchema(tx *gorm.DB) error {
 			delete_time INTEGER,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (owner_user_id) REFERENCES users(id)
+			FOREIGN KEY (owner_user_id) REFERENCES users(id),
+			FOREIGN KEY (inside_sales_user_id) REFERENCES users(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS customer_owner_logs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,6 +161,10 @@ func upCreateBaseSchema(tx *gorm.DB) error {
 			from_owner_user_id INTEGER,
 			to_owner_user_id INTEGER,
 			action TEXT NOT NULL,
+			reason TEXT NOT NULL DEFAULT '',
+			content TEXT,
+			blocked_department_anchor_user_id INTEGER,
+			blocked_until DATETIME,
 			operator_user_id INTEGER NOT NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
@@ -235,6 +257,8 @@ func upCreateBaseSchema(tx *gorm.DB) error {
 			FOREIGN KEY (operator_user_id) REFERENCES users(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_customers_owner_user_id ON customers(owner_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_customers_inside_sales_user_id ON customers(inside_sales_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_customers_converted_at ON customers(converted_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_customers_deal_status ON customers(deal_status)`,
 		`CREATE INDEX IF NOT EXISTS idx_customer_owner_logs_customer_id ON customer_owner_logs(customer_id)`,
@@ -272,6 +296,8 @@ func upAddMissingColumnsAndIndexes(tx *gorm.DB) error {
 		{"customers", "lng", "REAL NOT NULL DEFAULT 0"},
 		{"customers", "lat", "REAL NOT NULL DEFAULT 0"},
 		{"customers", "next_time", "INTEGER NOT NULL DEFAULT 0"},
+		{"customers", "inside_sales_user_id", "INTEGER"},
+		{"customers", "converted_at", "DATETIME"},
 		{"customers", "follow_time", "INTEGER"},
 		{"customers", "remark", "TEXT"},
 		{"customers", "deal_time", "INTEGER"},
@@ -292,6 +318,8 @@ func upAddMissingColumnsAndIndexes(tx *gorm.DB) error {
 
 	indexStmts := []string{
 		`CREATE INDEX IF NOT EXISTS idx_customers_owner_user_id ON customers(owner_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_customers_inside_sales_user_id ON customers(inside_sales_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_customers_converted_at ON customers(converted_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_customers_deal_status ON customers(deal_status)`,
 		`CREATE INDEX IF NOT EXISTS idx_customer_owner_logs_customer_id ON customer_owner_logs(customer_id)`,
@@ -364,6 +392,38 @@ func upSeedCustomerRuleSettings(tx *gorm.DB) error {
 		`INSERT OR IGNORE INTO system_settings(key,value,description) VALUES ('claim_freeze_days','7','本人客户进入公海后的回捡冷冻天数')`,
 	}
 	return execStatements(tx, stmts)
+}
+
+func upAddCustomerOwnerLogReasonAndContent(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "customer_owner_logs", "reason", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return addColumnIfNotExists(tx, "customer_owner_logs", "content", "TEXT")
+}
+
+func upAddCustomerInsideSalesFields(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "customers", "inside_sales_user_id", "INTEGER"); err != nil {
+		return err
+	}
+	if err := addColumnIfNotExists(tx, "customers", "converted_at", "DATETIME"); err != nil {
+		return err
+	}
+	if err := addIndexIfNotExists(tx, "customers", "idx_customers_inside_sales_user_id", "inside_sales_user_id", false); err != nil {
+		return err
+	}
+	return addIndexIfNotExists(tx, "customers", "idx_customers_converted_at", "converted_at", false)
+}
+
+func upAddCustomerOwnerLogClaimBlockFields(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "customer_owner_logs", "blocked_department_anchor_user_id", "INTEGER"); err != nil {
+		return err
+	}
+	if err := addColumnIfNotExists(tx, "customer_owner_logs", "blocked_until", "DATETIME"); err != nil {
+		return err
+	}
+	return execStatements(tx, []string{
+		`CREATE INDEX IF NOT EXISTS idx_customer_owner_logs_customer_blocked_until_anchor ON customer_owner_logs(customer_id, blocked_until, blocked_department_anchor_user_id)`,
+	})
 }
 
 func upAddContractRemarkColumn(tx *gorm.DB) error {

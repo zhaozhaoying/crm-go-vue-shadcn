@@ -5,6 +5,7 @@ import (
 	"backend/internal/repository"
 	"context"
 	"errors"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -15,6 +16,8 @@ var (
 	ErrInvalidPassword = errors.New("invalid password")
 	ErrInvalidUserIDs  = errors.New("invalid user ids")
 )
+
+const defaultUserAvatar = "https://zhaozhaoying.oss-accelerate.aliyuncs.com/avatars/2026/03/18/1773818260823402723.jpg"
 
 type CreateUserInput struct {
 	Username string
@@ -58,6 +61,13 @@ func NewUserService(userRepo repository.UserRepository, roleRepo repository.Role
 	return &userService{userRepo: userRepo, roleRepo: roleRepo}
 }
 
+func normalizeUserAvatar(avatar string) string {
+	if strings.TrimSpace(avatar) == "" {
+		return defaultUserAvatar
+	}
+	return avatar
+}
+
 func (s *userService) List(ctx context.Context) ([]model.UserWithRole, error) {
 	return s.userRepo.ListWithRole(ctx)
 }
@@ -92,7 +102,7 @@ func (s *userService) Create(ctx context.Context, input CreateUserInput) (*model
 		Nickname: input.Nickname,
 		Email:    input.Email,
 		Mobile:   input.Mobile,
-		Avatar:   input.Avatar,
+		Avatar:   normalizeUserAvatar(input.Avatar),
 		RoleID:   input.RoleID,
 		ParentID: input.ParentID,
 		Status:   model.UserStatusEnabled,
@@ -115,7 +125,7 @@ func (s *userService) Update(ctx context.Context, id int64, input UpdateUserInpu
 	user.Nickname = input.Nickname
 	user.Email = input.Email
 	user.Mobile = input.Mobile
-	user.Avatar = input.Avatar
+	user.Avatar = normalizeUserAvatar(input.Avatar)
 	user.RoleID = input.RoleID
 	user.ParentID = input.ParentID
 	if input.Password != "" {

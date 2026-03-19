@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { resolveUserAvatar } from "@/lib/user-avatar"
 import { Checkbox } from "@/components/ui/checkbox"
 
 import {
@@ -291,7 +292,7 @@ onMounted(fetchData)
               <TableCell>
                 <div class="flex items-center gap-3 text-left">
                   <Avatar class="h-8 w-8 shrink-0">
-                    <AvatarImage :src="user.avatar" class="object-cover" />
+                    <AvatarImage :src="resolveUserAvatar(user.avatar)" class="object-cover" />
                     <AvatarFallback class="bg-primary/10 text-primary text-xs font-semibold">
                       {{ (user.nickname || user.username).charAt(0).toUpperCase() }}
                     </AvatarFallback>

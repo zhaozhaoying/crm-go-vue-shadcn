@@ -23,12 +23,17 @@ const form = ref({
   label: "",
   sort: 0,
 })
+const fieldErrors = ref({
+  name: "",
+  label: "",
+})
 const formError = ref("")
 const formSubmitting = ref(false)
 
 watch(() => props.open, (val) => {
   if (!val) return
   formError.value = ""
+  fieldErrors.value = { name: "", label: "" }
   if (props.mode === "create") {
     form.value = { name: "", label: "", sort: 0 }
   } else if (props.roleData) {
@@ -40,26 +45,47 @@ watch(() => props.open, (val) => {
   }
 })
 
+watch(() => form.value.name, () => {
+  if (fieldErrors.value.name) {
+    fieldErrors.value.name = ""
+  }
+})
+
+watch(() => form.value.label, () => {
+  if (fieldErrors.value.label) {
+    fieldErrors.value.label = ""
+  }
+})
+
 const close = () => { emit("update:open", false) }
 
 const handleSubmit = async () => {
   formError.value = ""
+  fieldErrors.value = { name: "", label: "" }
   formSubmitting.value = true
   try {
-    if (!form.value.name || !form.value.label) {
-      formError.value = "请填写角色标识和角色名称"
+    let hasValidationError = false
+    if (!form.value.name.trim()) {
+      fieldErrors.value.name = "角色标识必填"
+      hasValidationError = true
+    }
+    if (!form.value.label.trim()) {
+      fieldErrors.value.label = "角色名称必填"
+      hasValidationError = true
+    }
+    if (hasValidationError) {
       return
     }
     if (props.mode === "create") {
       await createRole({
-        name: form.value.name,
-        label: form.value.label,
+        name: form.value.name.trim(),
+        label: form.value.label.trim(),
         sort: form.value.sort,
       })
     } else if (props.roleData) {
       await updateRole(props.roleData.id, {
-        name: form.value.name,
-        label: form.value.label,
+        name: form.value.name.trim(),
+        label: form.value.label.trim(),
         sort: form.value.sort,
       })
     }
@@ -106,13 +132,15 @@ const handleSubmit = async () => {
 
               <div class="space-y-1.5">
                 <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">角色标识 <span class="text-red-500">*</span></Label>
-                <Input v-model="form.name" required placeholder="如: manager" class="h-10 font-mono" />
+                <Input v-model="form.name" placeholder="如: manager" class="h-10 font-mono" />
+                <p v-if="fieldErrors.name" class="text-xs text-red-600">{{ fieldErrors.name }}</p>
                 <p class="text-xs text-slate-400">用于系统内部识别，建议使用英文</p>
               </div>
 
               <div class="space-y-1.5">
                 <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">角色名称 <span class="text-red-500">*</span></Label>
-                <Input v-model="form.label" required placeholder="如: 经理" class="h-10" />
+                <Input v-model="form.label" placeholder="如: 经理" class="h-10" />
+                <p v-if="fieldErrors.label" class="text-xs text-red-600">{{ fieldErrors.label }}</p>
                 <p class="text-xs text-slate-400">显示给用户的名称</p>
               </div>
 

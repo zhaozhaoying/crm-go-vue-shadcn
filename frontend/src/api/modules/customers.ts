@@ -83,6 +83,13 @@ export const claimCustomer = (customerId: number) => {
   })
 }
 
+export const convertCustomer = (customerId: number) => {
+  return request<Customer>({
+    method: "POST",
+    url: `/v1/customers/${customerId}/convert`
+  })
+}
+
 export const releaseCustomer = (customerId: number) => {
   return request<Customer>({
     method: "POST",

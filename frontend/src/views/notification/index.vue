@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue"
-import { useRouter } from "vue-router"
 
 import { Button } from "@/components/ui/button"
 import { useNotificationStore } from "@/stores/notification"
 
-const router = useRouter()
 const notificationStore = useNotificationStore()
 
 const notifications = computed(() => notificationStore.orderedNotifications)
@@ -16,7 +14,6 @@ onMounted(() => {
 
 const openDetail = (id: number) => {
   notificationStore.markAsRead(id)
-  router.push(`/notifications/${id}`)
 }
 
 const getCategoryLabel = (category: string) => {
@@ -56,7 +53,7 @@ const formatRelativeTime = (value: string) => {
       <div>
         <h2 class="text-xl font-semibold text-card-foreground">通知中心</h2>
         <p class="mt-1 text-sm text-muted-foreground">
-          全部操作日志都在这里，点击可查看完整详情。
+          全部操作日志都在这里，点击通知可直接标记已读。
         </p>
       </div>
       <Button
@@ -93,7 +90,9 @@ const formatRelativeTime = (value: string) => {
                     {{ getCategoryLabel(item.category) }}
                   </span>
                 </div>
-                <p class="mt-1 text-sm text-muted-foreground">{{ item.summary }}</p>
+                <p class="mt-2 whitespace-pre-line text-sm leading-6 text-muted-foreground">
+                  {{ item.content || item.summary }}
+                </p>
               </div>
               <span class="shrink-0 text-xs text-muted-foreground">{{ formatRelativeTime(item.createdAt) }}</span>
             </div>

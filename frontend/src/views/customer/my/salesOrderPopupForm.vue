@@ -205,7 +205,7 @@ const validateContractNumberUniqueness = async (showMessage: boolean) => {
   const suffix = normalizeText(form.value.contractNumberSuffix);
   if (!suffix) {
     if (showMessage) {
-      contractNumberError.value = "合同编号后缀不能为空";
+      contractNumberError.value = "合同编号后缀必填";
     }
     return false;
   }
@@ -254,11 +254,11 @@ const submit = async () => {
 
   const suffix = normalizeText(form.value.contractNumberSuffix);
   if (!suffix) {
-    contractNumberError.value = "合同编号后缀不能为空";
+    contractNumberError.value = "合同编号后缀必填";
     return;
   }
   if (!normalizeText(form.value.contractName)) {
-    formError.value = "合同名称不能为空";
+    formError.value = "合同名称必填";
     return;
   }
 

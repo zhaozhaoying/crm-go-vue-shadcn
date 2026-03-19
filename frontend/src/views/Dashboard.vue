@@ -47,9 +47,9 @@ const errorMessage = ref("")
 const overview = ref<DashboardOverview | null>(null)
 const authStore = useAuthStore()
 
-const chartWidth = 900
-const chartHeight = 280
-const chartPadding = { top: 28, right: 30, bottom: 38, left: 30 }
+const chartWidth = 1180
+const chartHeight = 320
+const chartPadding = { top: 18, right: 24, bottom: 42, left: 24 }
 
 const currencyFormatter = new Intl.NumberFormat("zh-CN", {
   style: "currency",
@@ -97,6 +97,12 @@ const metricChangeClass = (up: boolean | null) => {
   if (up === true) return "text-emerald-600"
   if (up === false) return "text-red-600"
   return "text-muted-foreground"
+}
+
+const metricTrendHeadline = (up: boolean | null) => {
+  if (up === true) return "本月趋势上升"
+  if (up === false) return "本月趋势回落"
+  return "本月趋势持平"
 }
 
 const formatRelativeTime = (value: string) => {
@@ -274,46 +280,6 @@ const salesAdminStats = computed(() => {
   ]
 })
 
-const autoDropStats = computed(() => {
-  const data = autoDropOverview.value
-  return [
-    {
-      title: "未跟进不足1天",
-      value: formatCount(data.followUpDueSoonCount),
-      icon: Clock3,
-      valueClass: data.followUpDueSoonCount > 0 ? "text-red-600" : "text-foreground",
-    },
-    {
-      title: "未签单不足10天",
-      value: formatCount(data.dealDueSoonCount),
-      icon: CreditCard,
-      valueClass: data.dealDueSoonCount > 0 ? "text-orange-600" : "text-foreground",
-    },
-    {
-      title: "本月未跟进掉库",
-      value: formatCount(data.monthlyFollowUpDropped),
-      icon: FileText,
-      valueClass: data.monthlyFollowUpDropped > 0 ? "text-red-600" : "text-foreground",
-    },
-    {
-      title: "本月未签单掉库",
-      value: formatCount(data.monthlyDealDropped),
-      icon: Users,
-      valueClass: data.monthlyDealDropped > 0 ? "text-orange-600" : "text-foreground",
-    },
-  ]
-})
-
-const rankingUserName = (item: DashboardRankingItem) =>
-  String(item.userName || "").trim() || `用户${item.userId}`
-
-const rankingBadgeClass = (index: number) => {
-  if (index === 0) return "border-amber-200 bg-amber-50 text-amber-700"
-  if (index === 1) return "border-slate-200 bg-slate-100 text-slate-700"
-  if (index === 2) return "border-orange-200 bg-orange-50 text-orange-700"
-  return "border-border bg-muted text-muted-foreground"
-}
-
 const mergedTrend = computed(() => {
   const revenueMap = new Map(
     safeMonthlyRevenue.value.map((item: DashboardMonthlyRevenue) => [
@@ -381,6 +347,15 @@ const buildSmoothPath = (points: ChartPoint[]) => {
   return path
 }
 
+const buildAreaPath = (points: ChartPoint[]) => {
+  if (!points.length) return ""
+  const baseline = chartHeight - chartPadding.bottom
+  const linePath = buildSmoothPath(points)
+  const first = points[0]
+  const last = points[points.length - 1]
+  return `${linePath} L ${last.x} ${baseline} L ${first.x} ${baseline} Z`
+}
+
 const amountPoints = computed(() =>
   buildPoints(
     mergedTrend.value.map((item) => ({ label: item.label, value: item.amount })),
@@ -395,23 +370,10 @@ const countPoints = computed(() =>
   ),
 )
 
-const countRenderPoints = computed(() =>
-  countPoints.value.map((point, index) => {
-    const amountPoint = amountPoints.value[index]
-    if (!amountPoint) return point
-
-    const isOverlapping = Math.abs(point.y - amountPoint.y) < 10
-    if (!isOverlapping) return point
-
-    return {
-      ...point,
-      y: Math.max(chartPadding.top + 6, point.y - 10),
-    }
-  }),
-)
-
 const amountPath = computed(() => buildSmoothPath(amountPoints.value))
-const countPath = computed(() => buildSmoothPath(countRenderPoints.value))
+const countPath = computed(() => buildSmoothPath(countPoints.value))
+const amountAreaPath = computed(() => buildAreaPath(amountPoints.value))
+const countAreaPath = computed(() => buildAreaPath(countPoints.value))
 
 const activeTrendIndex = ref<number | null>(null)
 
@@ -438,8 +400,8 @@ const activeTrendData = computed(() => {
 const trendTooltipStyle = computed(() => {
   const point = activeTrendData.value?.amountPoint
   if (!point) return {}
-  const tooltipWidth = 220
-  const horizontalPadding = 20
+  const tooltipWidth = 236
+  const horizontalPadding = 24
   const clampedX = Math.min(
     Math.max(point.x, tooltipWidth / 2 + horizontalPadding),
     chartWidth - tooltipWidth / 2 - horizontalPadding,
@@ -486,37 +448,31 @@ onMounted(() => {
       </CardContent>
     </Card>
 
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Card v-for="stat in stats" :key="stat.title" class="shadow-sm">
-        <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle class="text-sm font-medium text-muted-foreground">{{ stat.title }}</CardTitle>
-          <component :is="stat.icon" class="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-bold" :class="metricValueClass(stat.up)">{{ stat.value }}</div>
-          <div class="mt-1 flex items-center gap-1">
-            <ArrowUpRight v-if="stat.up === true" class="h-3 w-3 text-emerald-600" />
-            <ArrowDownRight v-else-if="stat.up === false" class="h-3 w-3 text-red-500" />
-            <span v-else class="text-xs text-muted-foreground">-</span>
-            <span class="text-xs" :class="metricChangeClass(stat.up)">
-              {{ stat.change }}
-            </span>
-            <span class="text-xs text-muted-foreground">{{ stat.desc }}</span>
+    <div class="space-y-4">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card v-for="stat in stats" :key="stat.title" class="shadow-sm">
+          <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle class="text-sm font-medium text-muted-foreground">
+              {{ stat.title }}
+            </CardTitle>
+            <div
+            class="inline-flex items-center gap-1 rounded-full bg-background text-[13px] font-semibold"
+            :class="metricChangeClass(stat.up)"
+          >
+            <ArrowUpRight v-if="stat.up === true" class="h-3.5 w-3.5" />
+            <ArrowDownRight v-else-if="stat.up === false" class="h-3.5 w-3.5" />
+            <span v-else class="text-muted-foreground">-</span>
+            <span>{{ stat.change }}</span>
           </div>
-        </CardContent>
-      </Card>
-    </div>
-
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Card v-for="stat in autoDropStats" :key="stat.title" class="shadow-sm">
-        <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle class="text-sm font-medium text-muted-foreground">{{ stat.title }}</CardTitle>
-          <component :is="stat.icon" class="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-bold" :class="stat.valueClass">{{ stat.value }}</div>
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            <div class="text-2xl font-bold" :class="metricValueClass(stat.up)">{{ stat.value }}</div>
+            <div class="mt-2 flex items-center gap-1">
+              <span class="text-xs text-muted-foreground">{{ stat.desc }}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
 
     <div v-if="showSalesAdminOverview" class="space-y-4">
@@ -526,130 +482,31 @@ onMounted(() => {
             <CardTitle class="text-sm font-medium text-muted-foreground">
               {{ stat.title }}
             </CardTitle>
-            <component :is="stat.icon" class="h-4 w-4 text-muted-foreground" />
+            <div
+            class="inline-flex items-center gap-1 rounded-full bg-background text-[13px] font-semibold"
+            :class="metricChangeClass(stat.up)"
+          >
+            <ArrowUpRight v-if="stat.up === true" class="h-3.5 w-3.5" />
+            <ArrowDownRight v-else-if="stat.up === false" class="h-3.5 w-3.5" />
+            <span v-else class="text-muted-foreground">-</span>
+            <span>{{ stat.change }}</span>
+          </div>
           </CardHeader>
           <CardContent>
             <div class="text-2xl font-bold" :class="metricValueClass(stat.up)">{{ stat.value }}</div>
             <div class="mt-1 flex items-center gap-1">
-              <ArrowUpRight v-if="stat.up === true" class="h-3 w-3 text-emerald-600" />
-              <ArrowDownRight v-else-if="stat.up === false" class="h-3 w-3 text-red-500" />
-              <span v-else class="text-xs text-muted-foreground">-</span>
-              <span class="text-xs" :class="metricChangeClass(stat.up)">
-                {{ stat.change }}
-              </span>
               <span class="text-xs text-muted-foreground">{{ stat.desc }}</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div v-if="showSalesRankings" class="grid gap-4 lg:grid-cols-2">
-        <Card class="shadow-sm">
-          <CardHeader>
-            <CardTitle class="text-base">{{ salesCustomerRankTitle }}</CardTitle>
-            <CardDescription>{{ salesCustomerRankDescription }}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div
-              v-if="todayNewCustomerRanks.length === 0"
-              class="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground"
-            >
-              今日暂无新增客户
-            </div>
-            <div v-else class="max-h-[392px] space-y-3 overflow-y-auto pr-1">
-              <div
-                v-for="(item, index) in todayNewCustomerRanks"
-                :key="`customer-rank-${item.userId}`"
-                class="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
-              >
-                <div class="flex min-w-0 items-center gap-3">
-                  <Badge
-                    variant="secondary"
-                    class="min-w-8 justify-center border"
-                    :class="rankingBadgeClass(index)"
-                  >
-                    {{ index + 1 }}
-                  </Badge>
-                  <div class="min-w-0">
-                    <p class="truncate text-sm font-medium">
-                      {{ rankingUserName(item) }}
-                    </p>
-                    <p class="text-xs text-muted-foreground">今日新增客户</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <p class="text-lg font-semibold tabular-nums">
-                    {{ formatCount(item.count) }}
-                  </p>
-                  <p class="text-xs text-muted-foreground">客户</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card class="shadow-sm">
-          <CardHeader>
-            <CardTitle class="text-base">{{ salesFollowRankTitle }}</CardTitle>
-            <CardDescription>{{ salesFollowRankDescription }}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div
-              v-if="todayFollowRecordRanks.length === 0"
-              class="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground"
-            >
-              今日暂无跟进记录
-            </div>
-            <div v-else class="max-h-[392px] space-y-3 overflow-y-auto pr-1">
-              <div
-                v-for="(item, index) in todayFollowRecordRanks"
-                :key="`follow-rank-${item.userId}`"
-                class="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
-              >
-                <div class="flex min-w-0 items-center gap-3">
-                  <Badge
-                    variant="secondary"
-                    class="min-w-8 justify-center border"
-                    :class="rankingBadgeClass(index)"
-                  >
-                    {{ index + 1 }}
-                  </Badge>
-                  <div class="min-w-0">
-                    <p class="truncate text-sm font-medium">
-                      {{ rankingUserName(item) }}
-                    </p>
-                    <p class="text-xs text-muted-foreground">今日跟进记录</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <p class="text-lg font-semibold tabular-nums">
-                    {{ formatCount(item.count) }}
-                  </p>
-                  <p class="text-xs text-muted-foreground">记录</p>
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>
       </div>
     </div>
 
-    <Card class="shadow-sm">
-      <CardHeader class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <CardTitle class="text-base">业绩概览</CardTitle>
-          <CardDescription>近 12 个月合同金额与合同数量趋势</CardDescription>
-        </div>
-        <div class="flex flex-wrap items-center gap-3 text-xs">
-          <div class="rounded-full border bg-muted/30 px-3 py-1.5 text-muted-foreground">
-            合同总金额 {{ amountSummary }}
-          </div>
-          <div class="rounded-full border bg-muted/30 px-3 py-1.5 text-muted-foreground">
-            合同总数量 {{ countSummary }}
-          </div>
-        </div>
+    <Card class="overflow-hidden rounded-[12px] border border-[#dddddd] bg-white pt-0 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
+      <CardHeader class="flex items-start gap-2 space-y-0 border-b border-[#e9e9e9] px-8 py-6 sm:flex-row">
+        <CardTitle class="text-lg font-semibold">业绩概览</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent class="px-2 pt-4 sm:px-6 sm:pt-6">
         <div
           v-if="loading && !overview"
           class="flex h-[320px] items-center justify-center"
@@ -664,61 +521,60 @@ onMounted(() => {
           暂无趋势数据
         </div>
 
-        <div v-else class="space-y-4">
-          <div class="flex items-center gap-5 text-sm">
-            <div class="flex items-center gap-2">
-              <span class="h-2.5 w-2.5 rounded-full bg-primary" />
-              <span class="text-muted-foreground">合同金额</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="h-2.5 w-2.5 rounded-full bg-amber-400" />
-              <span class="text-muted-foreground">合同数量</span>
-            </div>
-          </div>
-
+        <div v-else>
           <div
-            class="relative rounded-xl border bg-muted/20 p-4"
+            class="relative overflow-hidden bg-white"
             @mouseleave="setActiveTrendIndex(null)"
           >
-            <div class="pointer-events-none absolute inset-x-4 top-4 bottom-10">
+            <div class="pointer-events-none absolute inset-x-0 top-4 bottom-12">
               <div
-                v-for="index in 5"
+                v-for="index in 4"
                 :key="index"
-                class="absolute inset-x-0 border-t border-dashed border-border/70"
+                class="absolute inset-x-0 border-t border-[#ebebeb]"
                 :style="{ top: `${(index - 1) * 25}%` }"
               />
             </div>
 
             <svg
               :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
-              class="h-[320px] w-full"
+              class="aspect-auto h-[280px] w-full sm:h-[320px]"
               fill="none"
               preserveAspectRatio="none"
             >
+              <defs>
+                <linearGradient id="dashboardAmountFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#8f8f8f" stop-opacity="0.68" />
+                  <stop offset="100%" stop-color="#8f8f8f" stop-opacity="0.06" />
+                </linearGradient>
+                <linearGradient id="dashboardCountFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#b7b7b7" stop-opacity="0.42" />
+                  <stop offset="100%" stop-color="#b7b7b7" stop-opacity="0.04" />
+                </linearGradient>
+              </defs>
+
+              <path :d="amountAreaPath" fill="url(#dashboardAmountFill)" />
+              <path :d="countAreaPath" fill="url(#dashboardCountFill)" />
               <path
                 :d="amountPath"
-                stroke="hsl(var(--primary))"
-                stroke-width="3.5"
+                stroke="#202020"
+                stroke-width="2.3"
                 stroke-linecap="round"
                 stroke-linejoin="round"
               />
               <path
                 :d="countPath"
-                stroke="#FBBF24"
-                stroke-width="3"
-                stroke-dasharray="6 5"
+                stroke="#2c2c2c"
+                stroke-width="2.1"
                 stroke-linecap="round"
                 stroke-linejoin="round"
               />
 
-              <g v-for="point in countRenderPoints" :key="`count-${point.label}`">
+              <g v-for="point in countPoints" :key="`count-${point.label}`">
                 <circle
                   :cx="point.x"
                   :cy="point.y"
-                  :r="activeTrendData?.item.label === point.label ? 5.2 : 4"
-                  fill="white"
-                  stroke="#FBBF24"
-                  stroke-width="2"
+                  :r="activeTrendData?.item.label === point.label ? 5.6 : 0"
+                  fill="#1f1f1f"
                 />
               </g>
 
@@ -726,26 +582,24 @@ onMounted(() => {
                 <circle
                   :cx="point.x"
                   :cy="point.y"
-                  :r="activeTrendData?.item.label === point.label ? 5.8 : 4.5"
-                  fill="white"
-                  stroke="hsl(var(--primary))"
-                  stroke-width="2.4"
+                  :r="activeTrendData?.item.label === point.label ? 6.6 : 0"
+                  fill="#1f1f1f"
                 />
               </g>
 
               <g v-for="(point, index) in amountPoints" :key="`label-${point.label}`">
                 <text
                   :x="point.x"
-                  :y="chartHeight - 10"
+                  :y="chartHeight - 8"
                   text-anchor="middle"
-                  class="fill-muted-foreground text-[11px]"
+                  class="fill-[#878787] text-[12px]"
                 >
                   {{ point.label }}
                 </text>
                 <rect
-                  :x="point.x - 32"
+                  :x="point.x - 34"
                   y="0"
-                  width="64"
+                  width="68"
                   :height="chartHeight"
                   fill="transparent"
                   class="cursor-crosshair"
@@ -757,37 +611,49 @@ onMounted(() => {
                   :y1="chartPadding.top"
                   :x2="point.x"
                   :y2="chartHeight - chartPadding.bottom"
-                  stroke="rgba(148, 163, 184, 0.55)"
+                  stroke="rgba(125, 125, 125, 0.5)"
                   stroke-width="1"
-                  stroke-dasharray="4 4"
+                  stroke-dasharray="4 6"
+                  opacity="0"
                 />
               </g>
             </svg>
 
+            <div class="mt-1 flex items-center justify-center gap-6 pb-2 text-sm">
+              <div class="flex items-center gap-2 text-[#666666]">
+                <span class="h-2.5 w-2.5 rounded-full bg-[#202020]" />
+                <span>合同金额({{ amountSummary }})</span>
+              </div>
+              <div class="flex items-center gap-2 text-[#666666]">
+                <span class="h-2.5 w-2.5 rounded-full bg-[#767676]" />
+                <span>合同数量({{ countSummary }})</span>
+              </div>
+            </div>
+
             <div
               v-if="activeTrendData"
-              class="pointer-events-none absolute z-10 w-52 rounded-xl border border-border/80 bg-background/95 p-3 shadow-xl backdrop-blur"
+              class="pointer-events-none absolute z-10 w-[236px] rounded-[12px] border border-[#e8e8e8] bg-white p-4"
               :style="trendTooltipStyle"
             >
-              <p class="mb-2 text-xs font-semibold text-muted-foreground">
+              <p class="mb-3 text-[15px] font-semibold text-[#171717]">
                 {{ activeTrendData.item.label }}
               </p>
               <div class="space-y-2">
                 <div class="flex items-center justify-between gap-3">
-                  <span class="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span class="h-2 w-2 rounded-full bg-primary" />
+                  <span class="flex items-center gap-3 text-[14px] text-[#7d7d7d]">
+                    <span class="h-5 w-5 rounded-[4px] bg-[#1f1f1f]" />
                     合同金额
                   </span>
-                  <span class="text-sm font-semibold text-foreground">
+                  <span class="text-[15px] font-semibold text-[#171717]">
                     {{ formatCurrency(activeTrendData.item.amount) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between gap-3">
-                  <span class="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span class="h-2 w-2 rounded-full bg-amber-400" />
+                  <span class="flex items-center gap-3 text-[14px] text-[#7d7d7d]">
+                    <span class="h-5 w-5 rounded-[4px] bg-[#1f1f1f]" />
                     合同数量
                   </span>
-                  <span class="text-sm font-semibold text-foreground">
+                  <span class="text-[15px] font-semibold text-[#171717]">
                     {{ formatCount(activeTrendData.item.count) }}
                   </span>
                 </div>
@@ -797,77 +663,5 @@ onMounted(() => {
         </div>
       </CardContent>
     </Card>
-
-    <div class="grid gap-4 lg:grid-cols-2">
-      <Card class="shadow-sm">
-        <CardHeader>
-          <CardTitle class="text-base">近期成交</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div class="space-y-5">
-            <div
-              v-for="sale in recentDeals"
-              :key="sale.id"
-              class="flex items-center gap-3"
-            >
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium leading-none">
-                  {{ sale.customerName || "未知客户" }}
-                </p>
-                <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                  {{ sale.contractName || sale.customerEmail || "-" }}
-                </p>
-              </div>
-              <div class="text-right">
-                <p class="text-sm font-semibold tabular-nums text-red-600">
-                  {{ formatCurrency(sale.amount) }}
-                </p>
-                <p class="text-xs text-muted-foreground">
-                  {{ formatRelativeTime(sale.createdAt) }}
-                </p>
-              </div>
-            </div>
-            <p
-              v-if="!loading && recentDeals.length === 0"
-              class="text-sm text-muted-foreground"
-            >
-              暂无成交记录
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card class="shadow-sm">
-        <CardHeader>
-          <CardTitle class="text-base">近期动态</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div class="space-y-4">
-            <div
-              v-for="activity in recentActivities"
-              :key="`${activity.type}-${activity.id}`"
-              class="flex items-center gap-3"
-            >
-              <div class="min-w-0 flex-1">
-                <p class="text-sm">
-                  <span class="font-medium">{{ activity.userName || "未知用户" }}</span>
-                  <span class="text-muted-foreground"> {{ activity.action }} </span>
-                  <span class="font-medium">{{ activity.target || "-" }}</span>
-                </p>
-              </div>
-              <span class="shrink-0 text-xs text-muted-foreground">
-                {{ formatRelativeTime(activity.createdAt) }}
-              </span>
-            </div>
-            <p
-              v-if="!loading && recentActivities.length === 0"
-              class="text-sm text-muted-foreground"
-            >
-              暂无动态记录
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
   </div>
 </template>

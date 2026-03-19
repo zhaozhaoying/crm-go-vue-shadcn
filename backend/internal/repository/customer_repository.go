@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,13 +32,15 @@ type CustomerRepository interface {
 	GetUserRoleName(ctx context.Context, userID int64) (string, error)
 	GetParentUserID(ctx context.Context, userID int64) (int64, error)
 	ResolveDepartmentAnchorUserID(ctx context.Context, userID int64) (int64, error)
+	GetActiveBlockedUntilByDepartmentAnchor(ctx context.Context, customerID, departmentAnchorUserID int64, now time.Time) (*time.Time, error)
 	CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error)
 	Create(ctx context.Context, input model.CustomerCreateInput) (*model.Customer, error)
 	Update(ctx context.Context, customerID int64, input model.CustomerUpdateInput) (*model.Customer, error)
 	CheckUnique(ctx context.Context, input model.CustomerUniqueCheckInput) (model.CustomerUniqueCheckResult, error)
-	Claim(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
+	Claim(ctx context.Context, customerID, ownerUserID, operatorUserID int64, insideSalesUserID *int64) (*model.Customer, error)
 	Release(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 	Transfer(ctx context.Context, input model.CustomerTransferInput) (*model.Customer, error)
+	Convert(ctx context.Context, customerID, ownerUserID, operatorUserID int64) (*model.Customer, error)
 
 	// Phone management
 	AddPhone(ctx context.Context, phone *model.CustomerPhone) error
@@ -55,6 +58,8 @@ type CustomerRepository interface {
 type gormCustomerRepository struct {
 	db *gorm.DB
 }
+
+const defaultClaimFreezeDays = 7
 
 type customerListRow struct {
 	ID                 int64         `gorm:"column:id"`
@@ -74,6 +79,9 @@ type customerListRow struct {
 	Remark             string        `gorm:"column:remark"`
 	Status             string        `gorm:"column:status"`
 	DealStatus         string        `gorm:"column:deal_status"`
+	CreateUserID       int64         `gorm:"column:create_user_id"`
+	InsideSalesUserID  sql.NullInt64 `gorm:"column:inside_sales_user_id"`
+	ConvertedAt        sql.NullTime  `gorm:"column:converted_at"`
 	OwnerUserID        sql.NullInt64 `gorm:"column:owner_user_id"`
 	OwnerUserName      string        `gorm:"column:owner_user_name"`
 	CreatedAt          time.Time     `gorm:"column:created_at"`
@@ -111,6 +119,49 @@ type customerStatusLogRow struct {
 type customerStatusLogListRow struct {
 	customerStatusLogRow
 	OperatorName string `gorm:"column:operator_name"`
+}
+
+type customerOwnerLogRow struct {
+	CustomerID                    int64      `gorm:"column:customer_id"`
+	FromOwnerUserID               *int64     `gorm:"column:from_owner_user_id"`
+	ToOwnerUserID                 *int64     `gorm:"column:to_owner_user_id"`
+	Action                        string     `gorm:"column:action"`
+	Reason                        string     `gorm:"column:reason"`
+	Content                       string     `gorm:"column:content"`
+	BlockedDepartmentAnchorUserID *int64     `gorm:"column:blocked_department_anchor_user_id"`
+	BlockedUntil                  *time.Time `gorm:"column:blocked_until"`
+	OperatorUserID                int64      `gorm:"column:operator_user_id"`
+	CreatedAt                     time.Time  `gorm:"column:created_at"`
+}
+
+func newCustomerOwnerLogRow(
+	customerID int64,
+	fromOwnerUserID *int64,
+	toOwnerUserID *int64,
+	action string,
+	reason string,
+	content string,
+	operatorUserID int64,
+	createdAt time.Time,
+) customerOwnerLogRow {
+	return customerOwnerLogRow{
+		CustomerID:      customerID,
+		FromOwnerUserID: fromOwnerUserID,
+		ToOwnerUserID:   toOwnerUserID,
+		Action:          action,
+		Reason:          reason,
+		Content:         strings.TrimSpace(content),
+		OperatorUserID:  operatorUserID,
+		CreatedAt:       createdAt,
+	}
+}
+
+func customerOwnerLogContent(note string, fallback string) string {
+	trimmed := strings.TrimSpace(note)
+	if trimmed != "" {
+		return trimmed
+	}
+	return fallback
 }
 
 func NewGormCustomerRepository(db *gorm.DB) CustomerRepository {
@@ -191,6 +242,9 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 				WHEN EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id) THEN 'done'
 				ELSE 'undone'
 			END AS deal_status,
+			c.create_user_id AS create_user_id,
+			c.inside_sales_user_id AS inside_sales_user_id,
+			c.converted_at AS converted_at,
 			c.owner_user_id AS owner_user_id,
 			COALESCE(u.nickname, '') AS owner_user_name,
 			c.created_at AS created_at,
@@ -231,11 +285,19 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 			Remark:             row.Remark,
 			Status:             row.Status,
 			DealStatus:         row.DealStatus,
+			CreateUserID:       row.CreateUserID,
 			OwnerUserName:      row.OwnerUserName,
 			DropUserName:       row.DropUserName,
 			CreatedAt:          row.CreatedAt,
 			UpdatedAt:          row.UpdatedAt,
 			IsInPool:           row.IsInPool,
+		}
+		if row.InsideSalesUserID.Valid {
+			item.InsideSalesUserID = &row.InsideSalesUserID.Int64
+		}
+		if row.ConvertedAt.Valid {
+			convertedAt := row.ConvertedAt.Time
+			item.ConvertedAt = &convertedAt
 		}
 		if row.OwnerUserID.Valid {
 			item.OwnerUserID = &row.OwnerUserID.Int64
@@ -461,6 +523,74 @@ func (r *gormCustomerRepository) GetParentUserID(ctx context.Context, userID int
 	return row.ParentID.Int64, nil
 }
 
+func (r *gormCustomerRepository) GetActiveBlockedUntilByDepartmentAnchor(ctx context.Context, customerID, departmentAnchorUserID int64, now time.Time) (*time.Time, error) {
+	if customerID <= 0 || departmentAnchorUserID <= 0 {
+		return nil, nil
+	}
+
+	type blockedUntilRow struct {
+		BlockedUntil sql.NullTime `gorm:"column:blocked_until"`
+	}
+
+	var row blockedUntilRow
+	err := r.db.WithContext(ctx).
+		Table("customer_owner_logs").
+		Select("blocked_until").
+		Where("customer_id = ?", customerID).
+		Where("action = ?", "release").
+		Where("blocked_department_anchor_user_id = ?", departmentAnchorUserID).
+		Where("blocked_until IS NOT NULL").
+		Where("blocked_until > ?", now).
+		Order("blocked_until ASC").
+		Limit(1).
+		Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	if !row.BlockedUntil.Valid {
+		return nil, nil
+	}
+	blockedUntil := row.BlockedUntil.Time
+	return &blockedUntil, nil
+}
+
+func (r *gormCustomerRepository) resolveClaimBlockInfo(ctx context.Context, ownerUserID int64, now time.Time) (*int64, *time.Time, error) {
+	if ownerUserID <= 0 {
+		return nil, nil, nil
+	}
+
+	anchorUserID, err := r.ResolveDepartmentAnchorUserID(ctx, ownerUserID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if anchorUserID <= 0 {
+		return nil, nil, nil
+	}
+
+	var settingValue string
+	if err := r.db.WithContext(ctx).
+		Table("system_settings").
+		Select("value").
+		Where("`key` = ?", "claim_freeze_days").
+		Limit(1).
+		Scan(&settingValue).Error; err != nil {
+		return nil, nil, err
+	}
+
+	freezeDays := defaultClaimFreezeDays
+	if trimmed := strings.TrimSpace(settingValue); trimmed != "" {
+		if value, convErr := strconv.Atoi(trimmed); convErr == nil {
+			freezeDays = value
+		}
+	}
+	if freezeDays <= 0 {
+		return nil, nil, nil
+	}
+
+	blockedUntil := now.Add(time.Duration(freezeDays) * 24 * time.Hour)
+	return &anchorUserID, &blockedUntil, nil
+}
+
 func (r *gormCustomerRepository) CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error) {
 	if ownerUserID <= 0 {
 		return 0, nil
@@ -508,6 +638,39 @@ func normalizePoolSortBy(raw string) string {
 	default:
 		return "drop_time"
 	}
+}
+
+func buildMyCustomerOwnershipCondition(filter model.CustomerListFilter) (string, []interface{}) {
+	ownerIDs := uniquePositiveInt64(filter.AllowedOwnerUserIDs)
+	insideSalesIDs := uniquePositiveInt64(filter.AllowedInsideSalesUserIDs)
+	hasExplicitScope := len(filter.AllowedOwnerUserIDs) > 0 || len(filter.AllowedInsideSalesUserIDs) > 0
+
+	if hasExplicitScope {
+		switch {
+		case len(ownerIDs) > 0 && len(insideSalesIDs) > 0:
+			return "(c.owner_user_id IN ? OR c.inside_sales_user_id IN ?)", []interface{}{ownerIDs, insideSalesIDs}
+		case len(ownerIDs) > 0:
+			return "c.owner_user_id IN ?", []interface{}{ownerIDs}
+		case len(insideSalesIDs) > 0:
+			return "c.inside_sales_user_id IN ?", []interface{}{insideSalesIDs}
+		default:
+			return "1 = 0", nil
+		}
+	}
+
+	return "c.owner_user_id = ?", []interface{}{filter.ViewerID}
+}
+
+func buildMyCustomerPendingConvertCondition(filter model.CustomerListFilter) (string, []interface{}) {
+	if !filter.IncludePendingConvertScope {
+		return "", nil
+	}
+	insideSalesIDs := uniquePositiveInt64(filter.AllowedInsideSalesUserIDs)
+	if len(insideSalesIDs) == 0 {
+		return "", nil
+	}
+	return `(c.inside_sales_user_id IN ? AND c.create_user_id IN ? AND c.converted_at IS NULL AND (c.owner_user_id IS NULL OR c.status = 'pool'))`,
+		[]interface{}{insideSalesIDs, insideSalesIDs}
 }
 
 func buildCustomerListWhere(filter model.CustomerListFilter) ([]string, []interface{}) {
@@ -559,33 +722,30 @@ func buildCustomerListWhere(filter model.CustomerListFilter) ([]string, []interf
 	case "my":
 		where = append(where, "NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id)")
 		if filter.HasViewer {
-			if !filter.IncludePoolInMyScope {
-				where = append(where, "c.status != 'pool'")
-			}
-			if !filter.SkipViewerOwnerLimit {
-				if len(filter.AllowedOwnerUserIDs) > 0 {
-					ownerIDs := uniquePositiveInt64(filter.AllowedOwnerUserIDs)
-					if len(ownerIDs) == 0 {
-						if filter.IncludeCreatorScope && filter.ViewerID > 0 {
-							where = append(where, "c.create_user_id = ?")
-							args = append(args, filter.ViewerID)
-						} else {
-							where = append(where, "1 = 0")
-						}
-					} else if filter.IncludeCreatorScope && filter.ViewerID > 0 {
-						where = append(where, "(c.owner_user_id IN ? OR c.create_user_id = ?)")
-						args = append(args, ownerIDs, filter.ViewerID)
-					} else {
-						where = append(where, "c.owner_user_id IN ?")
-						args = append(args, ownerIDs)
-					}
-				} else if filter.IncludeCreatorScope && filter.ViewerID > 0 {
-					where = append(where, "(c.owner_user_id = ? OR c.create_user_id = ?)")
-					args = append(args, filter.ViewerID, filter.ViewerID)
-				} else {
-					where = append(where, "c.owner_user_id = ?")
-					args = append(args, filter.ViewerID)
+			if filter.SkipViewerOwnerLimit {
+				if !filter.IncludePoolInMyScope {
+					where = append(where, "c.status != 'pool'")
 				}
+				break
+			}
+
+			ownershipCondition, ownershipArgs := buildMyCustomerOwnershipCondition(filter)
+			pendingConvertCondition, pendingConvertArgs := buildMyCustomerPendingConvertCondition(filter)
+
+			switch {
+			case pendingConvertCondition != "" && ownershipCondition == "1 = 0":
+				where = append(where, pendingConvertCondition)
+				args = append(args, pendingConvertArgs...)
+			case pendingConvertCondition != "":
+				where = append(where, "((c.status != 'pool' AND ("+ownershipCondition+")) OR "+pendingConvertCondition+")")
+				args = append(args, ownershipArgs...)
+				args = append(args, pendingConvertArgs...)
+			default:
+				if !filter.IncludePoolInMyScope {
+					where = append(where, "c.status != 'pool'")
+				}
+				where = append(where, ownershipCondition)
+				args = append(args, ownershipArgs...)
 			}
 		} else {
 			where = append(where, "1 = 0")
@@ -646,37 +806,30 @@ func buildCustomerListWhere(filter model.CustomerListFilter) ([]string, []interf
 
 func (r *gormCustomerRepository) Create(ctx context.Context, input model.CustomerCreateInput) (*model.Customer, error) {
 	type customerCreateRow struct {
-		ID               int64     `gorm:"column:id;primaryKey;autoIncrement"`
-		Name             string    `gorm:"column:name"`
-		LegalName        string    `gorm:"column:legal_name"`
-		ContactName      string    `gorm:"column:contact_name"`
-		Weixin           string    `gorm:"column:weixin"`
-		Email            string    `gorm:"column:email"`
-		CustomerLevelID  int       `gorm:"column:customer_level_id"`
-		CustomerSourceID int       `gorm:"column:customer_source_id"`
-		Province         int       `gorm:"column:province"`
-		City             int       `gorm:"column:city"`
-		Area             int       `gorm:"column:area"`
-		DetailAddress    string    `gorm:"column:detail_address"`
-		Remark           string    `gorm:"column:remark"`
-		Status           string    `gorm:"column:status"`
-		DealStatus       string    `gorm:"column:deal_status"`
-		OwnerUserID      *int64    `gorm:"column:owner_user_id"`
-		CreateUserID     int64     `gorm:"column:create_user_id"`
-		OperateUserID    int64     `gorm:"column:operate_user_id"`
-		CollectTime      *int64    `gorm:"column:collect_time"`
-		NextTime         *int64    `gorm:"column:next_time"`
-		CreatedAt        time.Time `gorm:"column:created_at"`
-		UpdatedAt        time.Time `gorm:"column:updated_at"`
-	}
-
-	type ownerLogRow struct {
-		CustomerID      int64     `gorm:"column:customer_id"`
-		FromOwnerUserID *int64    `gorm:"column:from_owner_user_id"`
-		ToOwnerUserID   *int64    `gorm:"column:to_owner_user_id"`
-		Action          string    `gorm:"column:action"`
-		OperatorUserID  int64     `gorm:"column:operator_user_id"`
-		CreatedAt       time.Time `gorm:"column:created_at"`
+		ID                int64      `gorm:"column:id;primaryKey;autoIncrement"`
+		Name              string     `gorm:"column:name"`
+		LegalName         string     `gorm:"column:legal_name"`
+		ContactName       string     `gorm:"column:contact_name"`
+		Weixin            string     `gorm:"column:weixin"`
+		Email             string     `gorm:"column:email"`
+		CustomerLevelID   int        `gorm:"column:customer_level_id"`
+		CustomerSourceID  int        `gorm:"column:customer_source_id"`
+		Province          int        `gorm:"column:province"`
+		City              int        `gorm:"column:city"`
+		Area              int        `gorm:"column:area"`
+		DetailAddress     string     `gorm:"column:detail_address"`
+		Remark            string     `gorm:"column:remark"`
+		Status            string     `gorm:"column:status"`
+		DealStatus        string     `gorm:"column:deal_status"`
+		OwnerUserID       *int64     `gorm:"column:owner_user_id"`
+		InsideSalesUserID *int64     `gorm:"column:inside_sales_user_id"`
+		ConvertedAt       *time.Time `gorm:"column:converted_at"`
+		CreateUserID      int64      `gorm:"column:create_user_id"`
+		OperateUserID     int64      `gorm:"column:operate_user_id"`
+		CollectTime       *int64     `gorm:"column:collect_time"`
+		NextTime          int64      `gorm:"column:next_time"`
+		CreatedAt         time.Time  `gorm:"column:created_at"`
+		UpdatedAt         time.Time  `gorm:"column:updated_at"`
 	}
 
 	tx := r.db.WithContext(ctx).Begin()
@@ -702,35 +855,37 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 
 	now := time.Now().UTC()
 	var collectTime *int64
-	var nextTime *int64
+	nextTime := int64(0)
 	if ownerUserID != nil {
 		collectAt := now.Unix()
 		collectTime = &collectAt
-		nextTime = &collectAt
+		nextTime = collectAt
 	}
 
 	row := customerCreateRow{
-		Name:             input.Name,
-		LegalName:        input.LegalName,
-		ContactName:      input.ContactName,
-		Weixin:           input.Weixin,
-		Email:            input.Email,
-		CustomerLevelID:  0,
-		CustomerSourceID: 0,
-		Province:         input.Province,
-		City:             input.City,
-		Area:             input.Area,
-		DetailAddress:    input.DetailAddress,
-		Remark:           input.Remark,
-		Status:           status,
-		DealStatus:       model.CustomerDealStatusUndone,
-		OwnerUserID:      ownerUserID,
-		CreateUserID:     input.OperatorUserID,
-		OperateUserID:    input.OperatorUserID,
-		CollectTime:      collectTime,
-		NextTime:         nextTime,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		Name:              input.Name,
+		LegalName:         input.LegalName,
+		ContactName:       input.ContactName,
+		Weixin:            input.Weixin,
+		Email:             input.Email,
+		CustomerLevelID:   0,
+		CustomerSourceID:  0,
+		Province:          input.Province,
+		City:              input.City,
+		Area:              input.Area,
+		DetailAddress:     input.DetailAddress,
+		Remark:            input.Remark,
+		Status:            status,
+		DealStatus:        model.CustomerDealStatusUndone,
+		OwnerUserID:       ownerUserID,
+		InsideSalesUserID: input.InsideSalesUserID,
+		ConvertedAt:       input.ConvertedAt,
+		CreateUserID:      input.OperatorUserID,
+		OperateUserID:     input.OperatorUserID,
+		CollectTime:       collectTime,
+		NextTime:          nextTime,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 	if err := tx.Table("customers").Create(&row).Error; err != nil {
 		return nil, err
@@ -744,14 +899,16 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 	}
 
 	if ownerUserID != nil {
-		logRow := ownerLogRow{
-			CustomerID:      customerID,
-			FromOwnerUserID: nil,
-			ToOwnerUserID:   ownerUserID,
-			Action:          "claim",
-			OperatorUserID:  input.OperatorUserID,
-			CreatedAt:       now,
-		}
+		logRow := newCustomerOwnerLogRow(
+			customerID,
+			nil,
+			ownerUserID,
+			"claim",
+			model.CustomerOwnerLogReasonCreateInitialAssign,
+			"创建客户后直接分配负责人",
+			input.OperatorUserID,
+			now,
+		)
 		if err := tx.Table("customer_owner_logs").Create(&logRow).Error; err != nil {
 			return nil, err
 		}
@@ -819,12 +976,6 @@ func (r *gormCustomerRepository) CheckUnique(ctx context.Context, input model.Cu
 	}
 	result.NameExists = name
 
-	legalName, err := r.existsCustomerField(ctx, "legal_name", input.LegalName, input.ExcludeCustomerID)
-	if err != nil {
-		return result, err
-	}
-	result.LegalNameExists = legalName
-
 	weixin, err := r.existsCustomerField(ctx, "weixin", input.Weixin, input.ExcludeCustomerID)
 	if err != nil {
 		return result, err
@@ -840,16 +991,7 @@ func (r *gormCustomerRepository) CheckUnique(ctx context.Context, input model.Cu
 	return result, nil
 }
 
-func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error) {
-	type ownerLogRow struct {
-		CustomerID      int64     `gorm:"column:customer_id"`
-		FromOwnerUserID *int64    `gorm:"column:from_owner_user_id"`
-		ToOwnerUserID   *int64    `gorm:"column:to_owner_user_id"`
-		Action          string    `gorm:"column:action"`
-		OperatorUserID  int64     `gorm:"column:operator_user_id"`
-		CreatedAt       time.Time `gorm:"column:created_at"`
-	}
-
+func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, ownerUserID, operatorUserID int64, insideSalesUserID *int64) (*model.Customer, error) {
 	tx := r.db.WithContext(ctx).Begin()
 	if err := tx.Error; err != nil {
 		return nil, err
@@ -860,34 +1002,108 @@ func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, operator
 	if err != nil {
 		return nil, err
 	}
-	if !customer.IsInPool {
-		return nil, ErrCustomerNotInPool
+
+	now := time.Now().UTC()
+	updates := map[string]interface{}{
+		"owner_user_id": ownerUserID,
+		"status":        "owned",
+		"collect_time":  now.Unix(),
+		"follow_time":   nil,
+		"next_time":     now.Unix(),
+		"drop_time":     nil,
+		"updated_at":    now,
+	}
+	if insideSalesUserID != nil && *insideSalesUserID > 0 {
+		updates["inside_sales_user_id"] = *insideSalesUserID
+		updates["converted_at"] = now
+	}
+	if err := tx.Table("customers").
+		Where("id = ?", customerID).
+		Updates(updates).Error; err != nil {
+		return nil, err
+	}
+
+	toOwnerID := ownerUserID
+	logContent := "从公海领取客户"
+	if insideSalesUserID != nil && *insideSalesUserID > 0 {
+		logContent = "电销从公海领取客户后自动分配负责人"
+	}
+	logRow := newCustomerOwnerLogRow(
+		customerID,
+		customer.OwnerUserID,
+		&toOwnerID,
+		"claim",
+		model.CustomerOwnerLogReasonClaimFromPool,
+		logContent,
+		operatorUserID,
+		now,
+	)
+	if err := tx.Table("customer_owner_logs").Create(&logRow).Error; err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return nil, err
+	}
+
+	return r.getCustomer(ctx, customerID)
+}
+
+func (r *gormCustomerRepository) Convert(ctx context.Context, customerID, ownerUserID, operatorUserID int64) (*model.Customer, error) {
+	tx := r.db.WithContext(ctx).Begin()
+	if err := tx.Error; err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	customer, err := r.getCustomerForUpdate(tx, customerID)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
+	insideSalesUserID := customer.InsideSalesUserID
+	if insideSalesUserID == nil && customer.CreateUserID > 0 {
+		fallbackInsideSalesUserID := customer.CreateUserID
+		insideSalesUserID = &fallbackInsideSalesUserID
+	}
+	var insideSalesValue interface{}
+	if insideSalesUserID != nil && *insideSalesUserID > 0 {
+		insideSalesValue = *insideSalesUserID
+	}
 	if err := tx.Table("customers").
 		Where("id = ?", customerID).
 		Updates(map[string]interface{}{
-			"owner_user_id": operatorUserID,
-			"status":        "owned",
-			"collect_time":  now.Unix(),
-			"follow_time":   nil,
-			"next_time":     now.Unix(),
-			"drop_time":     nil,
-			"updated_at":    now,
+			"owner_user_id":        ownerUserID,
+			"inside_sales_user_id": insideSalesValue,
+			"converted_at":         now,
+			"status":               "owned",
+			"collect_time":         now.Unix(),
+			"follow_time":          nil,
+			"next_time":            now.Unix(),
+			"drop_time":            nil,
+			"drop_user_id":         nil,
+			"updated_at":           now,
 		}).Error; err != nil {
 		return nil, err
 	}
 
-	toOwnerID := operatorUserID
-	if err := tx.Table("customer_owner_logs").Create(&ownerLogRow{
-		CustomerID:      customerID,
-		FromOwnerUserID: customer.OwnerUserID,
-		ToOwnerUserID:   &toOwnerID,
-		Action:          "claim",
-		OperatorUserID:  operatorUserID,
-		CreatedAt:       now,
-	}).Error; err != nil {
+	toOwnerID := ownerUserID
+	action := "claim"
+	if customer.OwnerUserID != nil && *customer.OwnerUserID > 0 {
+		action = "transfer"
+	}
+	logRow := newCustomerOwnerLogRow(
+		customerID,
+		customer.OwnerUserID,
+		&toOwnerID,
+		action,
+		model.CustomerOwnerLogReasonInsideSalesConvert,
+		"电销转化客户后按分配规则完成分配",
+		operatorUserID,
+		now,
+	)
+	if err := tx.Table("customer_owner_logs").Create(&logRow).Error; err != nil {
 		return nil, err
 	}
 
@@ -899,15 +1115,6 @@ func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, operator
 }
 
 func (r *gormCustomerRepository) Release(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error) {
-	type ownerLogRow struct {
-		CustomerID      int64     `gorm:"column:customer_id"`
-		FromOwnerUserID *int64    `gorm:"column:from_owner_user_id"`
-		ToOwnerUserID   *int64    `gorm:"column:to_owner_user_id"`
-		Action          string    `gorm:"column:action"`
-		OperatorUserID  int64     `gorm:"column:operator_user_id"`
-		CreatedAt       time.Time `gorm:"column:created_at"`
-	}
-
 	tx := r.db.WithContext(ctx).Begin()
 	if err := tx.Error; err != nil {
 		return nil, err
@@ -926,6 +1133,10 @@ func (r *gormCustomerRepository) Release(ctx context.Context, customerID, operat
 	}
 
 	now := time.Now().UTC()
+	blockedDepartmentAnchorUserID, blockedUntil, err := r.resolveClaimBlockInfo(ctx, operatorUserID, now)
+	if err != nil {
+		return nil, err
+	}
 	if err := tx.Table("customers").
 		Where("id = ?", customerID).
 		Updates(map[string]interface{}{
@@ -938,14 +1149,19 @@ func (r *gormCustomerRepository) Release(ctx context.Context, customerID, operat
 		return nil, err
 	}
 
-	if err := tx.Table("customer_owner_logs").Create(&ownerLogRow{
-		CustomerID:      customerID,
-		FromOwnerUserID: customer.OwnerUserID,
-		ToOwnerUserID:   nil,
-		Action:          "release",
-		OperatorUserID:  operatorUserID,
-		CreatedAt:       now,
-	}).Error; err != nil {
+	logRow := newCustomerOwnerLogRow(
+		customerID,
+		customer.OwnerUserID,
+		nil,
+		"release",
+		model.CustomerOwnerLogReasonManualRelease,
+		"手动丢弃客户回公海",
+		operatorUserID,
+		now,
+	)
+	logRow.BlockedDepartmentAnchorUserID = blockedDepartmentAnchorUserID
+	logRow.BlockedUntil = blockedUntil
+	if err := tx.Table("customer_owner_logs").Create(&logRow).Error; err != nil {
 		return nil, err
 	}
 
@@ -957,15 +1173,6 @@ func (r *gormCustomerRepository) Release(ctx context.Context, customerID, operat
 }
 
 func (r *gormCustomerRepository) Transfer(ctx context.Context, input model.CustomerTransferInput) (*model.Customer, error) {
-	type ownerLogRow struct {
-		CustomerID      int64     `gorm:"column:customer_id"`
-		FromOwnerUserID *int64    `gorm:"column:from_owner_user_id"`
-		ToOwnerUserID   *int64    `gorm:"column:to_owner_user_id"`
-		Action          string    `gorm:"column:action"`
-		OperatorUserID  int64     `gorm:"column:operator_user_id"`
-		CreatedAt       time.Time `gorm:"column:created_at"`
-	}
-
 	tx := r.db.WithContext(ctx).Begin()
 	if err := tx.Error; err != nil {
 		return nil, err
@@ -995,14 +1202,17 @@ func (r *gormCustomerRepository) Transfer(ctx context.Context, input model.Custo
 	}
 
 	toOwnerID := input.ToOwnerUserID
-	if err := tx.Table("customer_owner_logs").Create(&ownerLogRow{
-		CustomerID:      input.CustomerID,
-		FromOwnerUserID: customer.OwnerUserID,
-		ToOwnerUserID:   &toOwnerID,
-		Action:          "transfer",
-		OperatorUserID:  input.OperatorUserID,
-		CreatedAt:       now,
-	}).Error; err != nil {
+	logRow := newCustomerOwnerLogRow(
+		input.CustomerID,
+		customer.OwnerUserID,
+		&toOwnerID,
+		"transfer",
+		model.CustomerOwnerLogReasonManualTransfer,
+		customerOwnerLogContent(input.Note, "手动转移客户"),
+		input.OperatorUserID,
+		now,
+	)
+	if err := tx.Table("customer_owner_logs").Create(&logRow).Error; err != nil {
 		return nil, err
 	}
 
@@ -1015,15 +1225,18 @@ func (r *gormCustomerRepository) Transfer(ctx context.Context, input model.Custo
 
 func (r *gormCustomerRepository) getCustomerForUpdate(tx *gorm.DB, customerID int64) (*model.Customer, error) {
 	type customerLockRow struct {
-		ID         int64         `gorm:"column:id"`
-		Name       string        `gorm:"column:name"`
-		Email      string        `gorm:"column:email"`
-		Status     string        `gorm:"column:status"`
-		DealStatus string        `gorm:"column:deal_status"`
-		OwnerUser  sql.NullInt64 `gorm:"column:owner_user_id"`
-		DropUserID sql.NullInt64 `gorm:"column:drop_user_id"`
-		CreatedAt  time.Time     `gorm:"column:created_at"`
-		UpdatedAt  time.Time     `gorm:"column:updated_at"`
+		ID                int64         `gorm:"column:id"`
+		Name              string        `gorm:"column:name"`
+		Email             string        `gorm:"column:email"`
+		Status            string        `gorm:"column:status"`
+		DealStatus        string        `gorm:"column:deal_status"`
+		CreateUserID      int64         `gorm:"column:create_user_id"`
+		InsideSalesUserID sql.NullInt64 `gorm:"column:inside_sales_user_id"`
+		ConvertedAt       sql.NullTime  `gorm:"column:converted_at"`
+		OwnerUser         sql.NullInt64 `gorm:"column:owner_user_id"`
+		DropUserID        sql.NullInt64 `gorm:"column:drop_user_id"`
+		CreatedAt         time.Time     `gorm:"column:created_at"`
+		UpdatedAt         time.Time     `gorm:"column:updated_at"`
 	}
 
 	var row customerLockRow
@@ -1034,6 +1247,9 @@ func (r *gormCustomerRepository) getCustomerForUpdate(tx *gorm.DB, customerID in
 			email,
 			status,
 			deal_status,
+			create_user_id,
+			inside_sales_user_id,
+			converted_at,
 			owner_user_id,
 			COALESCE(
 				drop_user_id,
@@ -1058,14 +1274,22 @@ func (r *gormCustomerRepository) getCustomerForUpdate(tx *gorm.DB, customerID in
 	}
 
 	customer := &model.Customer{
-		ID:         row.ID,
-		Name:       row.Name,
-		Email:      row.Email,
-		Status:     row.Status,
-		DealStatus: row.DealStatus,
-		CreatedAt:  row.CreatedAt,
-		UpdatedAt:  row.UpdatedAt,
-		IsInPool:   !row.OwnerUser.Valid || row.Status == model.CustomerStatusPool,
+		ID:           row.ID,
+		Name:         row.Name,
+		Email:        row.Email,
+		Status:       row.Status,
+		DealStatus:   row.DealStatus,
+		CreateUserID: row.CreateUserID,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+		IsInPool:     !row.OwnerUser.Valid || row.Status == model.CustomerStatusPool,
+	}
+	if row.InsideSalesUserID.Valid {
+		customer.InsideSalesUserID = &row.InsideSalesUserID.Int64
+	}
+	if row.ConvertedAt.Valid {
+		convertedAt := row.ConvertedAt.Time
+		customer.ConvertedAt = &convertedAt
 	}
 	if row.OwnerUser.Valid {
 		customer.OwnerUserID = &row.OwnerUser.Int64
@@ -1101,6 +1325,9 @@ func (r *gormCustomerRepository) getCustomer(ctx context.Context, customerID int
 				WHEN EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id) THEN 'done'
 				ELSE 'undone'
 			END AS deal_status,
+			c.create_user_id AS create_user_id,
+			c.inside_sales_user_id AS inside_sales_user_id,
+			c.converted_at AS converted_at,
 			c.owner_user_id AS owner_user_id,
 			COALESCE(u.nickname, '') AS owner_user_name,
 			COALESCE(NULLIF(du.nickname, ''), NULLIF(du.username, ''), '') AS drop_user_name,
@@ -1164,11 +1391,19 @@ func (r *gormCustomerRepository) getCustomer(ctx context.Context, customerID int
 		Remark:             row.Remark,
 		Status:             row.Status,
 		DealStatus:         row.DealStatus,
+		CreateUserID:       row.CreateUserID,
 		OwnerUserName:      row.OwnerUserName,
 		DropUserName:       row.DropUserName,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 		IsInPool:           row.IsInPool,
+	}
+	if row.InsideSalesUserID.Valid {
+		customer.InsideSalesUserID = &row.InsideSalesUserID.Int64
+	}
+	if row.ConvertedAt.Valid {
+		convertedAt := row.ConvertedAt.Time
+		customer.ConvertedAt = &convertedAt
 	}
 	if row.OwnerUserID.Valid {
 		customer.OwnerUserID = &row.OwnerUserID.Int64
@@ -1525,7 +1760,7 @@ func (r *gormCustomerRepository) existsCustomerField(
 	}
 
 	switch field {
-	case "name", "legal_name", "weixin":
+	case "name", "legal_name", "contact_name", "weixin":
 	default:
 		return false, fmt.Errorf("unsupported field: %s", field)
 	}

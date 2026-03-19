@@ -514,7 +514,7 @@ func (r *gormDashboardRepository) getPositiveIntSetting(ctx context.Context, key
 	if err := r.db.WithContext(ctx).
 		Table("system_settings").
 		Select("value").
-		Where("key = ?", key).
+		Where("`key` = ?", key).
 		Take(&row).Error; err != nil {
 		return defaultVal
 	}

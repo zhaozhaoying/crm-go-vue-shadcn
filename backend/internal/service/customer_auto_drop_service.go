@@ -60,12 +60,16 @@ type autoDropCandidateRow struct {
 }
 
 type ownerLogRow struct {
-	CustomerID      int64     `gorm:"column:customer_id"`
-	FromOwnerUserID *int64    `gorm:"column:from_owner_user_id"`
-	ToOwnerUserID   *int64    `gorm:"column:to_owner_user_id"`
-	Action          string    `gorm:"column:action"`
-	OperatorUserID  int64     `gorm:"column:operator_user_id"`
-	CreatedAt       time.Time `gorm:"column:created_at"`
+	CustomerID                    int64      `gorm:"column:customer_id"`
+	FromOwnerUserID               *int64     `gorm:"column:from_owner_user_id"`
+	ToOwnerUserID                 *int64     `gorm:"column:to_owner_user_id"`
+	Action                        string     `gorm:"column:action"`
+	Reason                        string     `gorm:"column:reason"`
+	Content                       string     `gorm:"column:content"`
+	BlockedDepartmentAnchorUserID *int64     `gorm:"column:blocked_department_anchor_user_id"`
+	BlockedUntil                  *time.Time `gorm:"column:blocked_until"`
+	OperatorUserID                int64      `gorm:"column:operator_user_id"`
+	CreatedAt                     time.Time  `gorm:"column:created_at"`
 }
 
 type statusLogRow struct {
@@ -114,6 +118,7 @@ func (s *customerAutoDropService) Run(ctx context.Context) (CustomerAutoDropTask
 		HolidayModeEnabled: s.getBoolSetting("holiday_mode_enabled", false),
 		Failures:           make([]CustomerAutoDropTaskFailure, 0),
 	}
+	claimFreezeDays := s.getIntSetting("claim_freeze_days", defaultClaimFreezeDays)
 
 	if !result.AutoDropEnabled {
 		result.Skipped = true
@@ -155,6 +160,7 @@ func (s *customerAutoDropService) Run(ctx context.Context) (CustomerAutoDropTask
 			now,
 			triggerType,
 			reason,
+			claimFreezeDays,
 			result.FollowUpDropDays,
 			result.DealDropDays,
 			followTimeout,
@@ -220,6 +226,7 @@ func (s *customerAutoDropService) dropOne(
 	now time.Time,
 	triggerType int,
 	reason string,
+	claimFreezeDays int,
 	followUpDropDays int,
 	dealDropDays int,
 	followTimeout bool,
@@ -249,13 +256,21 @@ func (s *customerAutoDropService) dropOne(
 		dropped = true
 
 		fromOwner := row.OwnerUserID
+		blockedDepartmentAnchorUserID, blockedUntil, err := buildClaimBlockInfo(ctx, repository.NewGormCustomerRepository(tx), row.OwnerUserID, claimFreezeDays, now)
+		if err != nil {
+			return err
+		}
 		if err := tx.Table("customer_owner_logs").Create(&ownerLogRow{
-			CustomerID:      row.ID,
-			FromOwnerUserID: &fromOwner,
-			ToOwnerUserID:   nil,
-			Action:          "release",
-			OperatorUserID:  row.OwnerUserID,
-			CreatedAt:       now,
+			CustomerID:                    row.ID,
+			FromOwnerUserID:               &fromOwner,
+			ToOwnerUserID:                 nil,
+			Action:                        "release",
+			Reason:                        model.CustomerOwnerLogReasonAutoDrop,
+			Content:                       reason,
+			BlockedDepartmentAnchorUserID: blockedDepartmentAnchorUserID,
+			BlockedUntil:                  blockedUntil,
+			OperatorUserID:                row.OwnerUserID,
+			CreatedAt:                     now,
 		}).Error; err != nil {
 			return err
 		}
@@ -324,6 +339,29 @@ func firstNonZero(primary, secondary *int64, fallback int64) int64 {
 		return *secondary
 	}
 	return fallback
+}
+
+func buildClaimBlockInfo(
+	ctx context.Context,
+	repo customerOwnerAssignmentRepo,
+	ownerUserID int64,
+	claimFreezeDays int,
+	now time.Time,
+) (*int64, *time.Time, error) {
+	if ownerUserID <= 0 || claimFreezeDays <= 0 {
+		return nil, nil, nil
+	}
+
+	anchorUserID, err := resolveSalesDirectorUserID(ctx, repo, ownerUserID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if anchorUserID <= 0 {
+		return nil, nil, nil
+	}
+
+	blockedUntil := now.Add(time.Duration(claimFreezeDays) * 24 * time.Hour)
+	return &anchorUserID, &blockedUntil, nil
 }
 
 func autoDropReason(followDays, dealDays int, followTimeout, dealTimeout bool) (int, string) {
