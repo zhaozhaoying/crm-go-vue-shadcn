@@ -29,6 +29,30 @@ export interface DashboardSalesAdminOverview {
   todayFollowRecordRanks: DashboardRankingItem[]
 }
 
+export interface DashboardSalesDailyPersonalOverview {
+  scoreDate: string
+  totalScore: number
+  rank: number
+  totalUsers: number
+  callScore: number
+  visitScore: number
+  newCustomerScore: number
+  hasData: boolean
+}
+
+export interface DashboardDailyCallSummary {
+  scoreDate: string
+  totalCallDurationSecond: number
+  totalConnectedDurationSecond: number
+}
+
+export interface DashboardSalesDailyMetricsOverview {
+  callCount: DashboardStat
+  callDuration: DashboardStat
+  visitCount: DashboardStat
+  totalScore: DashboardStat
+}
+
 export interface DashboardAutoDropOverview {
   followUpDueSoonCount: number
   dealDueSoonCount: number
@@ -64,6 +88,9 @@ export interface DashboardOverview {
   monthlyContracts: DashboardMonthlyContractCount[]
   autoDropOverview: DashboardAutoDropOverview
   salesAdminOverview?: DashboardSalesAdminOverview | null
+  salesDailyPersonalOverview?: DashboardSalesDailyPersonalOverview | null
+  salesDailyMetricsOverview?: DashboardSalesDailyMetricsOverview | null
+  dailyCallSummary?: DashboardDailyCallSummary | null
   recentDeals: DashboardRecentDeal[]
   recentActivities: DashboardRecentActivity[]
 }

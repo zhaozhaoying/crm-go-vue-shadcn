@@ -22,6 +22,8 @@ import { toast } from "vue-sonner";
 
 import {
   listMyCustomers,
+  batchReassignCustomersByRanking,
+  type BatchRankedReassignCustomersResponseItem,
   convertCustomer,
   createCustomer,
   releaseCustomer,
@@ -38,6 +40,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import {
@@ -80,6 +88,9 @@ const submitting = ref(false);
 const convertingId = ref<number | null>(null);
 const discardingId = ref<number | null>(null);
 const batchDiscarding = ref(false);
+const batchReassigning = ref(false);
+const reassignResultOpen = ref(false);
+const reassignResultItems = ref<BatchRankedReassignCustomersResponseItem[]>([]);
 const error = ref("");
 const customers = ref<Customer[]>([]);
 const totalCount = ref(0);
@@ -195,6 +206,7 @@ const totalPages = computed(() =>
 );
 const isAdmin = computed(() => isAdminUser(authStore.user));
 const isInsideSales = computed(() => isInsideSalesUser(authStore.user));
+const canBatchReassign = computed(() => isAdmin.value);
 const currentUserId = computed(() => Number(authStore.user?.id || 0));
 const followUpDropDays = ref(30);
 const dealDropDays = ref(90);
@@ -210,11 +222,7 @@ const canDiscardCustomer = (customer: Customer) =>
   !isPoolCustomer(customer) &&
   currentUserId.value > 0 &&
   Number(customer.ownerUserId || 0) === currentUserId.value;
-const selectableCustomerIds = computed(() =>
-  customers.value
-    .filter((customer) => canDiscardCustomer(customer))
-    .map((customer) => customer.id),
-);
+const selectableCustomerIds = computed(() => customers.value.map((customer) => customer.id));
 const allPageSelected = computed(
   () =>
     selectableCustomerIds.value.length > 0 &&
@@ -226,6 +234,11 @@ const somePageSelected = computed(
     !allPageSelected.value,
 );
 const selectedCustomers = computed(() =>
+  customers.value.filter(
+    (customer) => selectedIds.value.includes(customer.id),
+  ),
+);
+const selectedDiscardableCustomers = computed(() =>
   customers.value.filter(
     (customer) => selectedIds.value.includes(customer.id) && canDiscardCustomer(customer),
   ),
@@ -241,7 +254,6 @@ const toggleAllPage = (val: boolean | "indeterminate") => {
 };
 
 const toggleRow = (id: number, val: boolean | "indeterminate") => {
-  if (!selectableCustomerIds.value.includes(id)) return;
   const checked = val === true;
   if (checked) {
     if (!selectedIds.value.includes(id)) {
@@ -259,6 +271,9 @@ const renderOwner = (customer: Customer) => {
     (customer.ownerUserId ? `用户 #${customer.ownerUserId}` : "未分配")
   );
 };
+
+const renderAssignmentLabel = (customer: Customer) =>
+  customer.assignmentLabel || "-";
 
 const isPendingConvertCustomer = (customer: Customer) =>
   (() => {
@@ -554,10 +569,10 @@ const handleDiscard = async (customer: Customer) => {
 };
 
 const handleBatchDiscard = async () => {
-  if (selectedCustomers.value.length === 0) return;
+  if (selectedDiscardableCustomers.value.length === 0) return;
 
-  const total = selectedCustomers.value.length;
-  const previewNames = selectedCustomers.value
+  const total = selectedDiscardableCustomers.value.length;
+  const previewNames = selectedDiscardableCustomers.value
     .slice(0, 3)
     .map((item) => `「${item.name}」`)
     .join("、");
@@ -576,7 +591,7 @@ const handleBatchDiscard = async () => {
 
   batchDiscarding.value = true;
   try {
-    const tasks = selectedCustomers.value.map((customer) =>
+    const tasks = selectedDiscardableCustomers.value.map((customer) =>
       releaseCustomer(customer.id),
     );
     const results = await Promise.allSettled(tasks);
@@ -598,6 +613,48 @@ const handleBatchDiscard = async () => {
     await fetchCustomers();
   } finally {
     batchDiscarding.value = false;
+  }
+};
+
+const handleBatchReassign = async () => {
+  if (selectedCustomers.value.length === 0) return;
+
+  const total = selectedCustomers.value.length;
+  const previewNames = selectedCustomers.value
+    .slice(0, 3)
+    .map((item) => `「${item.name}」`)
+    .join("、");
+  const description =
+    total > 3
+      ? `确定要按昨日排名规则，重新分配${previewNames}等 ${total} 个客户吗？系统会按各自所属部门分别计算。`
+      : `确定要按昨日排名规则，重新分配${previewNames || `${total} 个客户`}吗？系统会按各自所属部门分别计算。`;
+
+  const confirmed = await confirmDialog.value?.open({
+    title: "批量重新分配客户",
+    description,
+    confirmText: "确认重新分配",
+  });
+  if (!confirmed) return;
+
+  batchReassigning.value = true;
+  try {
+    const result = await batchReassignCustomersByRanking(
+      selectedCustomers.value.map((customer) => customer.id),
+    );
+    reassignResultItems.value = result.items;
+    if (result.successCount > 0) {
+      toast.success(`已完成 ${result.successCount} 个客户的重新分配`);
+    }
+    reassignResultOpen.value = true;
+    if (result.failedCount > 0) {
+      toast.error(`有 ${result.failedCount} 个客户重新分配失败，请查看明细`);
+    }
+    selectedIds.value = [];
+    await fetchCustomers();
+  } catch (err) {
+    toast.error(getRequestErrorMessage(err, "批量重新分配失败"));
+  } finally {
+    batchReassigning.value = false;
   }
 };
 
@@ -934,13 +991,35 @@ onUnmounted(() => {
               <span>添加</span>
             </Button>
             <Button
+              v-if="canBatchReassign"
+              size="sm"
+              variant="outline"
+              :disabled="
+                loading ||
+                batchReassigning ||
+                batchDiscarding ||
+                selectedCustomers.length === 0 ||
+                discardingId !== null
+              "
+              @click="handleBatchReassign"
+            >
+              <Loader2 v-if="batchReassigning" class="h-4 w-4 animate-spin" />
+              <RefreshCw v-else class="h-4 w-4" />
+              <span>{{
+                batchReassigning
+                  ? "重新分配中"
+                  : `重新分配${selectedIds.length ? `(${selectedIds.length})` : ""}`
+              }}</span>
+            </Button>
+            <Button
               size="sm"
               variant="outline"
               class="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
               :disabled="
                 loading ||
+                batchReassigning ||
                 batchDiscarding ||
-                selectedCustomers.length === 0 ||
+                selectedDiscardableCustomers.length === 0 ||
                 discardingId !== null
               "
               @click="handleBatchDiscard"
@@ -950,7 +1029,7 @@ onUnmounted(() => {
               <span>{{
                 batchDiscarding
                   ? "批量丢弃中"
-                  : `批量丢弃${selectedIds.length ? `(${selectedIds.length})` : ""}`
+                  : `批量丢弃${selectedDiscardableCustomers.length ? `(${selectedDiscardableCustomers.length})` : ""}`
               }}</span>
             </Button>
           </div>
@@ -985,8 +1064,8 @@ onUnmounted(() => {
                       class="border-black/70 data-[state=checked]:border-black data-[state=checked]:bg-black data-[state=checked]:text-white data-[state=indeterminate]:border-black data-[state=indeterminate]:bg-black data-[state=indeterminate]:text-white focus-visible:ring-black/30"
                       :disabled="
                         batchDiscarding ||
-                        loading ||
-                        selectableCustomerIds.length === 0
+                        batchReassigning ||
+                        loading
                       "
                       aria-label="全选客户"
                       @update:checked="toggleAllPage"
@@ -1005,6 +1084,7 @@ onUnmounted(() => {
                 <TableHead>客户级别</TableHead>
                 <TableHead>客户来源</TableHead>
                 <TableHead>负责人</TableHead>
+                <TableHead>分配方式</TableHead>
                 <TableHead>省份</TableHead>
                 <TableHead>城市</TableHead>
                 <TableHead>区县</TableHead>
@@ -1012,7 +1092,7 @@ onUnmounted(() => {
                 <TableHead
                   class="sticky right-0 z-30 w-[180px] min-w-[180px] bg-muted/95 text-center border-l border-border before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border"
                 >
-                  <div class="inline-flex w-full items-center justify-end gap-1">
+                  <div class="inline-flex w-full items-center justify-center gap-1">
                     <SquarePen class="h-3.5 w-3.5 text-muted-foreground" />
                     <span>操作</span>
                   </div>
@@ -1022,7 +1102,7 @@ onUnmounted(() => {
             <TableBody>
               <TableRow v-if="error">
                 <TableCell
-                  :colspan="18"
+                  :colspan="19"
                   class="h-24 text-center text-destructive"
                 >
                   {{ error }}
@@ -1045,9 +1125,8 @@ onUnmounted(() => {
                         :checked="selectedIds.includes(customer.id)"
                         class="border-black/70 data-[state=checked]:border-black data-[state=checked]:bg-black data-[state=checked]:text-white data-[state=indeterminate]:border-black data-[state=indeterminate]:bg-black data-[state=indeterminate]:text-white focus-visible:ring-black/30"
                         :disabled="
-                          !canDiscardCustomer(customer) ||
                           batchDiscarding ||
-                          discardingId === customer.id ||
+                          batchReassigning ||
                           convertingId === customer.id ||
                           submitting ||
                           salesOrderSubmitting
@@ -1135,6 +1214,23 @@ onUnmounted(() => {
                       {{ renderOwner(customer) }}
                     </Badge>
                   </TableCell>
+                  <TableCell class="text-xs">
+                    <Badge
+                      variant="outline"
+                      class="bg-background whitespace-nowrap text-muted-foreground"
+                    >
+                      {{ renderAssignmentLabel(customer) }}
+                    </Badge>
+                    <p
+                      v-if="
+                        customer.assignmentType === 'auto_assign' &&
+                        customer.assignmentOperatorUserName
+                      "
+                      class="mt-1 whitespace-nowrap text-muted-foreground"
+                    >
+                      电销：{{ customer.assignmentOperatorUserName }}
+                    </p>
+                  </TableCell>
                   <TableCell>{{
                     resolveRegionName(
                       customer.province,
@@ -1219,13 +1315,13 @@ onUnmounted(() => {
                     </div>
                     <div
                       v-else
-                      class="ml-auto flex w-fit flex-wrap justify-end gap-1.5"
+                      class="ml-auto grid w-[168px] grid-cols-2 gap-1.5"
                     >
                       <Button
                         v-if="!isInsideSales"
                         variant="ghost"
                         size="sm"
-                        class="justify-start gap-2"
+                        class="w-full justify-start gap-2"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
@@ -1249,7 +1345,7 @@ onUnmounted(() => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        class="justify-start gap-2"
+                        class="w-full justify-start gap-2"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
@@ -1264,7 +1360,7 @@ onUnmounted(() => {
                         v-if="isAdmin"
                         variant="ghost"
                         size="sm"
-                        class="justify-start gap-2"
+                        class="w-full justify-start gap-2"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
@@ -1278,7 +1374,7 @@ onUnmounted(() => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        class="justify-start gap-2"
+                        class="w-full justify-start gap-2"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
@@ -1294,7 +1390,7 @@ onUnmounted(() => {
                         v-if="canDiscardCustomer(customer)"
                         variant="ghost"
                         size="sm"
-                        class="justify-start gap-2 text-destructive hover:text-destructive"
+                        class="w-full justify-start gap-2 text-destructive hover:text-destructive"
                         :disabled="
                           batchDiscarding ||
                           discardingId === customer.id ||
@@ -1318,7 +1414,7 @@ onUnmounted(() => {
 
                 <EmptyTablePlaceholder
                   v-if="customers.length === 0"
-                  :colspan="18"
+                  :colspan="19"
                 />
               </template>
             </TableBody>
@@ -1347,6 +1443,50 @@ onUnmounted(() => {
       @submit="handleSubmit"
     />
     <ConfirmDialog ref="confirmDialog" />
+    <Dialog :open="reassignResultOpen" @update:open="reassignResultOpen = $event">
+      <DialogContent class="sm:max-w-[900px]">
+        <DialogHeader>
+          <DialogTitle>重新分配结果明细</DialogTitle>
+        </DialogHeader>
+        <div class="max-h-[60vh] overflow-y-auto rounded-md border border-border/60">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead class="w-20">状态</TableHead>
+                <TableHead class="w-24">客户ID</TableHead>
+                <TableHead class="w-48">客户名称</TableHead>
+                <TableHead class="w-28">原负责人</TableHead>
+                <TableHead class="w-28">新负责人</TableHead>
+                <TableHead>结果说明</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <template v-if="reassignResultItems.length > 0">
+                <TableRow v-for="item in reassignResultItems" :key="item.customerId">
+                  <TableCell>
+                    <Badge :variant="item.success ? 'default' : 'destructive'">
+                      {{ item.success ? "成功" : "失败" }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{{ item.customerId }}</TableCell>
+                  <TableCell>{{ item.customerName || "-" }}</TableCell>
+                  <TableCell>{{ item.fromOwnerUserId ?? "-" }}</TableCell>
+                  <TableCell>{{ item.toOwnerUserId ?? "-" }}</TableCell>
+                  <TableCell :class="item.success ? 'text-muted-foreground' : 'text-destructive'">
+                    {{ item.message || (item.success ? "重新分配成功" : "重新分配失败") }}
+                  </TableCell>
+                </TableRow>
+              </template>
+              <EmptyTablePlaceholder
+                v-else
+                :colspan="6"
+                text="暂无重新分配结果"
+              />
+            </TableBody>
+          </Table>
+        </div>
+      </DialogContent>
+    </Dialog>
     <SalesFollowUpDialog
       v-model:open="followUpDialogOpen"
       :customer-id="followUpCustomerId"

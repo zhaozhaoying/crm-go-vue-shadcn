@@ -72,6 +72,8 @@ definitions:
     type: object
   handler.CheckCustomerUniqueRequest:
     properties:
+      contactName:
+        type: string
       excludeCustomerId:
         type: integer
       legalName:
@@ -274,6 +276,26 @@ definitions:
     required:
     - name
     type: object
+  handler.CreateCustomerVisitRequest:
+    properties:
+      area: {}
+      checkInLat:
+        type: number
+      checkInLng:
+        type: number
+      city: {}
+      customerName:
+        type: string
+      detailAddress:
+        type: string
+      images:
+        type: string
+      province: {}
+      remark:
+        type: string
+      visitPurpose:
+        type: string
+    type: object
   handler.CreateExternalCompanySearchTasksRequest:
     properties:
       keyword:
@@ -348,6 +370,9 @@ definitions:
       email:
         example: zhangsan@example.com
         type: string
+      hanghangCrmMobile:
+        example: "13800138001"
+        type: string
       mobile:
         example: "13800138000"
         type: string
@@ -370,6 +395,7 @@ definitions:
         minLength: 3
         type: string
     required:
+    - mobile
     - password
     - roleId
     - username
@@ -399,11 +425,19 @@ definitions:
     type: object
   handler.HealthPayload:
     properties:
+      buildTime:
+        type: string
+      gitCommit:
+        type: string
       service:
+        type: string
+      startedAt:
         type: string
       status:
         type: string
       timestamp:
+        type: string
+      version:
         type: string
     type: object
   handler.LoginRequest:
@@ -457,6 +491,30 @@ definitions:
     required:
     - refreshToken
     type: object
+  handler.ResetPasswordDirectRequest:
+    properties:
+      contact:
+        type: string
+      newPassword:
+        type: string
+      username:
+        type: string
+    required:
+    - contact
+    - newPassword
+    - username
+    type: object
+  handler.ResetPasswordRequest:
+    properties:
+      newPassword:
+        minLength: 6
+        type: string
+      resetToken:
+        type: string
+    required:
+    - newPassword
+    - resetToken
+    type: object
   handler.ResourcePoolBatchConvertRequest:
     properties:
       resourceIds:
@@ -479,8 +537,17 @@ definitions:
       region:
         type: string
     type: object
+  handler.RunHanghangCRMDailyUserCallStatSyncTaskResponse:
+    properties:
+      callStatSync:
+        $ref: '#/definitions/service.SyncHanghangCRMDailyUserCallStatResult'
+      salesScoreSync:
+        $ref: '#/definitions/service.SyncSalesDailyScoreResult'
+    type: object
   handler.TransferCustomerRequest:
     properties:
+      note:
+        type: string
       toOwnerUserId:
         type: integer
     required:
@@ -544,6 +611,8 @@ definitions:
         type: string
       email:
         type: string
+      hanghangCrmMobile:
+        type: string
       mobile:
         type: string
       nickname:
@@ -562,8 +631,24 @@ definitions:
         minLength: 3
         type: string
     required:
+    - mobile
     - roleId
     - username
+    type: object
+  handler.VerifyResetIdentityRequest:
+    properties:
+      contact:
+        type: string
+      username:
+        type: string
+    required:
+    - contact
+    - username
+    type: object
+  handler.VerifyResetIdentityResponse:
+    properties:
+      resetToken:
+        type: string
     type: object
   model.ActivityLog:
     properties:
@@ -583,6 +668,8 @@ definitions:
         type: string
       userId:
         type: integer
+      userName:
+        type: string
     type: object
   model.Contract:
     properties:
@@ -674,6 +761,8 @@ definitions:
         type: string
       contactName:
         type: string
+      convertedAt:
+        type: string
       createUserId:
         type: integer
       createdAt:
@@ -700,6 +789,8 @@ definitions:
         type: string
       dropUserId:
         type: integer
+      dropUserName:
+        type: string
       email:
         type: string
       followTime:
@@ -709,6 +800,8 @@ definitions:
           type: integer
         type: array
       id:
+        type: integer
+      insideSalesUserId:
         type: integer
       isInPool:
         type: boolean
@@ -868,6 +961,8 @@ definitions:
     type: object
   model.CustomerUniqueCheckResult:
     properties:
+      contactNameExists:
+        type: boolean
       duplicatePhones:
         items:
           type: string
@@ -878,6 +973,109 @@ definitions:
         type: boolean
       weixinExists:
         type: boolean
+    type: object
+  model.CustomerVisit:
+    properties:
+      area:
+        type: string
+      checkInLat:
+        type: number
+      checkInLng:
+        type: number
+      city:
+        type: string
+      createdAt:
+        type: string
+      customerName:
+        type: string
+      detailAddress:
+        type: string
+      id:
+        type: integer
+      images:
+        type: string
+      operatorUserId:
+        type: integer
+      operatorUserName:
+        type: string
+      province:
+        type: string
+      remark:
+        type: string
+      updatedAt:
+        type: string
+      visitDate:
+        type: string
+      visitPurpose:
+        type: string
+    type: object
+  model.CustomerVisitListResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.CustomerVisit'
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  model.DailyUserCallStat:
+    properties:
+      averageCallDuration:
+        type: number
+      averageCallSecond:
+        type: number
+      bindNum:
+        type: integer
+      callNum:
+        type: integer
+      connectionRate:
+        type: number
+      createdAt:
+        type: string
+      id:
+        type: integer
+      mobile:
+        type: string
+      notConnected:
+        type: integer
+      realName:
+        type: string
+      statDate:
+        type: string
+      timeTotal:
+        type: integer
+      totalMinute:
+        type: string
+      totalSecond:
+        type: integer
+      updatedAt:
+        type: string
+      userId:
+        type: integer
+    type: object
+  model.DashboardAutoDropOverview:
+    properties:
+      dealDueSoonCount:
+        type: integer
+      followUpDueSoonCount:
+        type: integer
+      monthlyDealDropped:
+        type: integer
+      monthlyFollowUpDropped:
+        type: integer
+    type: object
+  model.DashboardDailyCallSummary:
+    properties:
+      scoreDate:
+        type: string
+      totalCallDurationSecond:
+        type: integer
+      totalConnectedDurationSecond:
+        type: integer
     type: object
   model.DashboardMonthlyContractCount:
     properties:
@@ -895,8 +1093,12 @@ definitions:
     type: object
   model.DashboardOverview:
     properties:
+      autoDropOverview:
+        $ref: '#/definitions/model.DashboardAutoDropOverview'
       conversionRate:
         $ref: '#/definitions/model.DashboardStat'
+      dailyCallSummary:
+        $ref: '#/definitions/model.DashboardDailyCallSummary'
       monthlyContracts:
         items:
           $ref: '#/definitions/model.DashboardMonthlyContractCount'
@@ -919,6 +1121,19 @@ definitions:
         type: array
       revenue:
         $ref: '#/definitions/model.DashboardStat'
+      salesAdminOverview:
+        $ref: '#/definitions/model.DashboardSalesAdminOverview'
+      salesDailyPersonalOverview:
+        $ref: '#/definitions/model.DashboardSalesDailyPersonalOverview'
+    type: object
+  model.DashboardRankingItem:
+    properties:
+      count:
+        type: integer
+      userId:
+        type: integer
+      userName:
+        type: string
     type: object
   model.DashboardRecentActivity:
     properties:
@@ -954,6 +1169,44 @@ definitions:
       userName:
         type: string
     type: object
+  model.DashboardSalesAdminOverview:
+    properties:
+      monthlyFollowRecords:
+        $ref: '#/definitions/model.DashboardStat'
+      monthlyNewCustomers:
+        $ref: '#/definitions/model.DashboardStat'
+      todayFollowRecordRanks:
+        items:
+          $ref: '#/definitions/model.DashboardRankingItem'
+        type: array
+      todayFollowRecords:
+        $ref: '#/definitions/model.DashboardStat'
+      todayNewCustomerRanks:
+        items:
+          $ref: '#/definitions/model.DashboardRankingItem'
+        type: array
+      todayNewCustomers:
+        $ref: '#/definitions/model.DashboardStat'
+    type: object
+  model.DashboardSalesDailyPersonalOverview:
+    properties:
+      callScore:
+        type: integer
+      hasData:
+        type: boolean
+      newCustomerScore:
+        type: integer
+      rank:
+        type: integer
+      scoreDate:
+        type: string
+      totalScore:
+        type: integer
+      totalUsers:
+        type: integer
+      visitScore:
+        type: integer
+    type: object
   model.DashboardStat:
     properties:
       changeRate:
@@ -962,6 +1215,73 @@ definitions:
         type: number
       previous:
         type: number
+    type: object
+  model.ExternalCompany:
+    properties:
+      address:
+        type: string
+      annualRevenue:
+        type: string
+      businessType:
+        type: string
+      certification:
+        type: string
+      city:
+        type: string
+      companyDesc:
+        type: string
+      companyImages:
+        type: string
+      companyLogo:
+        type: string
+      companyName:
+        type: string
+      companyNameEn:
+        type: string
+      companyNo:
+        type: string
+      companyUrl:
+        type: string
+      contact:
+        type: string
+      country:
+        type: string
+      createTime:
+        type: string
+      dataVersion:
+        type: integer
+      dedupeKey:
+        type: string
+      email:
+        type: string
+      employeeCount:
+        type: string
+      establishedYear:
+        type: string
+      firstSeenAt:
+        type: string
+      id:
+        type: integer
+      interestStatus:
+        type: integer
+      isDeleted:
+        type: boolean
+      lastSeenAt:
+        type: string
+      mainProducts:
+        type: string
+      phone:
+        type: string
+      platform:
+        type: integer
+      platformCompanyId:
+        type: string
+      province:
+        type: string
+      rawPayload:
+        type: string
+      updateTime:
+        type: string
     type: object
   model.ExternalCompanySearchEvent:
     properties:
@@ -1407,6 +1727,45 @@ definitions:
       sort:
         type: integer
     type: object
+  model.SalesDailyScore:
+    properties:
+      callDurationSecond:
+        type: integer
+      callNum:
+        type: integer
+      callScore:
+        type: integer
+      callScoreByCount:
+        type: integer
+      callScoreByDuration:
+        type: integer
+      callScoreType:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: integer
+      newCustomerCount:
+        type: integer
+      newCustomerScore:
+        type: integer
+      roleName:
+        type: string
+      scoreDate:
+        type: string
+      totalScore:
+        type: integer
+      updatedAt:
+        type: string
+      userId:
+        type: integer
+      userName:
+        type: string
+      visitCount:
+        type: integer
+      visitScore:
+        type: integer
+    type: object
   model.SalesFollowRecord:
     properties:
       content:
@@ -1455,8 +1814,12 @@ definitions:
     type: object
   model.SystemSettingsResponse:
     properties:
+      claimFreezeDays:
+        type: integer
       contractNumberPrefix:
         type: string
+      customerAutoDropEnabled:
+        type: boolean
       customerLevels:
         items:
           $ref: '#/definitions/model.CustomerLevel'
@@ -1475,11 +1838,19 @@ definitions:
         type: boolean
       showFullContact:
         type: boolean
+      visitPurposes:
+        items:
+          type: string
+        type: array
     type: object
   model.UpdateSystemSettingsRequest:
     properties:
+      claimFreezeDays:
+        type: integer
       contractNumberPrefix:
         type: string
+      customerAutoDropEnabled:
+        type: boolean
       customerLimit:
         type: integer
       dealDropDays:
@@ -1490,6 +1861,10 @@ definitions:
         type: boolean
       showFullContact:
         type: boolean
+      visitPurposes:
+        items:
+          type: string
+        type: array
     type: object
   model.User:
     properties:
@@ -1498,6 +1873,8 @@ definitions:
       createdAt:
         type: string
       email:
+        type: string
+      hanghangCrmMobile:
         type: string
       id:
         type: integer
@@ -1525,6 +1902,8 @@ definitions:
       createdAt:
         type: string
       email:
+        type: string
+      hanghangCrmMobile:
         type: string
       id:
         type: integer
@@ -1558,6 +1937,8 @@ definitions:
     type: object
   service.CustomerAutoDropTaskResult:
     properties:
+      autoDropEnabled:
+        type: boolean
       bothRulesMatchedDropped:
         type: integer
       dealDropDays:
@@ -1584,6 +1965,40 @@ definitions:
         type: string
       skipped:
         type: boolean
+    type: object
+  service.SyncHanghangCRMDailyUserCallStatResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.DailyUserCallStat'
+        type: array
+      matchedUserCount:
+        type: integer
+      pageCount:
+        type: integer
+      statDate:
+        type: string
+      totalFetched:
+        type: integer
+      totalSaved:
+        type: integer
+      unmatchedUserCount:
+        type: integer
+    type: object
+  service.SyncSalesDailyScoreResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.SalesDailyScore'
+        type: array
+      scoreDate:
+        type: string
+      scoredSales:
+        type: integer
+      totalSales:
+        type: integer
+      totalSaved:
+        type: integer
     type: object
 host: localhost:8080
 info:
@@ -1751,6 +2166,89 @@ paths:
           schema:
             $ref: '#/definitions/handler.APIResponse'
       summary: 刷新访问令牌
+      tags:
+      - auth
+  /api/v1/auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: 验证账号与邮箱/手机号，通过后直接设置新密码
+      parameters:
+      - description: 重置信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ResetPasswordDirectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+      summary: 一步重置密码
+      tags:
+      - auth
+  /api/v1/auth/reset-password/confirm:
+    post:
+      consumes:
+      - application/json
+      description: 使用重置令牌设置新密码
+      parameters:
+      - description: 重置信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+      summary: 重置密码
+      tags:
+      - auth
+  /api/v1/auth/reset-password/verify:
+    post:
+      consumes:
+      - application/json
+      description: 验证用户名与邮箱/手机号，成功后返回重置令牌（15分钟有效）
+      parameters:
+      - description: 验证信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.VerifyResetIdentityRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.VerifyResetIdentityResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+      summary: 验证重置密码身份
       tags:
       - auth
   /api/v1/contracts:
@@ -2041,6 +2539,58 @@ paths:
       summary: 校验合同编号是否可用
       tags:
       - contracts
+  /api/v1/customer-visits:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: 关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.CustomerVisitListResult'
+              type: object
+      summary: 获取上门拜访列表
+      tags:
+      - 上门拜访
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 创建上门拜访
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateCustomerVisitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+      summary: 创建上门拜访签到
+      tags:
+      - 上门拜访
   /api/v1/customers:
     get:
       description: 获取客户信息（需要认证）
@@ -2215,6 +2765,32 @@ paths:
       security:
       - BearerAuth: []
       summary: 领取公海客户
+      tags:
+      - customers
+  /api/v1/customers/{id}/convert:
+    post:
+      description: 将待转化客户按销售分配规则转化给负责人
+      parameters:
+      - description: 客户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Customer'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 转化客户
       tags:
       - customers
   /api/v1/customers/{id}/phones:
@@ -2752,6 +3328,43 @@ paths:
       summary: 获取仪表盘概览
       tags:
       - dashboard
+  /api/v1/external-company-search/companies/{id}/enrich:
+    post:
+      parameters:
+      - description: 企业ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.ExternalCompany'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+        "401":
+          description: 未登录或登录已失效
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+        "404":
+          description: 企业不存在
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 深度获取企业联系方式和中文名称
+      tags:
+      - external-company-search
   /api/v1/external-company-search/results:
     get:
       parameters:
@@ -3605,6 +4218,49 @@ paths:
       summary: 更新角色
       tags:
       - roles
+  /api/v1/sales-daily-scores:
+    get:
+      parameters:
+      - description: 积分日期，格式：YYYY-MM-DD
+        in: query
+        name: scoreDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取每日排名列表
+      tags:
+      - 每日排名
+  /api/v1/sales-daily-scores/{userId}:
+    get:
+      parameters:
+      - description: 用户ID
+        in: path
+        name: userId
+        required: true
+        type: integer
+      - description: 积分日期，格式：YYYY-MM-DD
+        in: query
+        name: scoreDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取每日积分详情
+      tags:
+      - 每日排名
   /api/v1/sales-follow-records:
     get:
       consumes:
@@ -3920,6 +4576,41 @@ paths:
       security:
       - BearerAuth: []
       summary: 执行客户自动掉库任务
+      tags:
+      - crontab
+  /api/v1/tasks/hanghang-crm-daily-user-call-stats/run:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.RunHanghangCRMDailyUserCallStatSyncTaskResponse'
+              type: object
+        "400":
+          description: 航航CRM配置缺失
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+        "401":
+          description: 未登录或登录已失效
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+        "500":
+          description: 服务器内部错误
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+        "502":
+          description: 请求航航CRM失败
+          schema:
+            $ref: '#/definitions/handler.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 执行航航CRM每日用户通话统计同步任务
       tags:
       - crontab
   /api/v1/users:

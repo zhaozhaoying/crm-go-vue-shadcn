@@ -25,12 +25,15 @@ var (
 
 type CustomerRepository interface {
 	List(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListResult, error)
+	ListAssignments(ctx context.Context, filter model.CustomerAssignmentListFilter) (model.CustomerAssignmentListResult, error)
 	FindByID(ctx context.Context, customerID int64) (*model.Customer, error)
 	ListUserIDsByRoleNames(ctx context.Context, roleNames []string) ([]int64, error)
 	ListEnabledUserIDsByRoleNames(ctx context.Context, roleNames []string) ([]int64, error)
 	ListDirectSubordinateUserIDsByRoleNames(ctx context.Context, parentIDs []int64, roleNames []string) ([]int64, error)
 	GetUserRoleName(ctx context.Context, userID int64) (string, error)
 	GetParentUserID(ctx context.Context, userID int64) (int64, error)
+	ListAutoAssignRankedOwnerScores(ctx context.Context, referenceDate string, userIDs []int64) ([]model.SalesDailyScore, error)
+	FindLatestAutoAssignOwnerUserID(ctx context.Context, ownerUserIDs []int64, since time.Time) (*int64, error)
 	ResolveDepartmentAnchorUserID(ctx context.Context, userID int64) (int64, error)
 	GetActiveBlockedUntilByDepartmentAnchor(ctx context.Context, customerID, departmentAnchorUserID int64, now time.Time) (*time.Time, error)
 	CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error)
@@ -62,37 +65,41 @@ type gormCustomerRepository struct {
 const defaultClaimFreezeDays = 7
 
 type customerListRow struct {
-	ID                 int64         `gorm:"column:id"`
-	Name               string        `gorm:"column:name"`
-	LegalName          string        `gorm:"column:legal_name"`
-	ContactName        string        `gorm:"column:contact_name"`
-	Weixin             string        `gorm:"column:weixin"`
-	Email              string        `gorm:"column:email"`
-	CustomerLevelID    int           `gorm:"column:customer_level_id"`
-	CustomerSourceID   int           `gorm:"column:customer_source_id"`
-	CustomerLevelName  string        `gorm:"column:customer_level_name"`
-	CustomerSourceName string        `gorm:"column:customer_source_name"`
-	Province           int           `gorm:"column:province"`
-	City               int           `gorm:"column:city"`
-	Area               int           `gorm:"column:area"`
-	DetailAddress      string        `gorm:"column:detail_address"`
-	Remark             string        `gorm:"column:remark"`
-	Status             string        `gorm:"column:status"`
-	DealStatus         string        `gorm:"column:deal_status"`
-	CreateUserID       int64         `gorm:"column:create_user_id"`
-	InsideSalesUserID  sql.NullInt64 `gorm:"column:inside_sales_user_id"`
-	ConvertedAt        sql.NullTime  `gorm:"column:converted_at"`
-	OwnerUserID        sql.NullInt64 `gorm:"column:owner_user_id"`
-	OwnerUserName      string        `gorm:"column:owner_user_name"`
-	CreatedAt          time.Time     `gorm:"column:created_at"`
-	UpdatedAt          time.Time     `gorm:"column:updated_at"`
-	NextTimeUnix       sql.NullInt64 `gorm:"column:next_time_unix"`
-	FollowTimeUnix     sql.NullInt64 `gorm:"column:follow_time_unix"`
-	CollectTimeUnix    sql.NullInt64 `gorm:"column:collect_time_unix"`
-	DropTimeUnix       sql.NullInt64 `gorm:"column:drop_time_unix"`
-	DropUserID         sql.NullInt64 `gorm:"column:drop_user_id"`
-	DropUserName       string        `gorm:"column:drop_user_name"`
-	IsInPool           bool          `gorm:"column:is_in_pool"`
+	ID                         int64         `gorm:"column:id"`
+	Name                       string        `gorm:"column:name"`
+	LegalName                  string        `gorm:"column:legal_name"`
+	ContactName                string        `gorm:"column:contact_name"`
+	Weixin                     string        `gorm:"column:weixin"`
+	Email                      string        `gorm:"column:email"`
+	CustomerLevelID            int           `gorm:"column:customer_level_id"`
+	CustomerSourceID           int           `gorm:"column:customer_source_id"`
+	CustomerLevelName          string        `gorm:"column:customer_level_name"`
+	CustomerSourceName         string        `gorm:"column:customer_source_name"`
+	Province                   int           `gorm:"column:province"`
+	City                       int           `gorm:"column:city"`
+	Area                       int           `gorm:"column:area"`
+	DetailAddress              string        `gorm:"column:detail_address"`
+	Remark                     string        `gorm:"column:remark"`
+	Status                     string        `gorm:"column:status"`
+	DealStatus                 string        `gorm:"column:deal_status"`
+	CreateUserID               int64         `gorm:"column:create_user_id"`
+	InsideSalesUserID          sql.NullInt64 `gorm:"column:inside_sales_user_id"`
+	InsideSalesUserName        string        `gorm:"column:inside_sales_user_name"`
+	ConvertedAt                sql.NullTime  `gorm:"column:converted_at"`
+	OwnerUserID                sql.NullInt64 `gorm:"column:owner_user_id"`
+	OwnerUserName              string        `gorm:"column:owner_user_name"`
+	AssignmentReason           string        `gorm:"column:assignment_reason"`
+	AssignmentOperatorUserID   sql.NullInt64 `gorm:"column:assignment_operator_user_id"`
+	AssignmentOperatorUserName string        `gorm:"column:assignment_operator_user_name"`
+	CreatedAt                  time.Time     `gorm:"column:created_at"`
+	UpdatedAt                  time.Time     `gorm:"column:updated_at"`
+	NextTimeUnix               sql.NullInt64 `gorm:"column:next_time_unix"`
+	FollowTimeUnix             sql.NullInt64 `gorm:"column:follow_time_unix"`
+	CollectTimeUnix            sql.NullInt64 `gorm:"column:collect_time_unix"`
+	DropTimeUnix               sql.NullInt64 `gorm:"column:drop_time_unix"`
+	DropUserID                 sql.NullInt64 `gorm:"column:drop_user_id"`
+	DropUserName               string        `gorm:"column:drop_user_name"`
+	IsInPool                   bool          `gorm:"column:is_in_pool"`
 }
 
 type customerPhoneRow struct {
@@ -119,6 +126,19 @@ type customerStatusLogRow struct {
 type customerStatusLogListRow struct {
 	customerStatusLogRow
 	OperatorName string `gorm:"column:operator_name"`
+}
+
+type customerAssignmentListRow struct {
+	ID              int64     `gorm:"column:id"`
+	Date            time.Time `gorm:"column:date"`
+	InsideSalesName string    `gorm:"column:inside_sales_name"`
+	SalesName       string    `gorm:"column:sales_name"`
+	CustomerName    string    `gorm:"column:customer_name"`
+	LegalName       string    `gorm:"column:legal_name"`
+	ContactName     string    `gorm:"column:contact_name"`
+	Mobile          string    `gorm:"column:mobile"`
+	Address         string    `gorm:"column:address"`
+	Remark          string    `gorm:"column:remark"`
 }
 
 type customerOwnerLogRow struct {
@@ -172,8 +192,133 @@ func NewSQLiteCustomerRepository(db *gorm.DB) CustomerRepository {
 	return NewGormCustomerRepository(db)
 }
 
+func buildCustomerAssignmentMeta(hasInsideSalesUser bool, reason string, isInPool bool) (string, string) {
+	if hasInsideSalesUser {
+		return "auto_assign", "电销分配"
+	}
+
+	switch strings.TrimSpace(reason) {
+	case model.CustomerOwnerLogReasonCreateInitialAssign:
+		return "self_add", "自己添加"
+	case model.CustomerOwnerLogReasonImportInitialAssign:
+		return "import_assign", "导入分配"
+	case model.CustomerOwnerLogReasonClaimFromPool:
+		return "pool_claim", "公海领取"
+	case model.CustomerOwnerLogReasonManualTransfer:
+		return "manual_transfer", "手动转移"
+	case model.CustomerOwnerLogReasonManualRelease:
+		if isInPool {
+			return "manual_release", "手动丢弃"
+		}
+		return "manual_release", "手动处理"
+	case model.CustomerOwnerLogReasonAutoDrop:
+		if isInPool {
+			return "auto_drop", "自动掉库"
+		}
+		return "auto_drop", "自动处理"
+	default:
+		if isInPool {
+			return "", "-"
+		}
+		return "", "-"
+	}
+}
+
 func (r *gormCustomerRepository) FindByID(ctx context.Context, customerID int64) (*model.Customer, error) {
 	return r.getCustomer(ctx, customerID)
+}
+
+func (r *gormCustomerRepository) ListAssignments(ctx context.Context, filter model.CustomerAssignmentListFilter) (model.CustomerAssignmentListResult, error) {
+	page := filter.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := filter.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+
+	base := r.db.WithContext(ctx).
+		Table("customer_owner_logs l").
+		Joins("INNER JOIN customers c ON c.id = l.customer_id").
+		Joins("LEFT JOIN users iu ON iu.id = c.inside_sales_user_id").
+		Joins("LEFT JOIN users su ON su.id = l.to_owner_user_id").
+		Where(`
+			l.reason IN ?
+			OR (
+				l.reason = ?
+				AND TRIM(COALESCE(l.content, '')) = ?
+			)
+		`, []string{
+			model.CustomerOwnerLogReasonInsideSalesCreate,
+			model.CustomerOwnerLogReasonInsideSalesClaim,
+			model.CustomerOwnerLogReasonInsideSalesConvert,
+		}, model.CustomerOwnerLogReasonManualTransfer, "按昨日排名重新分配客户")
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return model.CustomerAssignmentListResult{}, err
+	}
+
+	phoneExpr := `
+		COALESCE(
+			(
+				SELECT cp.phone
+				FROM customer_phones cp
+				WHERE cp.customer_id = c.id
+				ORDER BY cp.is_primary DESC, cp.id ASC
+				LIMIT 1
+			),
+			''
+		)
+	`
+
+	rows := make([]customerAssignmentListRow, 0, pageSize)
+	if err := base.
+		Select(`
+			l.id AS id,
+			l.created_at AS date,
+			COALESCE(NULLIF(iu.nickname, ''), NULLIF(iu.username, ''), '-') AS inside_sales_name,
+			COALESCE(NULLIF(su.nickname, ''), NULLIF(su.username, ''), '-') AS sales_name,
+			c.name AS customer_name,
+			c.legal_name AS legal_name,
+			c.contact_name AS contact_name,
+			` + phoneExpr + ` AS mobile,
+			c.detail_address AS address,
+			c.remark AS remark
+		`).
+		Order("l.created_at DESC, l.id DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Scan(&rows).Error; err != nil {
+		return model.CustomerAssignmentListResult{}, err
+	}
+
+	items := make([]model.CustomerAssignmentItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, model.CustomerAssignmentItem{
+			ID:              row.ID,
+			Date:            row.Date,
+			InsideSalesName: row.InsideSalesName,
+			SalesName:       row.SalesName,
+			CustomerName:    row.CustomerName,
+			LegalName:       row.LegalName,
+			ContactName:     row.ContactName,
+			Mobile:          row.Mobile,
+			Address:         row.Address,
+			Remark:          row.Remark,
+		})
+	}
+
+	return model.CustomerAssignmentListResult{
+		Items:    items,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
 }
 
 func (r *gormCustomerRepository) List(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListResult, error) {
@@ -203,9 +348,53 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 			)
 		)
 	`
+	assignmentLogOwnerMatchExpr := `
+		(
+			(c.owner_user_id IS NOT NULL AND l.to_owner_user_id = c.owner_user_id)
+			OR (c.owner_user_id IS NULL AND l.to_owner_user_id IS NULL)
+		)
+	`
+	assignmentReasonExpr := `
+		COALESCE(
+			(
+				SELECT COALESCE(l.reason, '')
+				FROM customer_owner_logs l
+				WHERE l.customer_id = c.id
+					AND ` + assignmentLogOwnerMatchExpr + `
+				ORDER BY l.created_at DESC, l.id DESC
+				LIMIT 1
+			),
+			''
+		)
+	`
+	assignmentOperatorUserIDExpr := `
+		(
+			SELECT l.operator_user_id
+			FROM customer_owner_logs l
+			WHERE l.customer_id = c.id
+				AND ` + assignmentLogOwnerMatchExpr + `
+			ORDER BY l.created_at DESC, l.id DESC
+			LIMIT 1
+		)
+	`
+	assignmentOperatorUserNameExpr := `
+		COALESCE(
+			(
+				SELECT COALESCE(NULLIF(op.nickname, ''), NULLIF(op.username, ''), '')
+				FROM customer_owner_logs l
+				LEFT JOIN users op ON op.id = l.operator_user_id
+				WHERE l.customer_id = c.id
+					AND ` + assignmentLogOwnerMatchExpr + `
+				ORDER BY l.created_at DESC, l.id DESC
+				LIMIT 1
+			),
+			''
+		)
+	`
 	base := r.db.WithContext(ctx).
 		Table("customers AS c").
 		Joins("LEFT JOIN users u ON c.owner_user_id = u.id").
+		Joins("LEFT JOIN users iu ON iu.id = c.inside_sales_user_id").
 		Joins("LEFT JOIN users du ON du.id = " + dropUserExpr).
 		Joins("LEFT JOIN customer_levels cl ON c.customer_level_id = cl.id").
 		Joins("LEFT JOIN customer_sources cs ON c.customer_source_id = cs.id")
@@ -244,9 +433,13 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 			END AS deal_status,
 			c.create_user_id AS create_user_id,
 			c.inside_sales_user_id AS inside_sales_user_id,
+			COALESCE(NULLIF(iu.nickname, ''), NULLIF(iu.username, ''), '') AS inside_sales_user_name,
 			c.converted_at AS converted_at,
 			c.owner_user_id AS owner_user_id,
 			COALESCE(u.nickname, '') AS owner_user_name,
+			` + assignmentReasonExpr + ` AS assignment_reason,
+			` + assignmentOperatorUserIDExpr + ` AS assignment_operator_user_id,
+			` + assignmentOperatorUserNameExpr + ` AS assignment_operator_user_name,
 			c.created_at AS created_at,
 			c.updated_at AS updated_at,
 			NULLIF(c.next_time, 0) AS next_time_unix,
@@ -268,32 +461,36 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 	list := make([]model.Customer, 0)
 	for _, row := range rows {
 		item := model.Customer{
-			ID:                 row.ID,
-			Name:               row.Name,
-			LegalName:          row.LegalName,
-			ContactName:        row.ContactName,
-			Weixin:             row.Weixin,
-			Email:              row.Email,
-			CustomerLevelID:    row.CustomerLevelID,
-			CustomerSourceID:   row.CustomerSourceID,
-			CustomerLevelName:  row.CustomerLevelName,
-			CustomerSourceName: row.CustomerSourceName,
-			Province:           row.Province,
-			City:               row.City,
-			Area:               row.Area,
-			DetailAddress:      row.DetailAddress,
-			Remark:             row.Remark,
-			Status:             row.Status,
-			DealStatus:         row.DealStatus,
-			CreateUserID:       row.CreateUserID,
-			OwnerUserName:      row.OwnerUserName,
-			DropUserName:       row.DropUserName,
-			CreatedAt:          row.CreatedAt,
-			UpdatedAt:          row.UpdatedAt,
-			IsInPool:           row.IsInPool,
+			ID:                         row.ID,
+			Name:                       row.Name,
+			LegalName:                  row.LegalName,
+			ContactName:                row.ContactName,
+			Weixin:                     row.Weixin,
+			Email:                      row.Email,
+			CustomerLevelID:            row.CustomerLevelID,
+			CustomerSourceID:           row.CustomerSourceID,
+			CustomerLevelName:          row.CustomerLevelName,
+			CustomerSourceName:         row.CustomerSourceName,
+			Province:                   row.Province,
+			City:                       row.City,
+			Area:                       row.Area,
+			DetailAddress:              row.DetailAddress,
+			Remark:                     row.Remark,
+			Status:                     row.Status,
+			DealStatus:                 row.DealStatus,
+			CreateUserID:               row.CreateUserID,
+			OwnerUserName:              row.OwnerUserName,
+			DropUserName:               row.DropUserName,
+			CreatedAt:                  row.CreatedAt,
+			UpdatedAt:                  row.UpdatedAt,
+			IsInPool:                   row.IsInPool,
+			AssignmentReason:           row.AssignmentReason,
+			AssignmentOperatorUserName: row.AssignmentOperatorUserName,
 		}
 		if row.InsideSalesUserID.Valid {
 			item.InsideSalesUserID = &row.InsideSalesUserID.Int64
+			item.AssignmentOperatorUserID = &row.InsideSalesUserID.Int64
+			item.AssignmentOperatorUserName = row.InsideSalesUserName
 		}
 		if row.ConvertedAt.Valid {
 			convertedAt := row.ConvertedAt.Time
@@ -302,6 +499,17 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 		if row.OwnerUserID.Valid {
 			item.OwnerUserID = &row.OwnerUserID.Int64
 		}
+		if item.AssignmentOperatorUserID == nil && row.AssignmentOperatorUserID.Valid {
+			item.AssignmentOperatorUserID = &row.AssignmentOperatorUserID.Int64
+		}
+		if item.AssignmentOperatorUserName == "" {
+			item.AssignmentOperatorUserName = row.AssignmentOperatorUserName
+		}
+		item.AssignmentType, item.AssignmentLabel = buildCustomerAssignmentMeta(
+			row.InsideSalesUserID.Valid,
+			row.AssignmentReason,
+			row.IsInPool,
+		)
 		item.NextTime = nullableUnixToTime(row.NextTimeUnix)
 		item.FollowTime = nullableUnixToTime(row.FollowTimeUnix)
 		item.CollectTime = nullableUnixToTime(row.CollectTimeUnix)
@@ -523,6 +731,78 @@ func (r *gormCustomerRepository) GetParentUserID(ctx context.Context, userID int
 	return row.ParentID.Int64, nil
 }
 
+func (r *gormCustomerRepository) ListAutoAssignRankedOwnerScores(ctx context.Context, referenceDate string, userIDs []int64) ([]model.SalesDailyScore, error) {
+	cleanUserIDs := uniquePositiveInt64(userIDs)
+	if len(cleanUserIDs) == 0 {
+		return []model.SalesDailyScore{}, nil
+	}
+
+	type latestDateRow struct {
+		ScoreDate string `gorm:"column:score_date"`
+	}
+
+	var latest latestDateRow
+	err := r.db.WithContext(ctx).
+		Table("sales_daily_scores").
+		Select("MAX(score_date) AS score_date").
+		Where("user_id IN ?", cleanUserIDs).
+		Where("score_date <= ?", strings.TrimSpace(referenceDate)).
+		Scan(&latest).Error
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(latest.ScoreDate) == "" {
+		return []model.SalesDailyScore{}, nil
+	}
+
+	rankedScores := make([]model.SalesDailyScore, 0, len(cleanUserIDs))
+	err = r.db.WithContext(ctx).
+		Table("sales_daily_scores").
+		Select("user_id", "total_score").
+		Where("score_date = ?", latest.ScoreDate).
+		Where("user_id IN ?", cleanUserIDs).
+		Order("total_score DESC, user_id ASC").
+		Scan(&rankedScores).Error
+	if err != nil {
+		return nil, err
+	}
+	return rankedScores, nil
+}
+
+func (r *gormCustomerRepository) FindLatestAutoAssignOwnerUserID(ctx context.Context, ownerUserIDs []int64, since time.Time) (*int64, error) {
+	cleanOwnerUserIDs := uniquePositiveInt64(ownerUserIDs)
+	if len(cleanOwnerUserIDs) == 0 {
+		return nil, nil
+	}
+
+	type latestOwnerRow struct {
+		ToOwnerUserID sql.NullInt64 `gorm:"column:to_owner_user_id"`
+	}
+
+	query := r.db.WithContext(ctx).
+		Table("customer_owner_logs").
+		Select("to_owner_user_id").
+		Where("to_owner_user_id IN ?", cleanOwnerUserIDs).
+		Where("reason IN ?", []string{
+			model.CustomerOwnerLogReasonInsideSalesCreate,
+			model.CustomerOwnerLogReasonInsideSalesClaim,
+			model.CustomerOwnerLogReasonInsideSalesConvert,
+		})
+	if !since.IsZero() {
+		query = query.Where("created_at >= ?", since)
+	}
+
+	var row latestOwnerRow
+	if err := query.Order("created_at DESC, id DESC").Limit(1).Scan(&row).Error; err != nil {
+		return nil, err
+	}
+	if !row.ToOwnerUserID.Valid || row.ToOwnerUserID.Int64 <= 0 {
+		return nil, nil
+	}
+	ownerUserID := row.ToOwnerUserID.Int64
+	return &ownerUserID, nil
+}
+
 func (r *gormCustomerRepository) GetActiveBlockedUntilByDepartmentAnchor(ctx context.Context, customerID, departmentAnchorUserID int64, now time.Time) (*time.Time, error) {
 	if customerID <= 0 || departmentAnchorUserID <= 0 {
 		return nil, nil
@@ -538,6 +818,7 @@ func (r *gormCustomerRepository) GetActiveBlockedUntilByDepartmentAnchor(ctx con
 		Select("blocked_until").
 		Where("customer_id = ?", customerID).
 		Where("action = ?", "release").
+		Where("reason = ?", model.CustomerOwnerLogReasonManualRelease).
 		Where("blocked_department_anchor_user_id = ?", departmentAnchorUserID).
 		Where("blocked_until IS NOT NULL").
 		Where("blocked_until > ?", now).
@@ -721,6 +1002,9 @@ func buildCustomerListWhere(filter model.CustomerListFilter) ([]string, []interf
 	switch filter.Category {
 	case "my":
 		where = append(where, "NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id)")
+		if filter.RequireInsideSalesAssociation {
+			where = append(where, "c.inside_sales_user_id IS NOT NULL")
+		}
 		if filter.HasViewer {
 			if filter.SkipViewerOwnerLimit {
 				if !filter.IncludePoolInMyScope {
@@ -899,13 +1183,23 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 	}
 
 	if ownerUserID != nil {
+		reason := model.CustomerOwnerLogReasonCreateInitialAssign
+		content := "创建客户后直接分配负责人"
+		if input.InsideSalesUserID != nil && *input.InsideSalesUserID > 0 {
+			reason = model.CustomerOwnerLogReasonInsideSalesCreate
+			if *ownerUserID == *input.InsideSalesUserID && input.ConvertedAt == nil {
+				content = "电销创建客户后暂未分配负责人，客户先归属电销本人"
+			} else {
+				content = "电销创建客户后按分配规则自动分配负责人"
+			}
+		}
 		logRow := newCustomerOwnerLogRow(
 			customerID,
 			nil,
 			ownerUserID,
 			"claim",
-			model.CustomerOwnerLogReasonCreateInitialAssign,
-			"创建客户后直接分配负责人",
+			reason,
+			content,
 			input.OperatorUserID,
 			now,
 		)
@@ -1015,7 +1309,11 @@ func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, ownerUse
 	}
 	if insideSalesUserID != nil && *insideSalesUserID > 0 {
 		updates["inside_sales_user_id"] = *insideSalesUserID
-		updates["converted_at"] = now
+		if ownerUserID != *insideSalesUserID {
+			updates["converted_at"] = now
+		} else {
+			updates["converted_at"] = nil
+		}
 	}
 	if err := tx.Table("customers").
 		Where("id = ?", customerID).
@@ -1025,15 +1323,21 @@ func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, ownerUse
 
 	toOwnerID := ownerUserID
 	logContent := "从公海领取客户"
+	logReason := model.CustomerOwnerLogReasonClaimFromPool
 	if insideSalesUserID != nil && *insideSalesUserID > 0 {
-		logContent = "电销从公海领取客户后自动分配负责人"
+		if ownerUserID == *insideSalesUserID {
+			logContent = "电销从公海领取客户后暂未分配负责人，客户先归属电销本人"
+		} else {
+			logContent = "电销从公海领取客户后自动分配负责人"
+		}
+		logReason = model.CustomerOwnerLogReasonInsideSalesClaim
 	}
 	logRow := newCustomerOwnerLogRow(
 		customerID,
 		customer.OwnerUserID,
 		&toOwnerID,
 		"claim",
-		model.CustomerOwnerLogReasonClaimFromPool,
+		logReason,
 		logContent,
 		operatorUserID,
 		now,
@@ -1071,12 +1375,16 @@ func (r *gormCustomerRepository) Convert(ctx context.Context, customerID, ownerU
 	if insideSalesUserID != nil && *insideSalesUserID > 0 {
 		insideSalesValue = *insideSalesUserID
 	}
+	convertedAtValue := interface{}(nil)
+	if insideSalesUserID == nil || *insideSalesUserID <= 0 || ownerUserID != *insideSalesUserID {
+		convertedAtValue = now
+	}
 	if err := tx.Table("customers").
 		Where("id = ?", customerID).
 		Updates(map[string]interface{}{
 			"owner_user_id":        ownerUserID,
 			"inside_sales_user_id": insideSalesValue,
-			"converted_at":         now,
+			"converted_at":         convertedAtValue,
 			"status":               "owned",
 			"collect_time":         now.Unix(),
 			"follow_time":          nil,
@@ -1099,7 +1407,12 @@ func (r *gormCustomerRepository) Convert(ctx context.Context, customerID, ownerU
 		&toOwnerID,
 		action,
 		model.CustomerOwnerLogReasonInsideSalesConvert,
-		"电销转化客户后按分配规则完成分配",
+		func() string {
+			if insideSalesUserID != nil && *insideSalesUserID > 0 && ownerUserID == *insideSalesUserID {
+				return "电销转化客户时暂无评分可用，客户先归属电销本人"
+			}
+			return "电销转化客户后按分配规则完成分配"
+		}(),
 		operatorUserID,
 		now,
 	)
@@ -1186,7 +1499,7 @@ func (r *gormCustomerRepository) Transfer(ctx context.Context, input model.Custo
 	if customer.IsInPool || customer.OwnerUserID == nil {
 		return nil, ErrCustomerNotOwned
 	}
-	if *customer.OwnerUserID != input.OperatorUserID {
+	if !input.AllowAnyOwner && *customer.OwnerUserID != input.OperatorUserID {
 		return nil, ErrCustomerNotOwned
 	}
 

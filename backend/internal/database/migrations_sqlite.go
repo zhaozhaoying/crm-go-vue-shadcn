@@ -89,7 +89,250 @@ func getSQLiteMigrations() []Migration {
 			Name:    "add_customer_owner_log_claim_block_fields",
 			Up:      upAddCustomerOwnerLogClaimBlockFields,
 		},
+		{
+			Version: 2026031902,
+			Name:    "create_daily_user_call_stats_and_add_users_hanghang_crm_mobile",
+			Up:      upCreateDailyUserCallStatsAndAddUsersHanghangCrmMobile,
+		},
+		{
+			Version: 2026032002,
+			Name:    "create_customer_visits_table",
+			Up:      upCreateCustomerVisitsTable,
+		},
+		{
+			Version: 2026032003,
+			Name:    "create_sales_daily_scores",
+			Up:      upCreateSalesDailyScores,
+		},
+		{
+			Version: 2026032004,
+			Name:    "alter_customer_visits_region_columns_to_text",
+			Up:      upAlterCustomerVisitsRegionColumnsToText,
+		},
+		{
+			Version: 2026032005,
+			Name:    "add_customer_visits_check_in_ip",
+			Up:      upAddCustomerVisitsCheckInIP,
+		},
+		{
+			Version: 2026032301,
+			Name:    "create_call_recordings",
+			Up:      upCreateCallRecordings,
+		},
+		{
+			Version: 2026032302,
+			Name:    "create_user_hanghang_crm_mobiles",
+			Up:      upCreateUserHanghangCRMMobiles,
+		},
+		{
+			Version: 2026032401,
+			Name:    "dedupe_call_recordings",
+			Up:      upDedupeCallRecordings,
+		},
 	}
+}
+
+func upCreateCustomerVisitsTable(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS customer_visits (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			operator_user_id INTEGER NOT NULL,
+			customer_name TEXT NOT NULL,
+			check_in_lat REAL NOT NULL DEFAULT 0,
+			check_in_lng REAL NOT NULL DEFAULT 0,
+			province TEXT NOT NULL DEFAULT '',
+			city TEXT NOT NULL DEFAULT '',
+			area TEXT NOT NULL DEFAULT '',
+			detail_address TEXT NOT NULL DEFAULT '',
+			images TEXT NOT NULL DEFAULT '[]',
+			visit_purpose TEXT NOT NULL DEFAULT '',
+			remark TEXT NOT NULL DEFAULT '',
+			visit_date TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (operator_user_id) REFERENCES users(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_customer_visits_operator_user_id ON customer_visits(operator_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_customer_visits_visit_date ON customer_visits(visit_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_customer_visits_created_at ON customer_visits(created_at)`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upAlterCustomerVisitsRegionColumnsToText(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("customer_visits") {
+		return nil
+	}
+
+	stmts := []string{
+		`ALTER TABLE customer_visits RENAME TO customer_visits_old`,
+		`CREATE TABLE customer_visits (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			operator_user_id INTEGER NOT NULL,
+			customer_name TEXT NOT NULL,
+			check_in_lat REAL NOT NULL DEFAULT 0,
+			check_in_lng REAL NOT NULL DEFAULT 0,
+			province TEXT NOT NULL DEFAULT '',
+			city TEXT NOT NULL DEFAULT '',
+			area TEXT NOT NULL DEFAULT '',
+			detail_address TEXT NOT NULL DEFAULT '',
+			images TEXT NOT NULL DEFAULT '[]',
+			visit_purpose TEXT NOT NULL DEFAULT '',
+			remark TEXT NOT NULL DEFAULT '',
+			visit_date TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (operator_user_id) REFERENCES users(id)
+		)`,
+		`INSERT INTO customer_visits (
+			id, operator_user_id, customer_name, check_in_lat, check_in_lng,
+			province, city, area, detail_address, images, visit_purpose, remark,
+			visit_date, created_at, updated_at
+		)
+		SELECT
+			id, operator_user_id, customer_name, check_in_lat, check_in_lng,
+			CASE WHEN COALESCE(CAST(province AS TEXT), '') IN ('', '0') THEN '' ELSE CAST(province AS TEXT) END,
+			CASE WHEN COALESCE(CAST(city AS TEXT), '') IN ('', '0') THEN '' ELSE CAST(city AS TEXT) END,
+			CASE WHEN COALESCE(CAST(area AS TEXT), '') IN ('', '0') THEN '' ELSE CAST(area AS TEXT) END,
+			COALESCE(detail_address, ''),
+			COALESCE(images, '[]'),
+			COALESCE(visit_purpose, ''),
+			COALESCE(remark, ''),
+			visit_date,
+			created_at,
+			updated_at
+		FROM customer_visits_old`,
+		`DROP TABLE customer_visits_old`,
+		`CREATE INDEX IF NOT EXISTS idx_customer_visits_operator_user_id ON customer_visits(operator_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_customer_visits_visit_date ON customer_visits(visit_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_customer_visits_created_at ON customer_visits(created_at)`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upCreateUserHanghangCRMMobiles(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS user_hanghang_crm_mobiles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			mobile TEXT NOT NULL DEFAULT '',
+			is_primary INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_user_hanghang_crm_mobiles_mobile ON user_hanghang_crm_mobiles(mobile)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_user_hanghang_crm_mobiles_user_mobile ON user_hanghang_crm_mobiles(user_id, mobile)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_hanghang_crm_mobiles_user_id ON user_hanghang_crm_mobiles(user_id)`,
+		`INSERT OR IGNORE INTO user_hanghang_crm_mobiles (user_id, mobile, is_primary, created_at, updated_at)
+		 SELECT id, hanghang_crm_mobile, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+		 FROM users
+		 WHERE COALESCE(hanghang_crm_mobile, '') <> ''`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upAddCustomerVisitsCheckInIP(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("customer_visits") {
+		return nil
+	}
+
+	if err := addColumnIfNotExists(tx, "customer_visits", "check_in_ip", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return addIndexIfNotExists(
+		tx,
+		"customer_visits",
+		"idx_customer_visits_user_date_ip_customer",
+		"operator_user_id, visit_date, check_in_ip, customer_name",
+		false,
+	)
+}
+
+func upCreateCallRecordings(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS call_recordings (
+			id TEXT PRIMARY KEY,
+			agent_code INTEGER NOT NULL DEFAULT 0,
+			call_status INTEGER NOT NULL DEFAULT 0,
+			call_status_name TEXT NOT NULL DEFAULT '',
+			call_type INTEGER NOT NULL DEFAULT 0,
+			callee_attr TEXT NOT NULL DEFAULT '',
+			caller_attr TEXT NOT NULL DEFAULT '',
+			create_time INTEGER NOT NULL DEFAULT 0,
+			dept_name TEXT NOT NULL DEFAULT '',
+			duration INTEGER NOT NULL DEFAULT 0,
+			end_time INTEGER NOT NULL DEFAULT 0,
+			enterprise_name TEXT NOT NULL DEFAULT '',
+			finish_status INTEGER NOT NULL DEFAULT 0,
+			finish_status_name TEXT NOT NULL DEFAULT '',
+			handle INTEGER NOT NULL DEFAULT 0,
+			interface_id TEXT NOT NULL DEFAULT '',
+			interface_name TEXT NOT NULL DEFAULT '',
+			line_name TEXT NOT NULL DEFAULT '',
+			mobile TEXT NOT NULL DEFAULT '',
+			mode INTEGER NOT NULL DEFAULT 0,
+			move_batch_code TEXT,
+			oct_customer_id TEXT,
+			phone TEXT NOT NULL DEFAULT '',
+			postage REAL NOT NULL DEFAULT 0,
+			pre_record_url TEXT,
+			real_name TEXT NOT NULL DEFAULT '',
+			start_time INTEGER NOT NULL DEFAULT 0,
+			status INTEGER NOT NULL DEFAULT 0,
+			tel_a TEXT NOT NULL DEFAULT '',
+			tel_b TEXT NOT NULL DEFAULT '',
+			tel_x TEXT NOT NULL DEFAULT '',
+			tenant_code TEXT NOT NULL DEFAULT '',
+			update_time INTEGER NOT NULL DEFAULT 0,
+			user_id TEXT NOT NULL DEFAULT '',
+			work_num TEXT,
+			dedupe_key TEXT NOT NULL DEFAULT '',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_call_recordings_mobile ON call_recordings(mobile)`,
+		`CREATE INDEX IF NOT EXISTS idx_call_recordings_phone ON call_recordings(phone)`,
+		`CREATE INDEX IF NOT EXISTS idx_call_recordings_start_time ON call_recordings(start_time)`,
+		`CREATE INDEX IF NOT EXISTS idx_call_recordings_create_time ON call_recordings(create_time)`,
+		`CREATE INDEX IF NOT EXISTS idx_call_recordings_user_id ON call_recordings(user_id)`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upDedupeCallRecordings(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("call_recordings") {
+		return nil
+	}
+
+	if err := addColumnIfNotExists(tx, "call_recordings", "dedupe_key", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	stmts := []string{
+		`UPDATE call_recordings
+		SET dedupe_key =
+			COALESCE(CAST(start_time AS TEXT), '') || '|' ||
+			COALESCE(mobile, '') || '|' ||
+			COALESCE(phone, '') || '|' ||
+			COALESCE(tel_a, '') || '|' ||
+			COALESCE(tel_b, '') || '|' ||
+			COALESCE(CAST(call_type AS TEXT), '') || '|' ||
+			COALESCE(CAST(duration AS TEXT), '')`,
+		`DELETE FROM call_recordings
+		WHERE id IN (
+			SELECT older.id
+			FROM call_recordings AS older
+			INNER JOIN call_recordings AS newer
+				ON older.dedupe_key = newer.dedupe_key
+				AND older.id < newer.id
+		)`,
+	}
+	if err := execStatements(tx, stmts); err != nil {
+		return err
+	}
+
+	return addIndexIfNotExists(tx, "call_recordings", "uk_call_recordings_dedupe_key", "dedupe_key", true)
 }
 
 func upCreateBaseSchema(tx *gorm.DB) error {
@@ -447,6 +690,73 @@ func upAddUserSalesType(tx *gorm.DB) error {
 	return execStatements(tx, []string{
 		`CREATE INDEX IF NOT EXISTS idx_users_sales_type ON users(sales_type)`,
 	})
+}
+
+func upCreateDailyUserCallStatsAndAddUsersHanghangCrmMobile(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS daily_user_call_stats (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			stat_date DATE NOT NULL,
+			user_id INTEGER,
+			real_name TEXT NOT NULL DEFAULT '',
+			mobile TEXT NOT NULL DEFAULT '',
+			bind_num INTEGER NOT NULL DEFAULT 0,
+			call_num INTEGER NOT NULL DEFAULT 0,
+			not_connected INTEGER NOT NULL DEFAULT 0,
+			connection_rate REAL NOT NULL DEFAULT 0,
+			time_total INTEGER NOT NULL DEFAULT 0,
+			total_minute TEXT NOT NULL DEFAULT '',
+			total_second INTEGER NOT NULL DEFAULT 0,
+			average_call_duration REAL NOT NULL DEFAULT 0,
+			average_call_second REAL NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_daily_user_call_stats_date_name_mobile ON daily_user_call_stats(stat_date, real_name, mobile)`,
+		`CREATE INDEX IF NOT EXISTS idx_daily_user_call_stats_stat_date ON daily_user_call_stats(stat_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_daily_user_call_stats_user_id ON daily_user_call_stats(user_id)`,
+	}
+	if err := execStatements(tx, stmts); err != nil {
+		return err
+	}
+
+	if err := addColumnIfNotExists(tx, "users", "hanghang_crm_mobile", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	return execStatements(tx, []string{
+		`CREATE INDEX IF NOT EXISTS idx_users_nickname_hanghang_crm_mobile ON users(nickname, hanghang_crm_mobile)`,
+	})
+}
+
+func upCreateSalesDailyScores(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS sales_daily_scores (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			score_date DATE NOT NULL,
+			user_id INTEGER NOT NULL,
+			user_name TEXT NOT NULL DEFAULT '',
+			role_name TEXT NOT NULL DEFAULT '',
+			call_num INTEGER NOT NULL DEFAULT 0,
+			call_duration_second INTEGER NOT NULL DEFAULT 0,
+			call_score_by_count INTEGER NOT NULL DEFAULT 0,
+			call_score_by_duration INTEGER NOT NULL DEFAULT 0,
+			call_score_type TEXT NOT NULL DEFAULT 'none',
+			call_score INTEGER NOT NULL DEFAULT 0,
+			visit_count INTEGER NOT NULL DEFAULT 0,
+			visit_score INTEGER NOT NULL DEFAULT 0,
+			new_customer_count INTEGER NOT NULL DEFAULT 0,
+			new_customer_score INTEGER NOT NULL DEFAULT 0,
+			total_score INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_sales_daily_scores_date_user ON sales_daily_scores(score_date, user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_sales_daily_scores_user_id ON sales_daily_scores(user_id)`,
+	}
+	return execStatements(tx, stmts)
 }
 
 func upCreateAuthTokenTables(tx *gorm.DB) error {

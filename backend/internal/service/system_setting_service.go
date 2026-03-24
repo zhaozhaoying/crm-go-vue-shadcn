@@ -3,9 +3,22 @@ package service
 import (
 	"backend/internal/model"
 	"backend/internal/repository"
+	"encoding/json"
 	"strconv"
 	"strings"
 )
+
+var defaultVisitPurposeOptions = []string{
+	"初次拜访",
+	"需求沟通",
+	"方案演示",
+	"合同签订",
+	"售后回访",
+	"关系维护",
+	"催款收款",
+	"技术对接",
+	"其他",
+}
 
 type SystemSettingService struct {
 	repo *repository.SystemSettingRepository
@@ -24,6 +37,7 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 	customerLimit := s.getIntSetting("customer_limit", 100)
 	showFullContact := s.getBoolSetting("show_full_contact", true)
 	contractNumberPrefix := s.getStringSetting("contract_number_prefix", "zzy_")
+	visitPurposes := s.getStringListSetting("customer_visit_purposes", defaultVisitPurposeOptions)
 
 	levels, err := s.repo.GetAllCustomerLevels()
 	if err != nil {
@@ -44,6 +58,7 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 		CustomerLimit:           customerLimit,
 		ShowFullContact:         showFullContact,
 		ContractNumberPrefix:    contractNumberPrefix,
+		VisitPurposes:           visitPurposes,
 		CustomerLevels:          levels,
 		CustomerSources:         sources,
 	}, nil
@@ -110,6 +125,20 @@ func (s *SystemSettingService) UpdateSettings(req *model.UpdateSystemSettingsReq
 			return err
 		}
 	}
+	if req.VisitPurposes != nil {
+		purposes := normalizeStringList(req.VisitPurposes)
+		if len(purposes) == 0 {
+			purposes = cloneStringList(defaultVisitPurposeOptions)
+		}
+
+		encoded, err := json.Marshal(purposes)
+		if err != nil {
+			return err
+		}
+		if err := s.repo.UpsertSetting("customer_visit_purposes", string(encoded), "上门拜访目的选项"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -145,6 +174,19 @@ func (s *SystemSettingService) getStringSetting(key string, defaultVal string) s
 	return value
 }
 
+func (s *SystemSettingService) getStringListSetting(key string, defaultVal []string) []string {
+	setting, err := s.repo.GetSetting(key)
+	if err != nil || setting == nil {
+		return cloneStringList(defaultVal)
+	}
+
+	values := parseStringListSetting(setting.Value)
+	if len(values) == 0 {
+		return cloneStringList(defaultVal)
+	}
+	return values
+}
+
 func (s *SystemSettingService) GetCustomerLevels() ([]model.CustomerLevel, error) {
 	return s.repo.GetAllCustomerLevels()
 }
@@ -175,4 +217,52 @@ func (s *SystemSettingService) UpdateCustomerSource(id int, req *model.CustomerS
 
 func (s *SystemSettingService) DeleteCustomerSource(id int) error {
 	return s.repo.DeleteCustomerSource(id)
+}
+
+func cloneStringList(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+
+	cloned := make([]string, len(values))
+	copy(cloned, values)
+	return cloned
+}
+
+func normalizeStringList(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
+func parseStringListSetting(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return []string{}
+	}
+
+	var values []string
+	if err := json.Unmarshal([]byte(trimmed), &values); err == nil {
+		return normalizeStringList(values)
+	}
+
+	replacer := strings.NewReplacer("，", "\n", ",", "\n", ";", "\n", "；", "\n")
+	parts := strings.Split(replacer.Replace(trimmed), "\n")
+	return normalizeStringList(parts)
 }

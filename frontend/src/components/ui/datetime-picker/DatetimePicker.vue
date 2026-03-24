@@ -18,6 +18,7 @@ interface Props {
   disabled?: boolean;
   id?: string;
   contentAlign?: "start" | "center" | "end";
+  dateOnly?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -25,10 +26,12 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   id: undefined,
   contentAlign: "start",
+  dateOnly: false,
 });
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: string | undefined): void;
+  (e: "change", value: string | undefined): void;
 }>();
 
 const open = ref(false);
@@ -64,6 +67,13 @@ const formatDateTime = (date: Date): string => {
   const minutes = pad2(date.getMinutes());
   const seconds = pad2(date.getSeconds());
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+};
+
+const formatDateOnly = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  return `${year}-${month}-${day}`;
 };
 
 const toCalendarDate = (date: Date) => {
@@ -130,18 +140,24 @@ const handleConfirm = () => {
     tempMinutes.value,
     tempSeconds.value,
   );
-  emit("update:modelValue", formatDateTime(next));
+  const value = props.dateOnly ? formatDateOnly(next) : formatDateTime(next);
+  emit("update:modelValue", value);
+  emit("change", value);
   open.value = false;
 };
 
 const handleClear = (e: MouseEvent) => {
   e.stopPropagation();
   emit("update:modelValue", undefined);
+  emit("change", undefined);
 };
 
 const displayText = computed(() => {
   const date = parseDateTime(props.modelValue);
   if (!date) return props.placeholder;
+  if (props.dateOnly) {
+    return formatDateOnly(date);
+  }
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 });
 </script>
@@ -182,7 +198,7 @@ const displayText = computed(() => {
             />
           </div>
 
-          <div class="w-full md:w-[248px]">
+          <div v-if="!dateOnly" class="w-full md:w-[248px]">
             <div class="flex h-11 items-center justify-center border-b text-base font-semibold">
               选择时间
             </div>

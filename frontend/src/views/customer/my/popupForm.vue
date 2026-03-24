@@ -432,9 +432,6 @@ const onSubmit = handleSubmit(async (formValues) => {
               <p v-if="errors.legalName" class="text-xs text-destructive">
                 {{ errors.legalName }}
               </p>
-              <p class="text-xs text-muted-foreground">
-                可重复，至少填写 2 个字
-              </p>
             </div>
 
             <div class="space-y-1.5">
@@ -449,9 +446,6 @@ const onSubmit = handleSubmit(async (formValues) => {
               />
                <p v-if="errors.contactName" class="text-xs text-destructive">
                 {{ errors.contactName }}
-              </p>
-              <p class="text-xs text-muted-foreground">
-                可重复，至少填写 2 个字
               </p>
             </div>
             <div class="space-y-1.5 sm:col-span-2">

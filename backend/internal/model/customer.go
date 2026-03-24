@@ -12,6 +12,8 @@ const (
 	CustomerOwnerLogReasonCreateInitialAssign = "create_initial_assign"
 	CustomerOwnerLogReasonImportInitialAssign = "import_initial_assign"
 	CustomerOwnerLogReasonClaimFromPool       = "claim_from_pool"
+	CustomerOwnerLogReasonInsideSalesCreate   = "inside_sales_create_assign"
+	CustomerOwnerLogReasonInsideSalesClaim    = "inside_sales_claim_from_pool"
 	CustomerOwnerLogReasonInsideSalesConvert  = "inside_sales_convert"
 	CustomerOwnerLogReasonManualRelease       = "manual_release"
 	CustomerOwnerLogReasonManualTransfer      = "manual_transfer"
@@ -51,46 +53,51 @@ type CustomerStatusLog struct {
 }
 
 type Customer struct {
-	ID                 int64           `json:"id" gorm:"column:id;primaryKey;autoIncrement"`
-	Name               string          `json:"name" gorm:"column:name;not null"`
-	LegalName          string          `json:"legalName,omitempty" gorm:"column:legal_name;not null;default:''"`
-	ContactName        string          `json:"contactName,omitempty" gorm:"column:contact_name;not null;default:''"`
-	Weixin             string          `json:"weixin,omitempty" gorm:"column:weixin;not null;default:''"`
-	Email              string          `json:"email" gorm:"column:email;not null;default:''"`
-	CustomerLevelID    int             `json:"customerLevelId,omitempty" gorm:"column:customer_level_id;not null;default:0"`
-	CustomerSourceID   int             `json:"customerSourceId,omitempty" gorm:"column:customer_source_id;not null;default:0"`
-	CustomerLevelName  string          `json:"customerLevelName,omitempty" gorm:"-"`
-	CustomerSourceName string          `json:"customerSourceName,omitempty" gorm:"-"`
-	Province           int             `json:"province,omitempty" gorm:"column:province;not null;default:0"`
-	City               int             `json:"city,omitempty" gorm:"column:city;not null;default:0"`
-	Area               int             `json:"area,omitempty" gorm:"column:area;not null;default:0"`
-	DetailAddress      string          `json:"detailAddress,omitempty" gorm:"column:detail_address;not null;default:''"`
-	Lng                float64         `json:"lng,omitempty" gorm:"column:lng;not null;default:0"`
-	Lat                float64         `json:"lat,omitempty" gorm:"column:lat;not null;default:0"`
-	NextTime           *time.Time      `json:"nextTime,omitempty" gorm:"-"`
-	FollowTime         *time.Time      `json:"followTime,omitempty" gorm:"-"`
-	Remark             string          `json:"remark,omitempty" gorm:"column:remark"`
-	Status             string          `json:"status" gorm:"column:status;not null;default:'pool';index"`
-	DealStatus         string          `json:"dealStatus" gorm:"column:deal_status;not null;default:'undone';index"`
-	DealTime           *time.Time      `json:"dealTime,omitempty" gorm:"-"`
-	CustomerStatus     int             `json:"customerStatus,omitempty" gorm:"column:customer_status;not null;default:0"`
-	CollectTime        *time.Time      `json:"collectTime,omitempty" gorm:"-"`
-	DropTime           *time.Time      `json:"dropTime,omitempty" gorm:"-"`
-	DropUserID         *int64          `json:"dropUserId,omitempty" gorm:"column:drop_user_id"`
-	DropUserName       string          `json:"dropUserName,omitempty" gorm:"-"`
-	CreateUserID       int64           `json:"createUserId,omitempty" gorm:"column:create_user_id;not null;default:0"`
-	InsideSalesUserID  *int64          `json:"insideSalesUserId,omitempty" gorm:"column:inside_sales_user_id"`
-	ConvertedAt        *time.Time      `json:"convertedAt,omitempty" gorm:"column:converted_at"`
-	OwnerUserID        *int64          `json:"ownerUserId" gorm:"column:owner_user_id;index"`
-	OperateUserID      int64           `json:"operateUserId,omitempty" gorm:"column:operate_user_id;not null;default:0"`
-	OwnerUserName      string          `json:"ownerUserName,omitempty" gorm:"-"`
-	IsLock             bool            `json:"isLock,omitempty" gorm:"column:is_lock;not null;default:0"`
-	Phones             []CustomerPhone `json:"phones,omitempty" gorm:"foreignKey:CustomerID;references:ID"`
-	IsInPool           bool            `json:"isInPool" gorm:"-"`
-	HistoricalOwnerIDs []int64         `json:"historicalOwnerIds,omitempty" gorm:"-"`
-	CreatedAt          time.Time       `json:"createdAt" gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt          time.Time       `json:"updatedAt" gorm:"column:updated_at;autoUpdateTime"`
-	DeleteTime         *time.Time      `json:"deleteTime,omitempty" gorm:"-"`
+	ID                         int64           `json:"id" gorm:"column:id;primaryKey;autoIncrement"`
+	Name                       string          `json:"name" gorm:"column:name;not null"`
+	LegalName                  string          `json:"legalName,omitempty" gorm:"column:legal_name;not null;default:''"`
+	ContactName                string          `json:"contactName,omitempty" gorm:"column:contact_name;not null;default:''"`
+	Weixin                     string          `json:"weixin,omitempty" gorm:"column:weixin;not null;default:''"`
+	Email                      string          `json:"email" gorm:"column:email;not null;default:''"`
+	CustomerLevelID            int             `json:"customerLevelId,omitempty" gorm:"column:customer_level_id;not null;default:0"`
+	CustomerSourceID           int             `json:"customerSourceId,omitempty" gorm:"column:customer_source_id;not null;default:0"`
+	CustomerLevelName          string          `json:"customerLevelName,omitempty" gorm:"-"`
+	CustomerSourceName         string          `json:"customerSourceName,omitempty" gorm:"-"`
+	Province                   int             `json:"province,omitempty" gorm:"column:province;not null;default:0"`
+	City                       int             `json:"city,omitempty" gorm:"column:city;not null;default:0"`
+	Area                       int             `json:"area,omitempty" gorm:"column:area;not null;default:0"`
+	DetailAddress              string          `json:"detailAddress,omitempty" gorm:"column:detail_address;not null;default:''"`
+	Lng                        float64         `json:"lng,omitempty" gorm:"column:lng;not null;default:0"`
+	Lat                        float64         `json:"lat,omitempty" gorm:"column:lat;not null;default:0"`
+	NextTime                   *time.Time      `json:"nextTime,omitempty" gorm:"-"`
+	FollowTime                 *time.Time      `json:"followTime,omitempty" gorm:"-"`
+	Remark                     string          `json:"remark,omitempty" gorm:"column:remark"`
+	Status                     string          `json:"status" gorm:"column:status;not null;default:'pool';index"`
+	DealStatus                 string          `json:"dealStatus" gorm:"column:deal_status;not null;default:'undone';index"`
+	DealTime                   *time.Time      `json:"dealTime,omitempty" gorm:"-"`
+	CustomerStatus             int             `json:"customerStatus,omitempty" gorm:"column:customer_status;not null;default:0"`
+	CollectTime                *time.Time      `json:"collectTime,omitempty" gorm:"-"`
+	DropTime                   *time.Time      `json:"dropTime,omitempty" gorm:"-"`
+	DropUserID                 *int64          `json:"dropUserId,omitempty" gorm:"column:drop_user_id"`
+	DropUserName               string          `json:"dropUserName,omitempty" gorm:"-"`
+	CreateUserID               int64           `json:"createUserId,omitempty" gorm:"column:create_user_id;not null;default:0"`
+	InsideSalesUserID          *int64          `json:"insideSalesUserId,omitempty" gorm:"column:inside_sales_user_id"`
+	ConvertedAt                *time.Time      `json:"convertedAt,omitempty" gorm:"column:converted_at"`
+	OwnerUserID                *int64          `json:"ownerUserId" gorm:"column:owner_user_id;index"`
+	OperateUserID              int64           `json:"operateUserId,omitempty" gorm:"column:operate_user_id;not null;default:0"`
+	OwnerUserName              string          `json:"ownerUserName,omitempty" gorm:"-"`
+	AssignmentReason           string          `json:"assignmentReason,omitempty" gorm:"-"`
+	AssignmentType             string          `json:"assignmentType,omitempty" gorm:"-"`
+	AssignmentLabel            string          `json:"assignmentLabel,omitempty" gorm:"-"`
+	AssignmentOperatorUserID   *int64          `json:"assignmentOperatorUserId,omitempty" gorm:"-"`
+	AssignmentOperatorUserName string          `json:"assignmentOperatorUserName,omitempty" gorm:"-"`
+	IsLock                     bool            `json:"isLock,omitempty" gorm:"column:is_lock;not null;default:0"`
+	Phones                     []CustomerPhone `json:"phones,omitempty" gorm:"foreignKey:CustomerID;references:ID"`
+	IsInPool                   bool            `json:"isInPool" gorm:"-"`
+	HistoricalOwnerIDs         []int64         `json:"historicalOwnerIds,omitempty" gorm:"-"`
+	CreatedAt                  time.Time       `json:"createdAt" gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt                  time.Time       `json:"updatedAt" gorm:"column:updated_at;autoUpdateTime"`
+	DeleteTime                 *time.Time      `json:"deleteTime,omitempty" gorm:"-"`
 
 	NextTimeUnix    *int64 `json:"-" gorm:"column:next_time"`
 	FollowTimeUnix  *int64 `json:"-" gorm:"column:follow_time"`
@@ -137,6 +144,9 @@ type CustomerListFilter struct {
 	// IncludePendingConvertScope allows the "my" category to include pool
 	// customers created by the viewer that have not been converted yet.
 	IncludePendingConvertScope bool `gorm:"-"`
+	// RequireInsideSalesAssociation narrows the "my" category to customers
+	// that are associated with an inside-sales user.
+	RequireInsideSalesAssociation bool `gorm:"-"`
 	// AllowedCreatorUserIDs is used by creator-based customer lists such as
 	// the inside-sales department scope.
 	AllowedCreatorUserIDs []int64 `gorm:"-"`
@@ -155,11 +165,58 @@ type CustomerListResult struct {
 	PageSize int        `json:"pageSize" gorm:"-"`
 }
 
+type CustomerAssignmentListFilter struct {
+	Page     int `gorm:"-"`
+	PageSize int `gorm:"-"`
+}
+
+type CustomerAssignmentItem struct {
+	ID              int64     `json:"id" gorm:"column:id"`
+	Date            time.Time `json:"date" gorm:"column:date"`
+	InsideSalesName string    `json:"insideSalesName" gorm:"column:inside_sales_name"`
+	SalesName       string    `json:"salesName" gorm:"column:sales_name"`
+	CustomerName    string    `json:"customerName" gorm:"column:customer_name"`
+	LegalName       string    `json:"legalName" gorm:"column:legal_name"`
+	ContactName     string    `json:"contactName" gorm:"column:contact_name"`
+	Mobile          string    `json:"mobile" gorm:"column:mobile"`
+	Address         string    `json:"address" gorm:"column:address"`
+	Remark          string    `json:"remark" gorm:"column:remark"`
+}
+
+type CustomerAssignmentListResult struct {
+	Items    []CustomerAssignmentItem `json:"items" gorm:"-"`
+	Total    int64                    `json:"total" gorm:"-"`
+	Page     int                      `json:"page" gorm:"-"`
+	PageSize int                      `json:"pageSize" gorm:"-"`
+}
+
 type CustomerTransferInput struct {
 	CustomerID     int64  `gorm:"-"`
 	ToOwnerUserID  int64  `gorm:"-"`
 	OperatorUserID int64  `gorm:"-"`
 	Note           string `gorm:"-"`
+	AllowAnyOwner  bool   `gorm:"-"`
+}
+
+type CustomerBatchRankedReassignInput struct {
+	CustomerIDs     []int64 `gorm:"-"`
+	OperatorUserID  int64   `gorm:"-"`
+}
+
+type CustomerBatchRankedReassignItem struct {
+	CustomerID      int64  `json:"customerId" gorm:"-"`
+	CustomerName    string `json:"customerName" gorm:"-"`
+	FromOwnerUserID *int64 `json:"fromOwnerUserId,omitempty" gorm:"-"`
+	ToOwnerUserID   *int64 `json:"toOwnerUserId,omitempty" gorm:"-"`
+	Success         bool   `json:"success" gorm:"-"`
+	Message         string `json:"message,omitempty" gorm:"-"`
+}
+
+type CustomerBatchRankedReassignResult struct {
+	Total        int                               `json:"total" gorm:"-"`
+	SuccessCount int                               `json:"successCount" gorm:"-"`
+	FailedCount  int                               `json:"failedCount" gorm:"-"`
+	Items        []CustomerBatchRankedReassignItem `json:"items" gorm:"-"`
 }
 
 type CustomerPhoneInput struct {

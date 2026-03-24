@@ -34,6 +34,7 @@ var migrationTableOrder = []string{
 	"external_company",
 	"external_company_search_result",
 	"external_company_search_event",
+	"call_recordings",
 }
 
 type tableReport struct {

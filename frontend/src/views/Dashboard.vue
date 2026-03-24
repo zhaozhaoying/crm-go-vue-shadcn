@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref } from "vue"
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -8,12 +8,13 @@ import {
   DollarSign,
   FileText,
   Loader2,
+  PhoneCall,
+  Trophy,
   TrendingUp,
   Users,
 } from "lucide-vue-next"
 
 import { getDashboardOverview } from "@/api/modules/dashboard"
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
@@ -22,11 +23,14 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { getRequestErrorMessage } from "@/lib/http-error"
-import { hasAnyRole, isAdminUser } from "@/lib/auth-role"
+import { hasAnyRole, isAdminUser, isInsideSalesUser } from "@/lib/auth-role"
 import { useAuthStore } from "@/stores/auth"
 import type {
   DashboardAutoDropOverview,
+  DashboardDailyCallSummary,
   DashboardRankingItem,
+  DashboardSalesDailyPersonalOverview,
+  DashboardSalesDailyMetricsOverview,
   DashboardSalesAdminOverview,
   DashboardMonthlyContractCount,
   DashboardMonthlyRevenue,
@@ -42,9 +46,11 @@ type ChartPoint = {
   value: number
 }
 
+const dashboardRefreshEvent = "dashboard:refresh"
 const loading = ref(false)
 const errorMessage = ref("")
 const overview = ref<DashboardOverview | null>(null)
+const lastLoadedBusinessDate = ref("")
 const authStore = useAuthStore()
 
 const chartWidth = 1180
@@ -131,6 +137,15 @@ const recentActivities = computed(() => overview.value?.recentActivities ?? [])
 const salesAdminOverview = computed<DashboardSalesAdminOverview | null>(
   () => overview.value?.salesAdminOverview ?? null,
 )
+const salesDailyPersonalOverview = computed<DashboardSalesDailyPersonalOverview | null>(
+  () => overview.value?.salesDailyPersonalOverview ?? null,
+)
+const dailyCallSummary = computed<DashboardDailyCallSummary | null>(
+  () => overview.value?.dailyCallSummary ?? null,
+)
+const salesDailyMetricsOverview = computed<DashboardSalesDailyMetricsOverview | null>(
+  () => overview.value?.salesDailyMetricsOverview ?? null,
+)
 const autoDropOverview = computed<DashboardAutoDropOverview>(() => ({
   followUpDueSoonCount: Number(overview.value?.autoDropOverview?.followUpDueSoonCount ?? 0),
   dealDueSoonCount: Number(overview.value?.autoDropOverview?.dealDueSoonCount ?? 0),
@@ -163,8 +178,25 @@ const isSalesLeader = computed(() =>
     "销售经理",
   ]),
 )
+const isInsideSalesRole = computed(() => isInsideSalesUser(authStore.user))
+const isGlobalSalesMetricViewer = computed(() =>
+  isAdminUser(authStore.user) ||
+  hasAnyRole(authStore.user, ["finance_manager", "finance", "财务经理", "财务"]),
+)
+const showSalesDailyMetricsOverview = computed(
+  () =>
+    (isGlobalSalesMetricViewer.value ||
+      (isSalesRole.value && !isInsideSalesRole.value)) &&
+    !!salesDailyMetricsOverview.value,
+)
 const showSalesAdminOverview = computed(
   () => (isAdminUser(authStore.user) || isSalesRole.value) && !!salesAdminOverview.value,
+)
+const showSalesDailyPersonalOverview = computed(
+  () => isSalesRole.value && !!salesDailyPersonalOverview.value,
+)
+const showDailyCallSummary = computed(
+  () => isAdminUser(authStore.user) && !!dailyCallSummary.value,
 )
 const showSalesRankings = computed(
   () => (isAdminUser(authStore.user) || isSalesLeader.value) && !!salesAdminOverview.value,
@@ -276,6 +308,119 @@ const salesAdminStats = computed(() => {
       up: trendDirection(monthlyFollowRecords.changeRate),
       icon: FileText,
       desc: `上月 ${formatCount(monthlyFollowRecords.previous)}`,
+    },
+  ]
+})
+
+const formatDuration = (seconds: number) => {
+  const safe = Math.max(0, Math.floor(Number(seconds) || 0))
+  const hours = Math.floor(safe / 3600)
+  const minutes = Math.floor((safe % 3600) / 60)
+  const remain = safe % 60
+  if (hours > 0) return `${hours}小时${minutes}分${remain}秒`
+  if (minutes > 0) return `${minutes}分${remain}秒`
+  return `${remain}秒`
+}
+
+const salesDailyMetricsStats = computed(() => {
+  const data = salesDailyMetricsOverview.value
+  if (!data) return []
+
+  const callCount = safeStat(data.callCount)
+  const callDuration = safeStat(data.callDuration)
+  const visitCount = safeStat(data.visitCount)
+  const totalScore = safeStat(data.totalScore)
+  const visitTitle = isGlobalSalesMetricViewer.value ? "今日总拜访数量" : "当日总拜访数量"
+  const scoreTitle = isGlobalSalesMetricViewer.value ? "今日总积分" : "当日积分"
+
+  return [
+    {
+      title: "总通话量",
+      value: formatCount(callCount.current),
+      change: formatChange(callCount.changeRate),
+      up: trendDirection(callCount.changeRate),
+      icon: PhoneCall,
+      desc: `昨日 ${formatCount(callCount.previous)}`,
+    },
+    {
+      title: "总通话时长",
+      value: formatDuration(callDuration.current),
+      change: formatChange(callDuration.changeRate),
+      up: trendDirection(callDuration.changeRate),
+      icon: Clock3,
+      desc: `昨日 ${formatDuration(callDuration.previous)}`,
+    },
+    {
+      title: visitTitle,
+      value: formatCount(visitCount.current),
+      change: formatChange(visitCount.changeRate),
+      up: trendDirection(visitCount.changeRate),
+      icon: FileText,
+      desc: `昨日 ${formatCount(visitCount.previous)}`,
+    },
+    {
+      title: scoreTitle,
+      value: formatCount(totalScore.current),
+      change: formatChange(totalScore.changeRate),
+      up: trendDirection(totalScore.changeRate),
+      icon: Trophy,
+      desc: `昨日 ${formatCount(totalScore.previous)}`,
+    },
+  ]
+})
+
+const salesDailyPersonalBanner = computed(() => {
+  const data = salesDailyPersonalOverview.value
+  if (!data) return null
+  const targetScore = 80
+  const scoreGap = Math.max(0, targetScore - Number(data.totalScore || 0))
+  const scoreText = data.hasData ? `当前 ${data.totalScore} 分` : "当日积分待生成"
+  const rankText =
+    data.rank > 0 ? `部门第 ${data.rank} 名` : "部门排名待生成"
+  const gapText = data.hasData
+    ? scoreGap > 0
+      ? `距 80 分还差 ${scoreGap} 分`
+      : "已达到 80 分门槛"
+    : "等待今日积分生成"
+  const breakdownText = data.hasData
+    ? `电话 ${data.callScore} + 拜访 ${data.visitScore} + 新增客户 ${data.newCustomerScore}`
+    : "今日积分尚未生成"
+
+  let encouragement = "今天继续稳扎稳打，分数很快就会抬起来。"
+  if (data.rank > 0 && scoreGap <= 0) {
+    encouragement = `今天状态很好，已经冲进部门前列，继续把优势拉开。`
+  } else if (data.rank > 0 && scoreGap > 0) {
+    encouragement = `再冲 ${scoreGap} 分就到 80 分门槛了，离上榜更近一步。`
+  } else if (!data.hasData) {
+    encouragement = "今天的数据还在生成中，先把跟进和新增客户做起来。"
+  }
+
+  return {
+    scoreText,
+    rankText,
+    gapText,
+    breakdownText,
+    totalUsersText: data.totalUsers > 0 ? `本部门共 ${data.totalUsers} 人参与排名` : "暂无排名数据",
+    encouragement,
+  }
+})
+
+const dailyCallSummaryStats = computed(() => {
+  const data = dailyCallSummary.value
+  if (!data) return []
+
+  return [
+    {
+      title: "每日电话总时长",
+      value: formatDuration(data.totalCallDurationSecond),
+      desc: `统计日期 ${data.scoreDate}`,
+      icon: Clock3,
+    },
+    {
+      title: "总接通时长",
+      value: formatDuration(data.totalConnectedDurationSecond),
+      desc: `统计日期 ${data.scoreDate}`,
+      icon: PhoneCall,
     },
   ]
 })
@@ -428,6 +573,7 @@ const fetchDashboardData = async () => {
   errorMessage.value = ""
   try {
     overview.value = await getDashboardOverview()
+    lastLoadedBusinessDate.value = getCurrentBusinessDate()
   } catch (error) {
     errorMessage.value = getRequestErrorMessage(error, "加载仪表盘数据失败")
   } finally {
@@ -435,8 +581,45 @@ const fetchDashboardData = async () => {
   }
 }
 
+const getCurrentBusinessDate = () =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date())
+
+const refreshDashboard = () => {
+  if (loading.value) return
+  void fetchDashboardData()
+}
+
+const refreshDashboardIfStale = () => {
+  if (!lastLoadedBusinessDate.value || lastLoadedBusinessDate.value !== getCurrentBusinessDate()) {
+    refreshDashboard()
+  }
+}
+
+const handleWindowFocus = () => {
+  refreshDashboardIfStale()
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === "visible") {
+    refreshDashboardIfStale()
+  }
+}
+
+const handleDashboardRefreshEvent = () => {
+  refreshDashboard()
+}
+
 onMounted(() => {
   void fetchDashboardData()
+  window.addEventListener("focus", handleWindowFocus)
+  window.addEventListener(dashboardRefreshEvent, handleDashboardRefreshEvent)
+  document.addEventListener("visibilitychange", handleVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener("focus", handleWindowFocus)
+  window.removeEventListener(dashboardRefreshEvent, handleDashboardRefreshEvent)
+  document.removeEventListener("visibilitychange", handleVisibilityChange)
 })
 </script>
 
@@ -447,6 +630,42 @@ onMounted(() => {
         <p class="text-sm text-red-600">{{ errorMessage }}</p>
       </CardContent>
     </Card>
+
+     <div
+      v-if="showSalesDailyPersonalOverview && salesDailyPersonalBanner"
+      class="overflow-hidden rounded-[18px] border border-[#e7dcc3] bg-[linear-gradient(135deg,#fff7e6_0%,#fffdf7_48%,#f8fbff_100%)] shadow-[0_8px_24px_rgba(15,23,42,0.06)]"
+    >
+      <div class="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex items-start gap-3">
+          <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[#fff1c7] text-[#8a6a12] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+            <Trophy class="h-5 w-5" />
+          </div>
+          <div class="space-y-1">
+            <p class="text-sm font-semibold tracking-[0.08em] text-[#8b6f2a]">今日积分播报</p>
+            <p class="text-sm text-[#5f584a]">{{ salesDailyPersonalBanner.encouragement }}</p>
+            <p class="text-xs text-[#7a7568]">{{ salesDailyPersonalBanner.breakdownText }}</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+          <div class="rounded-full border border-[#eadfca] bg-white/85 px-3 py-2 shadow-sm">
+            <p class="text-[11px] text-[#8b816b]">当前积分</p>
+            <p class="text-sm font-semibold text-[#171717]">{{ salesDailyPersonalBanner.scoreText }}</p>
+          </div>
+          <div class="rounded-full border border-[#eadfca] bg-white/85 px-3 py-2 shadow-sm">
+            <p class="text-[11px] text-[#8b816b]">部门排名</p>
+            <p class="text-sm font-semibold text-[#171717]">{{ salesDailyPersonalBanner.rankText }}</p>
+          </div>
+          <div class="rounded-full border border-[#eadfca] bg-white/85 px-3 py-2 shadow-sm">
+            <p class="text-[11px] text-[#8b816b]">距离 80 分</p>
+            <p class="text-sm font-semibold text-[#171717]">{{ salesDailyPersonalBanner.gapText }}</p>
+          </div>
+          <div class="rounded-full border border-transparent bg-[#fff3d7] px-3 py-2 text-[11px] text-[#8b6f2a]">
+            {{ salesDailyPersonalBanner.totalUsersText }}
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="space-y-4">
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -475,7 +694,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="showSalesAdminOverview" class="space-y-4">
+     <div v-if="showSalesAdminOverview" class="space-y-4">
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card v-for="stat in salesAdminStats" :key="stat.title" class="shadow-sm">
           <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -483,14 +702,14 @@ onMounted(() => {
               {{ stat.title }}
             </CardTitle>
             <div
-            class="inline-flex items-center gap-1 rounded-full bg-background text-[13px] font-semibold"
-            :class="metricChangeClass(stat.up)"
-          >
-            <ArrowUpRight v-if="stat.up === true" class="h-3.5 w-3.5" />
-            <ArrowDownRight v-else-if="stat.up === false" class="h-3.5 w-3.5" />
-            <span v-else class="text-muted-foreground">-</span>
-            <span>{{ stat.change }}</span>
-          </div>
+              class="inline-flex items-center gap-1 rounded-full bg-background text-[13px] font-semibold"
+              :class="metricChangeClass(stat.up)"
+            >
+              <ArrowUpRight v-if="stat.up === true" class="h-3.5 w-3.5" />
+              <ArrowDownRight v-else-if="stat.up === false" class="h-3.5 w-3.5" />
+              <span v-else class="text-muted-foreground">-</span>
+              <span>{{ stat.change }}</span>
+            </div>
           </CardHeader>
           <CardContent>
             <div class="text-2xl font-bold" :class="metricValueClass(stat.up)">{{ stat.value }}</div>
@@ -501,6 +720,37 @@ onMounted(() => {
         </Card>
       </div>
     </div>
+
+    <div v-if="showSalesDailyMetricsOverview" class="space-y-4">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card v-for="stat in salesDailyMetricsStats" :key="stat.title" class="shadow-sm">
+          <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle class="text-sm font-medium text-muted-foreground">
+              {{ stat.title }}
+            </CardTitle>
+            <div
+              class="inline-flex items-center gap-1 rounded-full bg-background text-[13px] font-semibold"
+              :class="metricChangeClass(stat.up)"
+            >
+              <ArrowUpRight v-if="stat.up === true" class="h-3.5 w-3.5" />
+              <ArrowDownRight v-else-if="stat.up === false" class="h-3.5 w-3.5" />
+              <span v-else class="text-muted-foreground">-</span>
+              <span>{{ stat.change }}</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div class="text-2xl font-bold" :class="metricValueClass(stat.up)">{{ stat.value }}</div>
+            <div class="mt-1 flex items-center gap-1">
+              <span class="text-xs text-muted-foreground">{{ stat.desc }}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+
+   
+
+   
 
     <Card class="overflow-hidden rounded-[12px] border border-[#dddddd] bg-white pt-0 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
       <CardHeader class="flex items-start gap-2 space-y-0 border-b border-[#e9e9e9] px-8 py-6 sm:flex-row">

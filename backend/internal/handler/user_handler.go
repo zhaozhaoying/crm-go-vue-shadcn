@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,26 +18,42 @@ type UserHandler struct {
 var userMobileRegex = regexp.MustCompile(`^1\d{10}$`)
 
 type CreateUserRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=32" example:"zhangsan"`
-	Password string `json:"password" binding:"required,min=6,max=64" example:"123456"`
-	Nickname string `json:"nickname" example:"张三"`
-	Email    string `json:"email" example:"zhangsan@example.com"`
-	Mobile   string `json:"mobile" binding:"required" example:"13800138000"`
-	Avatar   string `json:"avatar"`
-	RoleID   int64  `json:"roleId" binding:"required" example:"1"`
-	ParentID *int64 `json:"parentId"`
+	Username           string   `json:"username" binding:"required,min=3,max=32" example:"zhangsan"`
+	Password           string   `json:"password" binding:"required,min=6,max=64" example:"123456"`
+	Nickname           string   `json:"nickname" example:"张三"`
+	Email              string   `json:"email" example:"zhangsan@example.com"`
+	Mobile             string   `json:"mobile" binding:"required" example:"13800138000"`
+	HanghangCRMMobile  string   `json:"hanghangCrmMobile" example:"13800138001"`
+	Avatar             string   `json:"avatar"`
+	RoleID             int64    `json:"roleId" binding:"required" example:"1"`
+	ParentID           *int64   `json:"parentId"`
 }
 
 type UpdateUserRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=32"`
-	Password string `json:"password"`
-	Nickname string `json:"nickname"`
-	Email    string `json:"email"`
-	Mobile   string `json:"mobile" binding:"required"`
-	Avatar   string `json:"avatar"`
-	RoleID   int64  `json:"roleId" binding:"required"`
-	ParentID *int64 `json:"parentId"`
-	Status   string `json:"status" example:"enabled"`
+	Username           string   `json:"username" binding:"required,min=3,max=32"`
+	Password           string   `json:"password"`
+	Nickname           string   `json:"nickname"`
+	Email              string   `json:"email"`
+	Mobile             string   `json:"mobile" binding:"required"`
+	HanghangCRMMobile  string   `json:"hanghangCrmMobile"`
+	Avatar             string   `json:"avatar"`
+	RoleID             int64    `json:"roleId" binding:"required"`
+	ParentID           *int64   `json:"parentId"`
+	Status             string   `json:"status" example:"enabled"`
+}
+
+func normalizeRequestHanghangCRMMobile(value string, required bool) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		if required {
+			return "", errors.New("请填写航航CRM手机号")
+		}
+		return "", nil
+	}
+	if !userMobileRegex.MatchString(trimmed) {
+		return "", errors.New("航航CRM手机号必须为11位数字")
+	}
+	return trimmed, nil
 }
 
 type BatchDisableUsersRequest struct {
@@ -122,15 +139,21 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Error(c, http.StatusBadRequest, 40004, "参数错误: 手机号必须为11位数字")
 		return
 	}
+	crmMobile, err := normalizeRequestHanghangCRMMobile(req.HanghangCRMMobile, true)
+	if err != nil {
+		Error(c, http.StatusBadRequest, 40004, "参数错误: "+err.Error())
+		return
+	}
 	user, err := h.service.Create(c.Request.Context(), service.CreateUserInput{
-		Username: req.Username,
-		Password: req.Password,
-		Nickname: req.Nickname,
-		Email:    req.Email,
-		Mobile:   req.Mobile,
-		Avatar:   req.Avatar,
-		RoleID:   req.RoleID,
-		ParentID: req.ParentID,
+		Username:           req.Username,
+		Password:           req.Password,
+		Nickname:           req.Nickname,
+		Email:              req.Email,
+		Mobile:             req.Mobile,
+		HanghangCRMMobile:  crmMobile,
+		Avatar:             req.Avatar,
+		RoleID:             req.RoleID,
+		ParentID:           req.ParentID,
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrUserExists) {
@@ -172,16 +195,22 @@ func (h *UserHandler) Update(c *gin.Context) {
 		Error(c, http.StatusBadRequest, 40004, "参数错误: 手机号必须为11位数字")
 		return
 	}
+	crmMobile, err := normalizeRequestHanghangCRMMobile(req.HanghangCRMMobile, false)
+	if err != nil {
+		Error(c, http.StatusBadRequest, 40004, "参数错误: "+err.Error())
+		return
+	}
 	user, err := h.service.Update(c.Request.Context(), id, service.UpdateUserInput{
-		Username: req.Username,
-		Password: req.Password,
-		Nickname: req.Nickname,
-		Email:    req.Email,
-		Mobile:   req.Mobile,
-		Avatar:   req.Avatar,
-		RoleID:   req.RoleID,
-		ParentID: req.ParentID,
-		Status:   req.Status,
+		Username:           req.Username,
+		Password:           req.Password,
+		Nickname:           req.Nickname,
+		Email:              req.Email,
+		Mobile:             req.Mobile,
+		HanghangCRMMobile:  crmMobile,
+		Avatar:             req.Avatar,
+		RoleID:             req.RoleID,
+		ParentID:           req.ParentID,
+		Status:             req.Status,
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
@@ -201,6 +230,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 	Success(c, user)
 }
+
 
 // Delete godoc
 // @Summary     删除用户

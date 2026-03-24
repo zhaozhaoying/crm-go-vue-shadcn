@@ -23,6 +23,10 @@ type TransferCustomerRequest struct {
 	Note          string `json:"note"`
 }
 
+type BatchRankedReassignCustomersRequest struct {
+	CustomerIDs []int64 `json:"customerIds" binding:"required"`
+}
+
 type CustomerPhoneInputRequest struct {
 	Phone      string `json:"phone" binding:"required"`
 	PhoneLabel string `json:"phoneLabel"`
@@ -196,6 +200,72 @@ func (h *CustomerHandler) ListPartner(c *gin.Context) {
 // @Router      /api/v1/customers/search [get]
 func (h *CustomerHandler) ListSearch(c *gin.Context) {
 	h.listByCategory(c, "search")
+}
+
+// ListAssignments godoc
+// @Summary     获取客户分配列表
+// @Description 获取电销分配给销售的客户记录
+// @Tags        customers
+// @Produce     json
+// @Security    BearerAuth
+// @Param       page query int false "页码，从1开始"
+// @Param       pageSize query int false "每页条数"
+// @Success     200 {object} APIResponse{data=model.CustomerAssignmentListResult}
+// @Failure     401 {object} APIResponse "未登录或登录已失效"
+// @Router      /api/v1/customers/assignments [get]
+func (h *CustomerHandler) ListAssignments(c *gin.Context) {
+	if _, ok := currentUserID(c); !ok {
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
+		return
+	}
+	if !canViewCustomerAssignments(currentUserRole(c)) {
+		Error(c, http.StatusForbidden, 10031, "仅管理员或财务经理可以查看客户分配")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+
+	result, err := h.service.ListCustomerAssignments(c.Request.Context(), model.CustomerAssignmentListFilter{
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		ErrorWithDetail(c, http.StatusInternalServerError, 10001, "加载客户分配列表失败", err)
+		return
+	}
+
+	Success(c, result)
+}
+
+func (h *CustomerHandler) BatchRankedReassign(c *gin.Context) {
+	operatorUserID, ok := currentUserID(c)
+	if !ok {
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
+		return
+	}
+	role := strings.TrimSpace(strings.ToLower(currentUserRole(c)))
+	if role != "admin" && role != "管理员" {
+		Error(c, http.StatusForbidden, 10031, "仅管理员可以重新分配客户")
+		return
+	}
+
+	var req BatchRankedReassignCustomersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ErrorWithDetail(c, http.StatusBadRequest, 40001, "请求参数错误", err)
+		return
+	}
+
+	result, err := h.service.ReassignCustomersByYesterdayRanking(c.Request.Context(), model.CustomerBatchRankedReassignInput{
+		CustomerIDs:    req.CustomerIDs,
+		OperatorUserID: operatorUserID,
+	})
+	if err != nil {
+		ErrorWithDetail(c, http.StatusInternalServerError, 40002, "批量重新分配客户失败", err)
+		return
+	}
+
+	Success(c, result)
 }
 
 func (h *CustomerHandler) listByCategory(c *gin.Context, category string) {
@@ -1036,6 +1106,15 @@ func shouldMaskCustomerForViewer(customer model.Customer, viewerID int64) bool {
 }
 
 func isMaskBypassRole(role string) bool {
+	switch strings.TrimSpace(strings.ToLower(role)) {
+	case "admin", "管理员", "finance", "finance_manager", "财务", "财务经理":
+		return true
+	default:
+		return false
+	}
+}
+
+func canViewCustomerAssignments(role string) bool {
 	switch strings.TrimSpace(strings.ToLower(role)) {
 	case "admin", "管理员", "finance", "finance_manager", "财务", "财务经理":
 		return true

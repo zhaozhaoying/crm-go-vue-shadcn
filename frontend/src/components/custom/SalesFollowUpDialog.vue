@@ -38,6 +38,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type {
   CustomerLevel,
   CustomerSource,
@@ -430,7 +436,9 @@ const handleSubmit = async () => {
                     <TableHead class="w-24">客户级别</TableHead>
                     <TableHead class="w-24">客户来源</TableHead>
                     <TableHead class="w-24">跟进方式</TableHead>
-                    <TableHead>跟进内容</TableHead>
+                    <TableHead class="w-[240px] min-w-[240px] max-w-[240px]">
+                      跟进内容
+                    </TableHead>
                     <TableHead class="w-36">下次跟进</TableHead>
                     <TableHead class="w-32">操作人</TableHead>
                     <TableHead class="w-36">创建时间</TableHead>
@@ -457,10 +465,24 @@ const handleSubmit = async () => {
                         {{ record.followMethodName || '-' }}
                       </Badge>
                     </TableCell>
-                    <TableCell class="max-w-md">
-                      <div class="truncate text-sm" :title="record.content">
-                        {{ record.content }}
-                      </div>
+                    <TableCell class="w-[240px] min-w-[240px] max-w-[240px]">
+                      <template v-if="record.content">
+                        <TooltipProvider :delayDuration="200">
+                          <Tooltip>
+                            <TooltipTrigger as-child>
+                              <div class="w-full cursor-help truncate text-sm text-left">
+                                {{ record.content }}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              class="max-w-sm whitespace-pre-wrap break-words text-left"
+                            >
+                              <p>{{ record.content }}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </template>
+                      <span v-else>-</span>
                     </TableCell>
                     <TableCell class="text-xs text-muted-foreground">
                       {{ formatDateTime(record.nextFollowTime) }}

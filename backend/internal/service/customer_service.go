@@ -56,12 +56,14 @@ var partnerOperationRoleNames = []string{
 
 type CustomerService interface {
 	ListCustomers(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListResult, error)
+	ListCustomerAssignments(ctx context.Context, filter model.CustomerAssignmentListFilter) (model.CustomerAssignmentListResult, error)
 	CreateCustomer(ctx context.Context, input model.CustomerCreateInput) (*model.Customer, error)
 	UpdateCustomer(ctx context.Context, customerID int64, input model.CustomerUpdateInput) (*model.Customer, error)
 	CheckUnique(ctx context.Context, input model.CustomerUniqueCheckInput) (model.CustomerUniqueCheckResult, error)
 	ClaimCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 	ReleaseCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 	TransferCustomer(ctx context.Context, input model.CustomerTransferInput) (*model.Customer, error)
+	ReassignCustomersByYesterdayRanking(ctx context.Context, input model.CustomerBatchRankedReassignInput) (model.CustomerBatchRankedReassignResult, error)
 	ConvertCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 
 	// Phone management
@@ -120,6 +122,10 @@ func (s *customerService) ListCustomers(ctx context.Context, filter model.Custom
 	return s.repo.List(ctx, scoped)
 }
 
+func (s *customerService) ListCustomerAssignments(ctx context.Context, filter model.CustomerAssignmentListFilter) (model.CustomerAssignmentListResult, error) {
+	return s.repo.ListAssignments(ctx, filter)
+}
+
 func (s *customerService) applyCustomerListScopeByRole(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListFilter, error) {
 	switch strings.ToLower(strings.TrimSpace(filter.Category)) {
 	case "my":
@@ -176,13 +182,14 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 		insideSalesIDs = uniquePositiveInt64(insideSalesIDs)
 		filter.IncludePoolInMyScope = true
 		filter.IncludePendingConvertScope = true
+		filter.RequireInsideSalesAssociation = true
 		if isAdmin {
-			filter.AllowedOwnerUserIDs = insideSalesIDs
 			filter.AllowedInsideSalesUserIDs = insideSalesIDs
+			filter.SkipViewerOwnerLimit = true
 			break
 		}
 		filter.AllowedInsideSalesUserIDs = intersectPositiveInt64(selfAndSubordinates, insideSalesIDs)
-		filter.AllowedOwnerUserIDs = filter.AllowedInsideSalesUserIDs
+		filter.AllowedOwnerUserIDs = selfAndSubordinates
 	case "sales":
 		salesIDs, err := s.repo.ListUserIDsByRoleNames(ctx, []string{
 			"sales_director", "sales_manager", "sales_staff", roleSalesInside, roleSalesOutside,
@@ -209,7 +216,7 @@ func (s *customerService) applyMyCustomerScopeByRole(ctx context.Context, filter
 	}
 
 	if scope == "inside_sales" {
-		if len(filter.AllowedInsideSalesUserIDs) == 0 {
+		if len(filter.AllowedInsideSalesUserIDs) == 0 && len(filter.AllowedOwnerUserIDs) == 0 {
 			filter.AllowedInsideSalesUserIDs = []int64{-1}
 			filter.AllowedOwnerUserIDs = []int64{-1}
 		}
@@ -449,12 +456,17 @@ func (s *customerService) applyCreateOwnershipPolicy(ctx context.Context, input 
 		if err != nil {
 			return model.CustomerCreateInput{}, err
 		}
-		now := time.Now().UTC()
 		insideSalesUserID := input.OperatorUserID
 		input.Status = model.CustomerStatusOwned
-		input.OwnerUserID = &ownerUserID
 		input.InsideSalesUserID = &insideSalesUserID
-		input.ConvertedAt = &now
+		if ownerUserID > 0 {
+			now := time.Now().UTC()
+			input.OwnerUserID = &ownerUserID
+			input.ConvertedAt = &now
+		} else {
+			input.OwnerUserID = &insideSalesUserID
+			input.ConvertedAt = nil
+		}
 		return input, nil
 	}
 	if strings.TrimSpace(input.Status) != model.CustomerStatusOwned {
@@ -557,12 +569,14 @@ func (s *customerService) ClaimCustomer(ctx context.Context, customerID, operato
 	claimOwnerUserID := operatorUserID
 	var insideSalesUserID *int64
 	if isInsideSalesRole(operatorRole) {
+		insideSalesUserID = &operatorUserID
 		ownerUserID, err := s.resolveConvertedCustomerOwnerUserID(ctx, operatorUserID, operatorUserID, operatorRole)
 		if err != nil {
 			return nil, err
 		}
-		claimOwnerUserID = ownerUserID
-		insideSalesUserID = &operatorUserID
+		if ownerUserID > 0 {
+			claimOwnerUserID = ownerUserID
+		}
 	}
 	if err := s.validateCustomerLimitByOwner(ctx, claimOwnerUserID); err != nil {
 		return nil, err
@@ -678,6 +692,182 @@ func (s *customerService) TransferCustomer(ctx context.Context, input model.Cust
 	return nil, err
 }
 
+func (s *customerService) ReassignCustomersByYesterdayRanking(
+	ctx context.Context,
+	input model.CustomerBatchRankedReassignInput,
+) (model.CustomerBatchRankedReassignResult, error) {
+	customerIDs := uniquePositiveInt64(input.CustomerIDs)
+	result := model.CustomerBatchRankedReassignResult{
+		Total: len(customerIDs),
+		Items: make([]model.CustomerBatchRankedReassignItem, 0, len(customerIDs)),
+	}
+	if len(customerIDs) == 0 {
+		return result, nil
+	}
+
+	type customerPlan struct {
+		customer  *model.Customer
+		targetID  int64
+		message   string
+	}
+
+	referenceDate := previousAutoAssignScoreDate()
+
+	groupedCustomers := make(map[int64][]*model.Customer)
+	orderedAnchors := make([]int64, 0)
+	seenAnchors := make(map[int64]struct{})
+
+	for _, customerID := range customerIDs {
+		customer, err := s.repo.FindByID(ctx, customerID)
+		if err != nil {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID: customerID,
+				Success:    false,
+				Message:    "客户不存在或已被删除",
+			})
+			result.FailedCount++
+			continue
+		}
+		if customer.OwnerUserID == nil || *customer.OwnerUserID <= 0 {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID:      customer.ID,
+				CustomerName:    customer.Name,
+				FromOwnerUserID: customer.OwnerUserID,
+				Success:         false,
+				Message:         "该客户当前没有负责人，无法重新分配",
+			})
+			result.FailedCount++
+			continue
+		}
+
+		directorUserID, err := resolveSalesDirectorUserID(ctx, s.repo, *customer.OwnerUserID)
+		if err != nil || directorUserID <= 0 {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID:      customer.ID,
+				CustomerName:    customer.Name,
+				FromOwnerUserID: customer.OwnerUserID,
+				Success:         false,
+				Message:         "未找到该客户所属部门的销售负责人",
+			})
+			result.FailedCount++
+			continue
+		}
+
+		if _, ok := seenAnchors[directorUserID]; !ok {
+			seenAnchors[directorUserID] = struct{}{}
+			orderedAnchors = append(orderedAnchors, directorUserID)
+		}
+		groupedCustomers[directorUserID] = append(groupedCustomers[directorUserID], customer)
+	}
+
+	planned := make(map[int64]customerPlan, len(customerIDs))
+	for _, directorUserID := range orderedAnchors {
+		customersInDept := groupedCustomers[directorUserID]
+		candidateUserIDs, err := listAssignableSalesOwnerUserIDs(ctx, s.repo, directorUserID)
+		if err != nil || len(candidateUserIDs) == 0 {
+			for _, customer := range customersInDept {
+				result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+					CustomerID:      customer.ID,
+					CustomerName:    customer.Name,
+					FromOwnerUserID: customer.OwnerUserID,
+					Success:         false,
+					Message:         "该部门暂无可分配销售",
+				})
+				result.FailedCount++
+			}
+			continue
+		}
+
+		rankedScores, err := s.repo.ListAutoAssignRankedOwnerScores(ctx, referenceDate, candidateUserIDs)
+		if err != nil {
+			for _, customer := range customersInDept {
+				result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+					CustomerID:      customer.ID,
+					CustomerName:    customer.Name,
+					FromOwnerUserID: customer.OwnerUserID,
+					Success:         false,
+					Message:         "加载昨日排名失败",
+				})
+				result.FailedCount++
+			}
+			continue
+		}
+
+		eligibleOwnerUserIDs := filterAutoAssignEligibleOwnerUserIDs(rankedScores)
+		if len(eligibleOwnerUserIDs) == 0 {
+			for _, customer := range customersInDept {
+				result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+					CustomerID:      customer.ID,
+					CustomerName:    customer.Name,
+					FromOwnerUserID: customer.OwnerUserID,
+					Success:         false,
+					Message:         "该部门昨日暂无符合规则的排名人员",
+				})
+				result.FailedCount++
+			}
+			continue
+		}
+
+		for idx, customer := range customersInDept {
+			targetID := eligibleOwnerUserIDs[idx%len(eligibleOwnerUserIDs)]
+			message := "已按昨日排名重新分配"
+			if customer.OwnerUserID != nil && *customer.OwnerUserID == targetID {
+				message = "按昨日排名计算后负责人未变化"
+			}
+			planned[customer.ID] = customerPlan{
+				customer: customer,
+				targetID: targetID,
+				message:  message,
+			}
+		}
+	}
+
+	for _, customerID := range customerIDs {
+		plan, ok := planned[customerID]
+		if !ok {
+			continue
+		}
+
+		item := model.CustomerBatchRankedReassignItem{
+			CustomerID:      plan.customer.ID,
+			CustomerName:    plan.customer.Name,
+			FromOwnerUserID: plan.customer.OwnerUserID,
+			Success:         true,
+			Message:         plan.message,
+		}
+		if plan.targetID > 0 {
+			item.ToOwnerUserID = &plan.targetID
+		}
+
+		if plan.customer.OwnerUserID != nil && *plan.customer.OwnerUserID == plan.targetID {
+			result.Items = append(result.Items, item)
+			result.SuccessCount++
+			continue
+		}
+
+		_, err := s.TransferCustomer(ctx, model.CustomerTransferInput{
+			CustomerID:     plan.customer.ID,
+			ToOwnerUserID:  plan.targetID,
+			OperatorUserID: input.OperatorUserID,
+			Note:           "按昨日排名重新分配客户",
+			AllowAnyOwner:  true,
+		})
+		if err != nil {
+			item.Success = false
+			item.Message = err.Error()
+			item.ToOwnerUserID = nil
+			result.Items = append(result.Items, item)
+			result.FailedCount++
+			continue
+		}
+
+		result.Items = append(result.Items, item)
+		result.SuccessCount++
+	}
+
+	return result, nil
+}
+
 func (s *customerService) ConvertCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error) {
 	customer, err := s.repo.FindByID(ctx, customerID)
 	if err != nil {
@@ -726,6 +916,9 @@ func (s *customerService) ConvertCustomer(ctx context.Context, customerID, opera
 	ownerUserID, err := s.resolveConvertedCustomerOwnerUserID(ctx, operatorUserID, associatedInsideSalesUserID, operatorRole)
 	if err != nil {
 		return nil, err
+	}
+	if ownerUserID <= 0 {
+		ownerUserID = associatedInsideSalesUserID
 	}
 	if err := s.validateCustomerLimitByOwner(ctx, ownerUserID); err != nil {
 		return nil, err

@@ -28,10 +28,12 @@ import {
   type FollowMethod,
   type SystemSettings,
 } from "@/api/modules/systemSettings";
+import { getVisitPurposeOptions, normalizeVisitPurposeOptions } from "@/constants/customerVisit";
 import { getRequestErrorMessage } from "@/lib/http-error";
 
 const loading = ref(false);
 const savingRules = ref(false);
+const savingVisitPurposes = ref(false);
 const savingLevels = ref(false);
 const savingSources = ref(false);
 const savingMethods = ref(false);
@@ -48,6 +50,7 @@ const settings = ref<SystemSettings>({
   customerLimit: 100,
   showFullContact: true,
   contractNumberPrefix: "zzy_",
+  visitPurposes: getVisitPurposeOptions(),
   customerLevels: [],
   customerSources: [],
 });
@@ -90,6 +93,9 @@ const dedupeDictionaryItems = <T extends EditableDictionaryItem>(items: T[]) => 
 };
 
 const ensureEditableRows = () => {
+  if (settings.value.visitPurposes.length === 0) {
+    settings.value.visitPurposes = [""];
+  }
   if (settings.value.customerLevels.length === 0) {
     settings.value.customerLevels = [{ name: "", sort: 0 }];
   }
@@ -111,6 +117,7 @@ const loadSettings = async () => {
     settings.value = {
       ...settings.value,
       ...data,
+      visitPurposes: getVisitPurposeOptions(data.visitPurposes),
       customerLevels: levelResult.unique,
       customerSources: sourceResult.unique,
     };
@@ -156,6 +163,36 @@ const saveRules = async () => {
     toast.error(getRequestErrorMessage(error, "保存失败"));
   } finally {
     savingRules.value = false;
+  }
+}
+
+const addVisitPurpose = () => {
+  settings.value.visitPurposes.push("");
+}
+
+const removeVisitPurpose = (index: number) => {
+  if (settings.value.visitPurposes.length <= 1) return;
+  settings.value.visitPurposes.splice(index, 1);
+}
+
+const saveVisitPurposes = async () => {
+  const visitPurposes = normalizeVisitPurposeOptions(settings.value.visitPurposes);
+  if (visitPurposes.length === 0) {
+    toast.error("至少保留一个拜访目的");
+    return;
+  }
+
+  savingVisitPurposes.value = true;
+  try {
+    await updateSystemSettings({
+      visitPurposes,
+    });
+    settings.value.visitPurposes = visitPurposes;
+    toast.success("拜访目的已保存");
+  } catch (error) {
+    toast.error(getRequestErrorMessage(error, "保存失败"));
+  } finally {
+    savingVisitPurposes.value = false;
   }
 }
 
@@ -511,6 +548,48 @@ onMounted(() => {
 
       <!-- 右侧：字典配置 -->
       <div class="space-y-6">
+        <!-- 拜访目的 -->
+        <Card>
+          <CardHeader class="pb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <CardTitle class="text-base">拜访目的</CardTitle>
+                <CardDescription class="text-xs mt-1">配置上门拜访签到的目的选项</CardDescription>
+              </div>
+              <Button @click="saveVisitPurposes" :disabled="savingVisitPurposes" size="sm" class="gap-1.5">
+                <Loader2 v-if="savingVisitPurposes" class="h-3.5 w-3.5 animate-spin" />
+                <Save v-else class="h-3.5 w-3.5" />
+                保存
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent class="space-y-3">
+            <div class="flex items-center justify-between">
+              <Label class="text-sm">目的列表</Label>
+              <Button type="button" variant="outline" size="sm" @click="addVisitPurpose">
+                <Plus class="h-3.5 w-3.5 mr-1" />
+                新增目的
+              </Button>
+            </div>
+
+            <div class="space-y-2 rounded-md border p-3">
+              <div v-for="(_, idx) in settings.visitPurposes" :key="idx" class="grid gap-2 grid-cols-[1fr_auto]">
+                <Input v-model="settings.visitPurposes[idx]" placeholder="例如：初次拜访" class="h-9" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  class="h-9 w-9"
+                  :disabled="settings.visitPurposes.length <= 1 || savingVisitPurposes"
+                  @click="removeVisitPurpose(idx)"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <!-- 客户来源 -->
         <Card>
           <CardHeader class="pb-4">

@@ -14,11 +14,15 @@ import CustomerMyView from "@/views/customer/my/index.vue";
 import CustomerSearchView from "@/views/customer/search/index.vue";
 import CustomerPotentialView from "@/views/customer/potential/index.vue";
 import CustomerPartnerView from "@/views/customer/partner/index.vue";
+import CustomerAssignmentView from "@/views/customer/assignment/index.vue";
 import SalesFollowRecordView from "@/views/follow-record/sales/index.vue";
 import OperationFollowRecordView from "@/views/follow-record/operation/index.vue";
 import ContractView from "@/views/contract/index.vue";
 import ResourcePoolView from "@/views/resource-pool/index.vue";
 import ResourceAcquisitionView from "@/views/resource-acquisition/index.vue";
+import CustomerVisitView from "@/views/customer/visit/index.vue";
+import SalesDailyScoreView from "@/views/sales-daily-score/index.vue";
+import CallRecordingView from "@/views/call-recording/index.vue";
 
 import { setupRouterGuards } from "./guards";
 
@@ -103,6 +107,22 @@ const router = createRouter({
           meta: { title: "合作客户", requiresAuth: true },
         },
         {
+          path: "custom/customer-assignments",
+          name: "customer-assignments",
+          component: CustomerAssignmentView,
+          meta: {
+            title: "客户分配",
+            requiresAuth: true,
+            requiresRoles: [
+              "admin",
+              "finance_manager",
+              "finance",
+              "财务经理",
+              "财务",
+            ],
+          },
+        },
+        {
           path: "roles",
           name: "roles",
           component: RolesView,
@@ -137,6 +157,66 @@ const router = createRouter({
           name: "follow-records-operation",
           component: OperationFollowRecordView,
           meta: { title: "运营跟进", requiresAuth: true, requiresAdmin: true },
+        },
+        {
+          path: "custom/visits",
+          name: "customer-visits",
+          component: CustomerVisitView,
+          meta: { title: "上门拜访", requiresAuth: true },
+        },
+        {
+          path: "sales-daily-scores",
+          name: "sales-daily-scores",
+          component: SalesDailyScoreView,
+          meta: {
+            title: "每日排名",
+            requiresAuth: true,
+            requiresRoles: [
+              "admin",
+              "finance_manager",
+              "finance",
+              "财务经理",
+              "财务",
+              "sales_director",
+              "销售总监",
+              "sales_manager",
+              "销售经理",
+              "sales_staff",
+              "销售员工",
+              "sales_outside",
+              "sale_outside",
+              "outside销售",
+            ],
+          },
+        },
+        {
+          path: "call-recordings",
+          name: "call-recordings",
+          component: CallRecordingView,
+          meta: {
+            title: "通话录音",
+            requiresAuth: true,
+            requiresRoles: [
+              "admin",
+              "finance_manager",
+              "finance",
+              "财务经理",
+              "财务",
+              "sales_director",
+              "销售总监",
+              "sales_manager",
+              "销售经理",
+              "sales_staff",
+              "销售员工",
+              "sales_inside",
+              "sale_inside",
+              "inside销售",
+              "电销员工",
+              "sales_outside",
+              "sale_outside",
+              "outside销售",
+            ],
+          },
         },
         {
           path: "contracts",

@@ -20,26 +20,28 @@ var (
 const defaultUserAvatar = "https://zhaozhaoying.oss-accelerate.aliyuncs.com/avatars/2026/03/18/1773818260823402723.jpg"
 
 type CreateUserInput struct {
-	Username string
-	Password string
-	Nickname string
-	Email    string
-	Mobile   string
-	Avatar   string
-	RoleID   int64
-	ParentID *int64
+	Username           string
+	Password           string
+	Nickname           string
+	Email              string
+	Mobile             string
+	HanghangCRMMobile  string
+	Avatar             string
+	RoleID             int64
+	ParentID           *int64
 }
 
 type UpdateUserInput struct {
-	Username string
-	Password string
-	Nickname string
-	Email    string
-	Mobile   string
-	Avatar   string
-	RoleID   int64
-	ParentID *int64
-	Status   string
+	Username           string
+	Password           string
+	Nickname           string
+	Email              string
+	Mobile             string
+	HanghangCRMMobile  string
+	Avatar             string
+	RoleID             int64
+	ParentID           *int64
+	Status             string
 }
 
 type UserService interface {
@@ -97,15 +99,16 @@ func (s *userService) Create(ctx context.Context, input CreateUserInput) (*model
 		return nil, err
 	}
 	user := &model.User{
-		Username: input.Username,
-		Password: string(hashed),
-		Nickname: input.Nickname,
-		Email:    input.Email,
-		Mobile:   input.Mobile,
-		Avatar:   normalizeUserAvatar(input.Avatar),
-		RoleID:   input.RoleID,
-		ParentID: input.ParentID,
-		Status:   model.UserStatusEnabled,
+		Username:           input.Username,
+		Password:           string(hashed),
+		Nickname:           input.Nickname,
+		Email:              input.Email,
+		Mobile:             input.Mobile,
+		HanghangCRMMobile:  strings.TrimSpace(input.HanghangCRMMobile),
+		Avatar:             normalizeUserAvatar(input.Avatar),
+		RoleID:             input.RoleID,
+		ParentID:           input.ParentID,
+		Status:             model.UserStatusEnabled,
 	}
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
@@ -125,6 +128,7 @@ func (s *userService) Update(ctx context.Context, id int64, input UpdateUserInpu
 	user.Nickname = input.Nickname
 	user.Email = input.Email
 	user.Mobile = input.Mobile
+	user.HanghangCRMMobile = strings.TrimSpace(input.HanghangCRMMobile)
 	user.Avatar = normalizeUserAvatar(input.Avatar)
 	user.RoleID = input.RoleID
 	user.ParentID = input.ParentID

@@ -53,6 +53,11 @@ export interface Customer {
 
   ownerUserId?: number | null
   ownerUserName?: string
+  assignmentReason?: string
+  assignmentType?: string
+  assignmentLabel?: string
+  assignmentOperatorUserId?: number | null
+  assignmentOperatorUserName?: string
   dealStatus?: DealStatus
   dealTime?: string
 
@@ -94,6 +99,31 @@ export interface CustomerListParams {
 
 export interface CustomerListResult {
   items: Customer[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface CustomerAssignmentItem {
+  id: number
+  date: string
+  insideSalesName: string
+  salesName: string
+  customerName: string
+  legalName?: string
+  contactName?: string
+  mobile?: string
+  address?: string
+  remark?: string
+}
+
+export interface CustomerAssignmentListParams {
+  page?: number
+  pageSize?: number
+}
+
+export interface CustomerAssignmentListResult {
+  items: CustomerAssignmentItem[]
   total: number
   page: number
   pageSize: number

@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT_DIR}/${RELEASE_DIR:-release}"
 BACKEND_BIN_NAME="${BACKEND_BIN_NAME:-crm-backend}"
+CHECKIN_WEB_SRC_DIR="${ROOT_DIR}/check-in/unpackage/dist/build/web"
+CHECKIN_WEB_OUT_DIR="${OUT_DIR}/check-in"
 GOOS_TARGET="${GOOS_TARGET:-linux}"
 GOARCH_TARGET="${GOARCH_TARGET:-amd64}"
 CGO_ENABLED_TARGET="${CGO_ENABLED_TARGET:-1}"
@@ -72,6 +74,18 @@ if command -v rsync >/dev/null 2>&1; then
 else
   rm -rf "$OUT_DIR/dist"
   cp -R "$ROOT_DIR/frontend/dist" "$OUT_DIR/dist"
+fi
+
+# Copy check-in web build
+if [ -d "$CHECKIN_WEB_SRC_DIR" ]; then
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$CHECKIN_WEB_SRC_DIR/" "$CHECKIN_WEB_OUT_DIR/"
+  else
+    rm -rf "$CHECKIN_WEB_OUT_DIR"
+    cp -R "$CHECKIN_WEB_SRC_DIR" "$CHECKIN_WEB_OUT_DIR"
+  fi
+else
+  echo "warning: check-in web build not found, skipped: $CHECKIN_WEB_SRC_DIR" >&2
 fi
 
 # 清理发布目录里不需要上线的测试文件和脚本。

@@ -11,7 +11,7 @@ export const getUserById = (id: number) => {
 
 export const createUser = (data: {
   username: string; password: string; nickname?: string;
-  email?: string; mobile: string; avatar?: string;
+  email?: string; mobile: string; hanghangCrmMobile?: string; avatar?: string;
   roleId: number; parentId?: number | null
 }) => {
   return request<User>({ method: "POST", url: "/v1/users", data })
@@ -19,7 +19,7 @@ export const createUser = (data: {
 
 export const updateUser = (id: number, data: {
   username: string; password?: string; nickname?: string; email?: string;
-  mobile: string; avatar?: string; roleId: number;
+  mobile: string; hanghangCrmMobile?: string; avatar?: string; roleId: number;
   parentId?: number | null; status?: string
 }) => {
   return request<User>({ method: "PUT", url: `/v1/users/${id}`, data })

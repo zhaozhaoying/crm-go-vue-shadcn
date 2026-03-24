@@ -32,6 +32,9 @@ type customerScopeRepoStub struct {
 	userRoles                            map[int64]string
 	subordinates                         map[int64][]int64
 	parents                              map[int64]int64
+	rankedUserIDs                        []int64
+	lastRankReferenceDate                string
+	latestAutoAssignOwnerUserID          *int64
 	activeBlockedUntilByDepartmentAnchor map[int64]time.Time
 	findByID                             *model.Customer
 	findByIDErr                          error
@@ -49,10 +52,15 @@ type customerScopeRepoStub struct {
 	convertCalled                        bool
 	convertOwner                         int64
 	convertBy                            int64
+	transferInputs                       []model.CustomerTransferInput
 }
 
 func (s *customerScopeRepoStub) List(ctx context.Context, filter model.CustomerListFilter) (model.CustomerListResult, error) {
 	return model.CustomerListResult{}, nil
+}
+
+func (s *customerScopeRepoStub) ListAssignments(ctx context.Context, filter model.CustomerAssignmentListFilter) (model.CustomerAssignmentListResult, error) {
+	return model.CustomerAssignmentListResult{}, nil
 }
 
 func (s *customerScopeRepoStub) FindByID(ctx context.Context, customerID int64) (*model.Customer, error) {
@@ -132,6 +140,36 @@ func (s *customerScopeRepoStub) CountOwnedActiveByOwner(ctx context.Context, own
 	return 0, nil
 }
 
+func (s *customerScopeRepoStub) ListAutoAssignRankedOwnerScores(ctx context.Context, referenceDate string, userIDs []int64) ([]model.SalesDailyScore, error) {
+	s.lastRankReferenceDate = referenceDate
+	if len(s.rankedUserIDs) == 0 {
+		return []model.SalesDailyScore{}, nil
+	}
+	allowed := make(map[int64]struct{}, len(userIDs))
+	for _, userID := range userIDs {
+		allowed[userID] = struct{}{}
+	}
+	result := make([]model.SalesDailyScore, 0, len(s.rankedUserIDs))
+	for _, userID := range s.rankedUserIDs {
+		if _, ok := allowed[userID]; ok {
+			result = append(result, model.SalesDailyScore{UserID: userID, TotalScore: autoAssignMinimumDailyScore})
+		}
+	}
+	return result, nil
+}
+
+func (s *customerScopeRepoStub) FindLatestAutoAssignOwnerUserID(ctx context.Context, ownerUserIDs []int64, since time.Time) (*int64, error) {
+	if s.latestAutoAssignOwnerUserID == nil {
+		return nil, nil
+	}
+	for _, ownerUserID := range ownerUserIDs {
+		if ownerUserID == *s.latestAutoAssignOwnerUserID {
+			return s.latestAutoAssignOwnerUserID, nil
+		}
+	}
+	return nil, nil
+}
+
 func (s *customerScopeRepoStub) Create(ctx context.Context, input model.CustomerCreateInput) (*model.Customer, error) {
 	s.lastCreateInput = input
 	if s.createErr != nil {
@@ -172,7 +210,11 @@ func (s *customerScopeRepoStub) Release(ctx context.Context, customerID, operato
 }
 
 func (s *customerScopeRepoStub) Transfer(ctx context.Context, input model.CustomerTransferInput) (*model.Customer, error) {
-	return nil, nil
+	s.transferInputs = append(s.transferInputs, input)
+	return &model.Customer{
+		ID:          input.CustomerID,
+		OwnerUserID: &input.ToOwnerUserID,
+	}, nil
 }
 
 func (s *customerScopeRepoStub) Convert(ctx context.Context, customerID, ownerUserID, operatorUserID int64) (*model.Customer, error) {
@@ -362,12 +404,17 @@ func TestApplyMyCustomerScopeByRoleForInsideSalesDepartment(t *testing.T) {
 		t.Fatalf("applyMyCustomerScopeByRole(admin) returned error: %v", err)
 	}
 	assertSameIDs(t, adminFilter.AllowedInsideSalesUserIDs, []int64{21, 22})
-	assertSameIDs(t, adminFilter.AllowedOwnerUserIDs, []int64{21, 22})
+	if !adminFilter.SkipViewerOwnerLimit {
+		t.Fatalf("expected admin inside-sales scope to skip owner limit")
+	}
 	if !adminFilter.IncludePoolInMyScope {
 		t.Fatalf("expected inside-sales scope to include pending pool customers for admin")
 	}
 	if !adminFilter.IncludePendingConvertScope {
 		t.Fatalf("expected inside-sales scope to include pending conversion records for admin")
+	}
+	if !adminFilter.RequireInsideSalesAssociation {
+		t.Fatalf("expected admin inside-sales scope to require inside-sales association")
 	}
 
 	managerFilter, err := svc.applyMyCustomerScopeByRole(context.Background(), model.CustomerListFilter{
@@ -381,7 +428,38 @@ func TestApplyMyCustomerScopeByRoleForInsideSalesDepartment(t *testing.T) {
 		t.Fatalf("applyMyCustomerScopeByRole(manager) returned error: %v", err)
 	}
 	assertSameIDs(t, managerFilter.AllowedInsideSalesUserIDs, []int64{21})
-	assertSameIDs(t, managerFilter.AllowedOwnerUserIDs, []int64{21})
+	assertSameIDs(t, managerFilter.AllowedOwnerUserIDs, []int64{10, 21, 30})
+	if !managerFilter.RequireInsideSalesAssociation {
+		t.Fatalf("expected manager inside-sales scope to require inside-sales association")
+	}
+}
+
+func TestApplyMyCustomerScopeByRoleForInsideSalesDepartmentKeepsSalesOwnerScopeWhenNoInsideSalesSubordinates(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sales_inside": {21, 22},
+		},
+		userRoles: map[int64]string{
+			31: "sales_staff",
+		},
+	}
+
+	svc := &customerService{repo: repoStub}
+	filter, err := svc.applyMyCustomerScopeByRole(context.Background(), model.CustomerListFilter{
+		Category:       "my",
+		OwnershipScope: "inside_sales",
+		ViewerID:       31,
+		HasViewer:      true,
+		ActorRole:      "sales_staff",
+	})
+	if err != nil {
+		t.Fatalf("applyMyCustomerScopeByRole(sales-staff inside-sales scope) returned error: %v", err)
+	}
+	assertSameIDs(t, filter.AllowedOwnerUserIDs, []int64{31})
+	assertSameIDs(t, filter.AllowedInsideSalesUserIDs, []int64{})
+	if !filter.RequireInsideSalesAssociation {
+		t.Fatalf("expected sales-staff inside-sales scope to require inside-sales association")
+	}
 }
 
 func TestApplyMyCustomerScopeByRoleForInsideSalesSelfOnly(t *testing.T) {
@@ -595,7 +673,7 @@ func TestIsSameDepartmentUsesSalesDirectorScope(t *testing.T) {
 	}
 }
 
-func TestCreateCustomerInsideSalesAutoAssignsBalancedOwner(t *testing.T) {
+func TestCreateCustomerInsideSalesKeepsCustomerOnInsideSalesWhenNoScores(t *testing.T) {
 	repoStub := &customerScopeRepoStub{
 		roleUsers: map[string][]int64{
 			"sales_director": {1},
@@ -639,18 +717,18 @@ func TestCreateCustomerInsideSalesAutoAssignsBalancedOwner(t *testing.T) {
 	if repoStub.lastCreateInput.Status != model.CustomerStatusOwned {
 		t.Fatalf("expected inside-sales create status %q, got %q", model.CustomerStatusOwned, repoStub.lastCreateInput.Status)
 	}
-	if repoStub.lastCreateInput.OwnerUserID == nil || *repoStub.lastCreateInput.OwnerUserID != 1 {
-		t.Fatalf("expected inside-sales create owner 1, got %v", repoStub.lastCreateInput.OwnerUserID)
+	if repoStub.lastCreateInput.OwnerUserID == nil || *repoStub.lastCreateInput.OwnerUserID != 9 {
+		t.Fatalf("expected inside-sales create owner 9, got %v", repoStub.lastCreateInput.OwnerUserID)
 	}
 	if repoStub.lastCreateInput.InsideSalesUserID == nil || *repoStub.lastCreateInput.InsideSalesUserID != 9 {
 		t.Fatalf("expected inside-sales create to bind insideSalesUserID 9, got %v", repoStub.lastCreateInput.InsideSalesUserID)
 	}
-	if repoStub.lastCreateInput.ConvertedAt == nil {
-		t.Fatalf("expected inside-sales create convertedAt to be set")
+	if repoStub.lastCreateInput.ConvertedAt != nil {
+		t.Fatalf("expected inside-sales create convertedAt to stay nil without scores")
 	}
 }
 
-func TestClaimCustomerInsideSalesAutoAssignsBalancedOwner(t *testing.T) {
+func TestClaimCustomerInsideSalesKeepsCustomerOnInsideSalesWhenNoScores(t *testing.T) {
 	repoStub := &customerScopeRepoStub{
 		userRoles: map[int64]string{
 			1: "sales_director",
@@ -690,8 +768,8 @@ func TestClaimCustomerInsideSalesAutoAssignsBalancedOwner(t *testing.T) {
 	if !repoStub.claimCalled {
 		t.Fatalf("expected Claim repository method to be called")
 	}
-	if repoStub.claimOwnerUserID != 1 {
-		t.Fatalf("expected inside-sales claim owner 1, got %d", repoStub.claimOwnerUserID)
+	if repoStub.claimOwnerUserID != 2 {
+		t.Fatalf("expected inside-sales claim owner 2, got %d", repoStub.claimOwnerUserID)
 	}
 	if repoStub.claimOperatorUserID != 2 {
 		t.Fatalf("expected inside-sales claim operator 2, got %d", repoStub.claimOperatorUserID)
@@ -701,7 +779,148 @@ func TestClaimCustomerInsideSalesAutoAssignsBalancedOwner(t *testing.T) {
 	}
 }
 
-func TestConvertCustomerInsideSalesAssignsBalancedOwner(t *testing.T) {
+func TestCreateCustomerInsideSalesAutoAssignsTopRankedOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		userRoles: map[int64]string{
+			1: "sales_director",
+			3: "sales_staff",
+			4: "sales_staff",
+			9: "sales_inside",
+		},
+		parents: map[int64]int64{
+			9: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {9, 3, 4},
+		},
+		rankedUserIDs: []int64{4, 3, 1},
+		createResult: &model.Customer{
+			ID:   2002,
+			Name: "排名自动分配客户",
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.CreateCustomer(context.Background(), model.CustomerCreateInput{
+		Name:           "排名自动分配客户",
+		LegalName:      "张三",
+		ContactName:    "李四",
+		Status:         model.CustomerStatusPool,
+		OperatorUserID: 9,
+		Phones: []model.CustomerPhoneInput{{
+			Phone:     "13800138001",
+			IsPrimary: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateCustomer returned error: %v", err)
+	}
+	if repoStub.lastCreateInput.OwnerUserID == nil || *repoStub.lastCreateInput.OwnerUserID != 4 {
+		t.Fatalf("expected ranked inside-sales create owner 4, got %v", repoStub.lastCreateInput.OwnerUserID)
+	}
+	if repoStub.lastRankReferenceDate != previousAutoAssignScoreDate() {
+		t.Fatalf("expected yesterday reference date %q, got %q", previousAutoAssignScoreDate(), repoStub.lastRankReferenceDate)
+	}
+}
+
+func TestClaimCustomerInsideSalesAutoAssignsTopRankedOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		rankedUserIDs: []int64{4, 3, 1},
+		findByID: &model.Customer{
+			ID:       2102,
+			Name:     "排名公海客户",
+			IsInPool: true,
+		},
+		claimResult: &model.Customer{
+			ID:       2102,
+			Name:     "排名公海客户",
+			IsInPool: false,
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ClaimCustomer(context.Background(), 2102, 2)
+	if err != nil {
+		t.Fatalf("ClaimCustomer returned error: %v", err)
+	}
+	if repoStub.claimOwnerUserID != 4 {
+		t.Fatalf("expected ranked inside-sales claim owner 4, got %d", repoStub.claimOwnerUserID)
+	}
+	if repoStub.lastRankReferenceDate != previousAutoAssignScoreDate() {
+		t.Fatalf("expected yesterday reference date %q, got %q", previousAutoAssignScoreDate(), repoStub.lastRankReferenceDate)
+	}
+}
+
+func TestClaimCustomerInsideSalesRoundsRobinAcrossRankedOwnersExcludingLast(t *testing.T) {
+	latestOwnerUserID := int64(4)
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		rankedUserIDs:               []int64{4, 3, 1},
+		latestAutoAssignOwnerUserID: &latestOwnerUserID,
+		findByID: &model.Customer{
+			ID:       2103,
+			Name:     "轮转公海客户",
+			IsInPool: true,
+		},
+		claimResult: &model.Customer{
+			ID:       2103,
+			Name:     "轮转公海客户",
+			IsInPool: false,
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ClaimCustomer(context.Background(), 2103, 2)
+	if err != nil {
+		t.Fatalf("ClaimCustomer returned error: %v", err)
+	}
+	if repoStub.claimOwnerUserID != 3 {
+		t.Fatalf("expected ranked round-robin claim owner 3, got %d", repoStub.claimOwnerUserID)
+	}
+}
+
+func TestConvertCustomerInsideSalesKeepsCustomerOnInsideSalesWhenNoScores(t *testing.T) {
 	repoStub := &customerScopeRepoStub{
 		userRoles: map[int64]string{
 			1: "sales_director",
@@ -743,8 +962,107 @@ func TestConvertCustomerInsideSalesAssignsBalancedOwner(t *testing.T) {
 	if !repoStub.convertCalled {
 		t.Fatalf("expected Convert repository method to be called")
 	}
-	if repoStub.convertOwner != 1 {
-		t.Fatalf("expected balanced owner 1, got %d", repoStub.convertOwner)
+	if repoStub.convertOwner != 2 {
+		t.Fatalf("expected inside-sales owner 2, got %d", repoStub.convertOwner)
+	}
+}
+
+func TestReassignCustomersByYesterdayRankingUsesDepartmentRanking(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_staff",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		rankedUserIDs: []int64{4, 3, 1},
+		findByID: &model.Customer{
+			ID:          3101,
+			Name:        "待重分配客户",
+			OwnerUserID: int64Ptr(2),
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	result, err := svc.ReassignCustomersByYesterdayRanking(context.Background(), model.CustomerBatchRankedReassignInput{
+		CustomerIDs:    []int64{3101},
+		OperatorUserID: 2,
+	})
+	if err != nil {
+		t.Fatalf("ReassignCustomersByYesterdayRanking returned error: %v", err)
+	}
+	if result.SuccessCount != 1 || result.FailedCount != 0 {
+		t.Fatalf("unexpected result counts: %+v", result)
+	}
+	if len(repoStub.transferInputs) != 1 {
+		t.Fatalf("expected 1 transfer, got %d", len(repoStub.transferInputs))
+	}
+	if repoStub.transferInputs[0].ToOwnerUserID != 4 {
+		t.Fatalf("expected reassigned owner 4, got %d", repoStub.transferInputs[0].ToOwnerUserID)
+	}
+	if repoStub.lastRankReferenceDate != previousAutoAssignScoreDate() {
+		t.Fatalf("expected yesterday reference date %q, got %q", previousAutoAssignScoreDate(), repoStub.lastRankReferenceDate)
+	}
+}
+
+func TestReassignCustomersByYesterdayRankingStartsFromTopRankInsteadOfContinuingRotation(t *testing.T) {
+	latestOwnerUserID := int64(3)
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_staff",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		rankedUserIDs:               []int64{4, 3, 1},
+		latestAutoAssignOwnerUserID: &latestOwnerUserID,
+		findByID: &model.Customer{
+			ID:          3102,
+			Name:        "按排序重新分配客户",
+			OwnerUserID: int64Ptr(2),
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	result, err := svc.ReassignCustomersByYesterdayRanking(context.Background(), model.CustomerBatchRankedReassignInput{
+		CustomerIDs:    []int64{3102},
+		OperatorUserID: 2,
+	})
+	if err != nil {
+		t.Fatalf("ReassignCustomersByYesterdayRanking returned error: %v", err)
+	}
+	if result.SuccessCount != 1 || result.FailedCount != 0 {
+		t.Fatalf("unexpected result counts: %+v", result)
+	}
+	if len(repoStub.transferInputs) != 1 {
+		t.Fatalf("expected 1 transfer, got %d", len(repoStub.transferInputs))
+	}
+	if repoStub.transferInputs[0].ToOwnerUserID != 4 {
+		t.Fatalf("expected reassigned owner 4, got %d", repoStub.transferInputs[0].ToOwnerUserID)
 	}
 }
 
@@ -810,8 +1128,8 @@ func TestConvertCustomerAllowsAdminToConvertInsideSalesLead(t *testing.T) {
 	if !repoStub.convertCalled {
 		t.Fatalf("expected admin convert to call repository")
 	}
-	if repoStub.convertOwner != 1 {
-		t.Fatalf("expected admin convert to use creator team owner 1, got %d", repoStub.convertOwner)
+	if repoStub.convertOwner != 2 {
+		t.Fatalf("expected admin convert to keep customer on creator 2 without scores, got %d", repoStub.convertOwner)
 	}
 }
 

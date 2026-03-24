@@ -36,3 +36,73 @@ func TestBuildMyCustomerOwnershipConditionFallsBackToViewerWithoutExplicitScope(
 		t.Fatalf("expected viewer id 99, got %#v", args[0])
 	}
 }
+
+func TestBuildCustomerAssignmentMeta(t *testing.T) {
+	tests := []struct {
+		name           string
+		hasInsideSales bool
+		reason         string
+		isInPool       bool
+		wantType       string
+		wantLabel      string
+	}{
+		{
+			name:      "self add",
+			reason:    model.CustomerOwnerLogReasonCreateInitialAssign,
+			wantType:  "self_add",
+			wantLabel: "自己添加",
+		},
+		{
+			name:      "import assign",
+			reason:    model.CustomerOwnerLogReasonImportInitialAssign,
+			wantType:  "import_assign",
+			wantLabel: "导入分配",
+		},
+		{
+			name:      "pool claim",
+			reason:    model.CustomerOwnerLogReasonClaimFromPool,
+			wantType:  "pool_claim",
+			wantLabel: "公海领取",
+		},
+		{
+			name:           "inside sales assign wins",
+			hasInsideSales: true,
+			reason:         model.CustomerOwnerLogReasonInsideSalesCreate,
+			wantType:       "auto_assign",
+			wantLabel:      "电销分配",
+			isInPool:       false,
+		},
+		{
+			name:      "manual transfer",
+			reason:    model.CustomerOwnerLogReasonManualTransfer,
+			wantType:  "manual_transfer",
+			wantLabel: "手动转移",
+		},
+		{
+			name:      "manual release in pool",
+			reason:    model.CustomerOwnerLogReasonManualRelease,
+			isInPool:  true,
+			wantType:  "manual_release",
+			wantLabel: "手动丢弃",
+		},
+		{
+			name:      "fallback",
+			reason:    "",
+			wantType:  "",
+			wantLabel: "-",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotType, gotLabel := buildCustomerAssignmentMeta(
+				tt.hasInsideSales,
+				tt.reason,
+				tt.isInPool,
+			)
+			if gotType != tt.wantType || gotLabel != tt.wantLabel {
+				t.Fatalf("unexpected assignment meta: got (%q, %q), want (%q, %q)", gotType, gotLabel, tt.wantType, tt.wantLabel)
+			}
+		})
+	}
+}

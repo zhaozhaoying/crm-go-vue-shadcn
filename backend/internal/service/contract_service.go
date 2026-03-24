@@ -135,6 +135,8 @@ func (s *contractService) UpdateContract(ctx context.Context, id int64, input mo
 		return nil, err
 	}
 
+	// Editing a contract must not change its original signing salesperson.
+	input.UserID = existing.UserID
 	input = applyRoleScopedUpdateInput(existing, input, actorRole)
 
 	prefix := s.getContractNumberPrefix()
@@ -185,6 +187,8 @@ func (s *contractService) AuditContract(ctx context.Context, id int64, input mod
 		return nil, ErrContractAuditedReadonly
 	}
 
+	// Auditing should only change audit fields, not the signing salesperson.
+	input.UserID = existing.UserID
 	prefix := s.getContractNumberPrefix()
 	existingSuffix := extractSuffix(prefix, existing.ContractNumber)
 	incomingSuffix := extractSuffix(prefix, input.ContractNumber)

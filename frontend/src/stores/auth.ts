@@ -18,6 +18,7 @@ export interface AuthUser {
   nickname: string
   email: string
   mobile: string
+  hanghangCrmMobile: string
   avatar: string
   role: string
   roleId: number
@@ -49,6 +50,7 @@ const userFromToken = (token: string): AuthUser | null => {
     nickname: (p.nickname as string) || "",
     email: (p.email as string) || "",
     mobile: "",
+    hanghangCrmMobile: "",
     avatar: "",
     role: (p.role as string) || "",
     roleId: Number(p.role_id ?? 0),
@@ -74,6 +76,7 @@ const readCachedUser = (): AuthUser | null => {
       nickname: parsed.nickname || "",
       email: parsed.email || "",
       mobile: parsed.mobile || "",
+      hanghangCrmMobile: parsed.hanghangCrmMobile || "",
       avatar: parsed.avatar || "",
       role: parsed.role || parsed.roleName || "",
       roleId: Number(parsed.roleId || 0),
@@ -105,6 +108,7 @@ const mapCurrentUser = (user: UserWithRole): AuthUser => {
     nickname: user.nickname || "",
     email: user.email || "",
     mobile: user.mobile || "",
+    hanghangCrmMobile: user.hanghangCrmMobile || "",
     avatar: user.avatar || "",
     role: user.roleName || "",
     roleId: Number(user.roleId || 0),

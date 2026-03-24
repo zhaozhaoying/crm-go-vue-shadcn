@@ -36,6 +36,7 @@ Core auth variables:
 - `JWT_SECRET`: JWT signing secret. In `APP_ENV=production|prod`, this must be explicitly configured and cannot use default placeholder.
 - `JWT_EXPIRY_HOURS`: access token expiration hours (default `24`)
 - `REFRESH_TOKEN_EXPIRY_HOURS`: refresh token expiration hours (default `168`)
+- `HANGHANG_CRM_CLOUD_TOKEN`: 航航 CRM 通话统计同步使用的 cloud-token
 - `BAIDU_MAP_AK`: 百度地图 Web API AK（资源池检索必填）
 - `BAIDU_MAP_BASE_URL`: 百度地图 API 基础地址（默认 `https://api.map.baidu.com`）
 

@@ -24,6 +24,10 @@ const titleMap: Record<string, string> = {
   notifications: '通知中心',
   settings: '系统设置',
   profile: '个人资料',
+  custom: '客户管理',
+  visits: '上门拜访',
+  'sales-daily-scores': '每日排名',
+  'call-recordings': '通话录音',
 }
 
 const breadcrumbSegments = computed(() => {

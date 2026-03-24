@@ -28,6 +28,9 @@ func New(
 	uploadHandler *handler.UploadHandler,
 	contractHandler *handler.ContractHandler,
 	notificationHandler *handler.NotificationHandler,
+	customerVisitHandler *handler.CustomerVisitHandler,
+	salesDailyScoreHandler *handler.SalesDailyScoreHandler,
+	callRecordingHandler *handler.CallRecordingHandler,
 	tokenChecker middleware.TokenBlacklistChecker,
 ) *gin.Engine {
 	engine := gin.New()
@@ -56,6 +59,7 @@ func New(
 		protected.Use(middleware.JWTAuth(cfg.JWTSecret, tokenChecker))
 		{
 			protected.POST("/tasks/customer-drop/run", crontabHandler.RunAutoDropTask)
+			protected.POST("/tasks/hanghang-crm-daily-user-call-stats/run", crontabHandler.RunHanghangCRMDailyUserCallStatSyncTask)
 			protected.GET("/dashboard/overview", dashboardHandler.GetOverview)
 
 			protected.GET("/notifications/activity-logs", notificationHandler.ListActivityLogs)
@@ -70,6 +74,7 @@ func New(
 			protected.GET("/customers/potential", customerHandler.ListPotential)
 			protected.GET("/customers/partner", customerHandler.ListPartner)
 			protected.GET("/customers/search", customerHandler.ListSearch)
+			protected.GET("/customers/assignments", customerHandler.ListAssignments)
 			protected.POST("/customers", customerHandler.Create)
 			protected.POST("/customers/import/csv", customerHandler.ImportCSV)
 			protected.PUT("/customers/:id", customerHandler.Update)
@@ -78,6 +83,7 @@ func New(
 			protected.POST("/customers/:id/convert", customerHandler.Convert)
 			protected.POST("/customers/:id/release", customerHandler.Release)
 			protected.POST("/customers/:id/transfer", customerHandler.Transfer)
+			protected.POST("/customers/reassign-by-ranking", customerHandler.BatchRankedReassign)
 
 			// Phone management
 			protected.POST("/customers/:id/phones", customerHandler.AddPhone)
@@ -142,6 +148,20 @@ func New(
 			protected.GET("/operation-follow-records", followRecordHandler.ListOperationFollowRecords)
 			protected.GET("/operation-follow-records/all", followRecordHandler.ListAllOperationFollowRecords)
 			protected.POST("/operation-follow-records", followRecordHandler.CreateOperationFollowRecord)
+
+			// 上门拜访
+			protected.GET("/customer-visits", customerVisitHandler.List)
+			protected.POST("/customer-visits", customerVisitHandler.Create)
+
+			// 每日排名
+			protected.GET("/sales-daily-scores", salesDailyScoreHandler.ListDailyRankings)
+			protected.GET("/sales-daily-scores/:userId", salesDailyScoreHandler.GetDailyScoreDetail)
+
+			// 通话录音
+			protected.GET("/call-recordings", callRecordingHandler.List)
+			protected.GET("/call-recordings/:id/audio", callRecordingHandler.StreamAudio)
+			protected.POST("/call-recordings/sync", callRecordingHandler.Sync)
+			protected.POST("/call-recordings/import", callRecordingHandler.Import)
 
 			// 销售跟进记录
 			protected.GET("/sales-follow-records", followRecordHandler.ListSalesFollowRecords)

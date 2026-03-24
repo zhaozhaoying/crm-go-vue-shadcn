@@ -138,6 +138,7 @@ MYSQL_DB=crm_db
 JWT_SECRET=replace_with_a_long_random_secret
 JWT_EXPIRY_HOURS=24
 REFRESH_TOKEN_EXPIRY_HOURS=168
+HANGHANG_CRM_CLOUD_TOKEN=
 
 OSS_ENDPOINT=
 OSS_ACCESS_KEY_ID=
@@ -149,6 +150,7 @@ OSS_BASE_PATH=avatars/
 说明：
 
 - `JWT_SECRET` 在生产环境必须显式配置，否则后端启动会失败
+- 航航 CRM 一键同步依赖后端 `.env` 中的 `HANGHANG_CRM_CLOUD_TOKEN`
 - `FRONTEND_ORIGIN` 填你的正式前端域名，多个域名用英文逗号分隔
 - 图片上传依赖 OSS，`OSS_*` 不完整时上传功能会出问题
 - 资源池相关功能如果要用，需要继续补 `BAIDU_MAP_AK`、`GOOGLE_API_KEY`、`GOOGLE_CX` 等变量
@@ -240,7 +242,7 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o crm-backend ./
 - 出现这类错误时，直接改用 `CGO_ENABLED=0` 即可
 - 如果必须启用 `CGO_ENABLED=1`，建议改为在 Linux 环境中编译，或者使用专门的 Linux 交叉编译器
 
-如果你想把前端 `dist` 和 Linux 后端程序一起打到 `release/` 目录，仓库里已经带了脚本：
+如果你想把前端 `dist`、`check-in` 的 H5 Web 产物和 Linux 后端程序一起打到 `release/` 目录，仓库里已经带了脚本：
 
 ```bash
 cd /srv/crm-go-vue-shadcn
@@ -252,8 +254,8 @@ GOOS_TARGET=linux GOARCH_TARGET=amd64 CGO_ENABLED_TARGET=1 bash ./scripts/packag
 ```text
 release/
 ├── crm-backend
-├── .env
-└── dist/
+├── dist/
+└── check-in/
 ```
 
 说明：
@@ -342,6 +344,11 @@ server {
     location / {
         try_files $uri $uri/ /index.html;
     }
+
+    location /check-in/ {
+        alias /srv/crm-go-vue-shadcn/check-in/;
+        try_files $uri $uri/ /check-in/index.html;
+    }
 }
 ```
 
@@ -391,6 +398,7 @@ curl -s http://127.0.0.1:8080/api/health
 /home/shipin/crm-go.zhaozhaoying.cn
 ├── .env
 ├── dist/
+├── check-in/
 └── overseas_linux
 ```
 
@@ -404,9 +412,10 @@ bash ./scripts/deploy-overseas.sh
 这个脚本会自动完成：
 
 - 使用 `scripts/package-release.sh` 打包
-- 生成 `release/dist` 和 `release/overseas_linux`
+- 生成 `release/dist`、`release/check-in` 和 `release/overseas_linux`
 - 默认不会把本地 `.env` 打进 `release/`
 - 上传前端 `dist`
+- 上传 `check-in` H5 Web 静态资源
 - 使用 `rsync` 上传后端二进制到远端唯一临时文件
 - 在服务器上先停止并清理 `crm-go` 的失败状态，再原子替换 `overseas_linux`
 - 启动 `crm-go`

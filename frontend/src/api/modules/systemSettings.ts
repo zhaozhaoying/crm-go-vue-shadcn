@@ -27,6 +27,7 @@ export interface SystemSettings {
   customerLimit: number;
   showFullContact: boolean;
   contractNumberPrefix: string;
+  visitPurposes: string[];
   customerLevels: CustomerLevel[];
   customerSources: CustomerSource[];
 }
@@ -40,6 +41,7 @@ export interface UpdateSystemSettingsRequest {
   customerLimit?: number;
   showFullContact?: boolean;
   contractNumberPrefix?: string;
+  visitPurposes?: string[];
 }
 
 export const getSystemSettings = () => {

@@ -94,6 +94,46 @@ func getMySQLMigrations() []Migration {
 			Name:    "add_customer_owner_log_claim_block_fields",
 			Up:      upAddCustomerOwnerLogClaimBlockFieldsMySQL,
 		},
+		{
+			Version: 2026031902,
+			Name:    "create_daily_user_call_stats_and_add_users_hanghang_crm_mobile",
+			Up:      upCreateDailyUserCallStatsAndAddUsersHanghangCrmMobileMySQL,
+		},
+		{
+			Version: 2026032002,
+			Name:    "create_customer_visits_table",
+			Up:      upCreateCustomerVisitsTableMySQL,
+		},
+		{
+			Version: 2026032003,
+			Name:    "create_sales_daily_scores",
+			Up:      upCreateSalesDailyScoresMySQL,
+		},
+		{
+			Version: 2026032004,
+			Name:    "alter_customer_visits_region_columns_to_varchar",
+			Up:      upAlterCustomerVisitsRegionColumnsToVarcharMySQL,
+		},
+		{
+			Version: 2026032005,
+			Name:    "add_customer_visits_check_in_ip",
+			Up:      upAddCustomerVisitsCheckInIPMySQL,
+		},
+		{
+			Version: 2026032301,
+			Name:    "create_call_recordings",
+			Up:      upCreateCallRecordingsMySQL,
+		},
+		{
+			Version: 2026032302,
+			Name:    "create_user_hanghang_crm_mobiles",
+			Up:      upCreateUserHanghangCRMMobilesMySQL,
+		},
+		{
+			Version: 2026032401,
+			Name:    "dedupe_call_recordings",
+			Up:      upDedupeCallRecordingsMySQL,
+		},
 	}
 }
 
@@ -871,4 +911,256 @@ func upAddUserSalesTypeMySQL(tx *gorm.DB) error {
 		return err
 	}
 	return addIndexIfNotExists(tx, "users", "idx_users_sales_type", "sales_type", false)
+}
+
+func upCreateDailyUserCallStatsAndAddUsersHanghangCrmMobileMySQL(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS daily_user_call_stats (
+			id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			stat_date DATE NOT NULL COMMENT '统计日期，每天每个用户一条',
+			user_id BIGINT NULL COMMENT '匹配 users.id 后回填',
+			real_name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '真实姓名，用于匹配 users.nickname',
+			mobile VARCHAR(32) NOT NULL DEFAULT '' COMMENT '航航CRM手机号，用于匹配 users.hanghang_crm_mobile',
+			bind_num INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '绑定数量',
+			call_num INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '拨打数量',
+			not_connected INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '未接通数量',
+			connection_rate DECIMAL(8,4) NOT NULL DEFAULT 0.0000 COMMENT '接通率',
+			time_total INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '通话总时长原始值',
+			total_minute VARCHAR(32) NOT NULL DEFAULT '' COMMENT '总时长文本',
+			total_second INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '总时长秒数',
+			average_call_duration DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '平均通话时长',
+			average_call_second DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '平均通话秒数',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+			UNIQUE KEY uk_daily_user_call_stats_date_name_mobile (stat_date, real_name, mobile),
+			KEY idx_daily_user_call_stats_stat_date (stat_date),
+			KEY idx_daily_user_call_stats_user_id (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='每日用户电话统计表'`,
+	}
+	if err := execStatements(tx, stmts); err != nil {
+		return err
+	}
+
+	if err := addColumnIfNotExists(tx, "users", "hanghang_crm_mobile", "VARCHAR(32) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	return addIndexIfNotExists(
+		tx,
+		"users",
+		"idx_users_nickname_hanghang_crm_mobile",
+		"nickname, hanghang_crm_mobile",
+		false,
+	)
+}
+
+func upCreateSalesDailyScoresMySQL(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS sales_daily_scores (
+			id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			score_date DATE NOT NULL COMMENT '评分日期',
+			user_id BIGINT NOT NULL COMMENT '销售ID',
+			user_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '销售姓名',
+			role_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '销售角色',
+			call_num INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '通话量',
+			call_duration_second INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '通话时长秒数',
+			call_score_by_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '按通话量评分',
+			call_score_by_duration INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '按通话时长评分',
+			call_score_type VARCHAR(32) NOT NULL DEFAULT 'none' COMMENT '通话得分口径',
+			call_score INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '通话得分',
+			visit_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '上门拜访数',
+			visit_score INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '上门拜访得分',
+			new_customer_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '新增客户数',
+			new_customer_score INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '新增客户得分',
+			total_score INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '总分',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+			UNIQUE KEY uk_sales_daily_scores_date_user (score_date, user_id),
+			KEY idx_sales_daily_scores_user_id (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='销售每日考核得分表'`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upCreateCustomerVisitsTableMySQL(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS customer_visits (
+			id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			operator_user_id BIGINT NOT NULL,
+			customer_name VARCHAR(255) NOT NULL,
+			check_in_lat DOUBLE NOT NULL DEFAULT 0,
+			check_in_lng DOUBLE NOT NULL DEFAULT 0,
+			province VARCHAR(64) NOT NULL DEFAULT '',
+			city VARCHAR(64) NOT NULL DEFAULT '',
+			area VARCHAR(64) NOT NULL DEFAULT '',
+			detail_address VARCHAR(1024) NOT NULL DEFAULT '',
+			images TEXT NOT NULL,
+			visit_purpose VARCHAR(500) NOT NULL DEFAULT '',
+			remark TEXT NOT NULL,
+			visit_date VARCHAR(10) NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (operator_user_id) REFERENCES users(id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+	}
+	if err := execStatements(tx, stmts); err != nil {
+		return err
+	}
+
+	indexes := []struct {
+		table   string
+		name    string
+		columns string
+		unique  bool
+	}{
+		{"customer_visits", "idx_customer_visits_operator_user_id", "operator_user_id", false},
+		{"customer_visits", "idx_customer_visits_visit_date", "visit_date", false},
+		{"customer_visits", "idx_customer_visits_created_at", "created_at", false},
+	}
+	for _, idx := range indexes {
+		if err := addIndexIfNotExists(tx, idx.table, idx.name, idx.columns, idx.unique); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upCreateUserHanghangCRMMobilesMySQL(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS user_hanghang_crm_mobiles (
+			id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			user_id BIGINT NOT NULL,
+			mobile VARCHAR(32) NOT NULL DEFAULT '',
+			is_primary TINYINT(1) NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uk_user_hanghang_crm_mobiles_mobile (mobile),
+			UNIQUE KEY uk_user_hanghang_crm_mobiles_user_mobile (user_id, mobile),
+			KEY idx_user_hanghang_crm_mobiles_user_id (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户航航CRM手机号映射表'`,
+		`INSERT INTO user_hanghang_crm_mobiles (user_id, mobile, is_primary, created_at, updated_at)
+		 SELECT id, hanghang_crm_mobile, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+		 FROM users
+		 WHERE COALESCE(hanghang_crm_mobile, '') <> ''
+		 ON DUPLICATE KEY UPDATE
+			is_primary = VALUES(is_primary),
+			updated_at = CURRENT_TIMESTAMP`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upAlterCustomerVisitsRegionColumnsToVarcharMySQL(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("customer_visits") {
+		return nil
+	}
+
+	stmts := []string{
+		`ALTER TABLE customer_visits MODIFY COLUMN province VARCHAR(64) NOT NULL DEFAULT ''`,
+		`ALTER TABLE customer_visits MODIFY COLUMN city VARCHAR(64) NOT NULL DEFAULT ''`,
+		`ALTER TABLE customer_visits MODIFY COLUMN area VARCHAR(64) NOT NULL DEFAULT ''`,
+		`UPDATE customer_visits SET province = '' WHERE province = '0'`,
+		`UPDATE customer_visits SET city = '' WHERE city = '0'`,
+		`UPDATE customer_visits SET area = '' WHERE area = '0'`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upAddCustomerVisitsCheckInIPMySQL(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("customer_visits") {
+		return nil
+	}
+
+	if err := addColumnIfNotExists(tx, "customer_visits", "check_in_ip", "VARCHAR(64) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return addIndexIfNotExists(
+		tx,
+		"customer_visits",
+		"idx_customer_visits_user_date_ip_customer",
+		"operator_user_id, visit_date, check_in_ip, customer_name",
+		false,
+	)
+}
+
+func upCreateCallRecordingsMySQL(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS call_recordings (
+			id VARCHAR(64) PRIMARY KEY COMMENT '航航CRM录音ID',
+			agent_code BIGINT NOT NULL DEFAULT 0 COMMENT '坐席编码',
+			call_status INT NOT NULL DEFAULT 0 COMMENT '通话状态',
+			call_status_name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '通话状态名称',
+			call_type INT NOT NULL DEFAULT 0 COMMENT '通话类型',
+			callee_attr VARCHAR(128) NOT NULL DEFAULT '' COMMENT '被叫归属地',
+			caller_attr VARCHAR(128) NOT NULL DEFAULT '' COMMENT '主叫归属地',
+			create_time BIGINT NOT NULL DEFAULT 0 COMMENT '远端创建时间毫秒',
+			dept_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '部门名称',
+			duration INT NOT NULL DEFAULT 0 COMMENT '通话时长秒数',
+			end_time BIGINT NOT NULL DEFAULT 0 COMMENT '结束时间毫秒',
+			enterprise_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '企业名称',
+			finish_status INT NOT NULL DEFAULT 0 COMMENT '完成状态',
+			finish_status_name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '完成状态名称',
+			handle INT NOT NULL DEFAULT 0 COMMENT '处理标记',
+			interface_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT '接口ID',
+			interface_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '接口名称',
+			line_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '线路名称',
+			mobile VARCHAR(32) NOT NULL DEFAULT '' COMMENT '坐席手机号',
+			mode INT NOT NULL DEFAULT 0 COMMENT '模式',
+			move_batch_code VARCHAR(128) NULL COMMENT '批次编码',
+			oct_customer_id VARCHAR(128) NULL COMMENT '外部客户ID',
+			phone VARCHAR(32) NOT NULL DEFAULT '' COMMENT '客户电话',
+			postage DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '通话资费',
+			pre_record_url TEXT NULL COMMENT '录音地址',
+			real_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '坐席名称',
+			start_time BIGINT NOT NULL DEFAULT 0 COMMENT '开始时间毫秒',
+			status INT NOT NULL DEFAULT 0 COMMENT '状态',
+			tel_a VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'A号码',
+			tel_b VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'B号码',
+			tel_x VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'X号码',
+			tenant_code VARCHAR(64) NOT NULL DEFAULT '' COMMENT '租户编码',
+			update_time BIGINT NOT NULL DEFAULT 0 COMMENT '远端更新时间毫秒',
+			user_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT '远端用户ID',
+			work_num VARCHAR(128) NULL COMMENT '工号',
+			dedupe_key VARCHAR(191) NOT NULL DEFAULT '' COMMENT '业务去重键',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+			KEY idx_call_recordings_mobile (mobile),
+			KEY idx_call_recordings_phone (phone),
+			KEY idx_call_recordings_start_time (start_time),
+			KEY idx_call_recordings_create_time (create_time),
+			KEY idx_call_recordings_user_id (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通话录音表'`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upDedupeCallRecordingsMySQL(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("call_recordings") {
+		return nil
+	}
+
+	if err := addColumnIfNotExists(tx, "call_recordings", "dedupe_key", "VARCHAR(191) NOT NULL DEFAULT '' COMMENT '业务去重键'"); err != nil {
+		return err
+	}
+
+	stmts := []string{
+		`UPDATE call_recordings
+		SET dedupe_key = CONCAT(
+			COALESCE(CAST(start_time AS CHAR), ''), '|',
+			COALESCE(mobile, ''), '|',
+			COALESCE(phone, ''), '|',
+			COALESCE(tel_a, ''), '|',
+			COALESCE(tel_b, ''), '|',
+			COALESCE(CAST(call_type AS CHAR), ''), '|',
+			COALESCE(CAST(duration AS CHAR), '')
+		)`,
+		`DELETE cr1 FROM call_recordings cr1
+		INNER JOIN call_recordings cr2
+			ON cr1.dedupe_key = cr2.dedupe_key
+			AND cr1.id < cr2.id`,
+	}
+	if err := execStatements(tx, stmts); err != nil {
+		return err
+	}
+
+	return addIndexIfNotExists(tx, "call_recordings", "uk_call_recordings_dedupe_key", "dedupe_key", true)
 }

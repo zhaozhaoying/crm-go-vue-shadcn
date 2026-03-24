@@ -2,7 +2,11 @@ package service
 
 import (
 	"context"
+	"backend/internal/model"
+	"os"
 	"sort"
+	"strings"
+	"time"
 )
 
 var assignableSalesOwnerRoleNames = []string{
@@ -10,11 +14,15 @@ var assignableSalesOwnerRoleNames = []string{
 	"销售总监", "销售经理", "销售员工", "销售", "Outside销售", "outside销售",
 }
 
+const autoAssignMinimumDailyScore = 80
+
 type customerOwnerAssignmentRepo interface {
 	GetUserRoleName(ctx context.Context, userID int64) (string, error)
 	GetParentUserID(ctx context.Context, userID int64) (int64, error)
 	ListEnabledUserIDsByRoleNames(ctx context.Context, roleNames []string) ([]int64, error)
 	ListDirectSubordinateUserIDsByRoleNames(ctx context.Context, parentIDs []int64, roleNames []string) ([]int64, error)
+	ListAutoAssignRankedOwnerScores(ctx context.Context, referenceDate string, userIDs []int64) ([]model.SalesDailyScore, error)
+	FindLatestAutoAssignOwnerUserID(ctx context.Context, ownerUserIDs []int64, since time.Time) (*int64, error)
 	CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error)
 }
 
@@ -35,7 +43,14 @@ func pickBalancedSalesOwnerUserID(ctx context.Context, repo customerOwnerAssignm
 		return 0, ErrCustomerNoOutsideSalesAvailable
 	}
 
-	return pickLeastLoadedOwnerUserID(ctx, repo, candidateUserIDs)
+	rankedOwnerUserID, ok, err := pickRankedSalesOwnerUserID(ctx, repo, candidateUserIDs)
+	if err != nil {
+		return 0, err
+	}
+	if ok {
+		return rankedOwnerUserID, nil
+	}
+	return 0, nil
 }
 
 func resolveSalesDirectorUserID(ctx context.Context, repo customerOwnerAssignmentRepo, userID int64) (int64, error) {
@@ -154,4 +169,103 @@ func pickLeastLoadedOwnerUserID(ctx context.Context, repo customerOwnerAssignmen
 		return 0, ErrCustomerNoOutsideSalesAvailable
 	}
 	return selectedUserID, nil
+}
+
+func pickRankedSalesOwnerUserID(ctx context.Context, repo customerOwnerAssignmentRepo, candidateUserIDs []int64) (int64, bool, error) {
+	return pickRankedSalesOwnerUserIDByDate(ctx, repo, candidateUserIDs, previousAutoAssignScoreDate(), currentAutoAssignRotationStart())
+}
+
+func pickRankedSalesOwnerUserIDByDate(
+	ctx context.Context,
+	repo customerOwnerAssignmentRepo,
+	candidateUserIDs []int64,
+	referenceDate string,
+	rotationStart time.Time,
+) (int64, bool, error) {
+	candidateUserIDs = uniquePositiveInt64(candidateUserIDs)
+	if len(candidateUserIDs) == 0 {
+		return 0, false, nil
+	}
+
+	rankedScores, err := repo.ListAutoAssignRankedOwnerScores(ctx, referenceDate, candidateUserIDs)
+	if err != nil {
+		return 0, false, err
+	}
+	eligibleRankedUserIDs := filterAutoAssignEligibleOwnerUserIDs(rankedScores)
+	if len(eligibleRankedUserIDs) == 0 {
+		return 0, false, nil
+	}
+	if len(eligibleRankedUserIDs) == 1 {
+		return eligibleRankedUserIDs[0], true, nil
+	}
+
+	latestOwnerUserID, err := repo.FindLatestAutoAssignOwnerUserID(ctx, eligibleRankedUserIDs, rotationStart)
+	if err != nil {
+		return 0, false, err
+	}
+	if latestOwnerUserID == nil || *latestOwnerUserID <= 0 {
+		return eligibleRankedUserIDs[0], true, nil
+	}
+
+	for idx, userID := range eligibleRankedUserIDs {
+		if userID != *latestOwnerUserID {
+			continue
+		}
+		return eligibleRankedUserIDs[(idx+1)%len(eligibleRankedUserIDs)], true, nil
+	}
+
+	return eligibleRankedUserIDs[0], true, nil
+}
+
+func previousAutoAssignScoreDate() string {
+	location := autoAssignBusinessLocation()
+	return time.Now().In(location).AddDate(0, 0, -1).Format("2006-01-02")
+}
+
+func filterAutoAssignEligibleOwnerUserIDs(rankedScores []model.SalesDailyScore) []int64 {
+	if len(rankedScores) == 0 {
+		return []int64{}
+	}
+
+	eligibleUserIDs := make([]int64, 0, len(rankedScores))
+	for _, score := range rankedScores {
+		if score.UserID <= 0 || score.TotalScore < autoAssignMinimumDailyScore {
+			continue
+		}
+		eligibleUserIDs = append(eligibleUserIDs, score.UserID)
+	}
+	if len(eligibleUserIDs) == 0 {
+		return []int64{}
+	}
+
+	// If everyone meets the minimum score and there are at least two ranked owners,
+	// exclude the last-ranked owner.
+	if len(eligibleUserIDs) == len(rankedScores) && len(eligibleUserIDs) > 1 {
+		return eligibleUserIDs[:len(eligibleUserIDs)-1]
+	}
+
+	return eligibleUserIDs
+}
+
+func currentAutoAssignScoreDate() string {
+	location := autoAssignBusinessLocation()
+	return time.Now().In(location).Format("2006-01-02")
+}
+
+func currentAutoAssignRotationStart() time.Time {
+	location := autoAssignBusinessLocation()
+	now := time.Now().In(location)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location).UTC()
+}
+
+func autoAssignBusinessLocation() *time.Location {
+	locationName := strings.TrimSpace(os.Getenv("SCHEDULE_TIMEZONE"))
+	if locationName == "" {
+		locationName = "Asia/Shanghai"
+	}
+	location, err := time.LoadLocation(locationName)
+	if err != nil {
+		return time.Local
+	}
+	return location
 }

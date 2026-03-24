@@ -50,12 +50,6 @@ const formatRelativeTime = (value: string) => {
 <template>
   <section class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-xl font-semibold text-card-foreground">通知中心</h2>
-        <p class="mt-1 text-sm text-muted-foreground">
-          全部操作日志都在这里，点击通知可直接标记已读。
-        </p>
-      </div>
       <Button
         variant="outline"
         :disabled="notificationStore.unreadCount === 0"

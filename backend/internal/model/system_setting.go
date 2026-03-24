@@ -33,19 +33,21 @@ type SystemSettingsResponse struct {
 	CustomerLimit           int              `json:"customerLimit" gorm:"-"`
 	ShowFullContact         bool             `json:"showFullContact" gorm:"-"`
 	ContractNumberPrefix    string           `json:"contractNumberPrefix" gorm:"-"`
+	VisitPurposes           []string         `json:"visitPurposes" gorm:"-"`
 	CustomerLevels          []CustomerLevel  `json:"customerLevels" gorm:"-"`
 	CustomerSources         []CustomerSource `json:"customerSources" gorm:"-"`
 }
 
 type UpdateSystemSettingsRequest struct {
-	CustomerAutoDropEnabled *bool   `json:"customerAutoDropEnabled" gorm:"-"`
-	FollowUpDropDays        *int    `json:"followUpDropDays" gorm:"-"`
-	DealDropDays            *int    `json:"dealDropDays" gorm:"-"`
-	ClaimFreezeDays         *int    `json:"claimFreezeDays" gorm:"-"`
-	HolidayModeEnabled      *bool   `json:"holidayModeEnabled" gorm:"-"`
-	CustomerLimit           *int    `json:"customerLimit" gorm:"-"`
-	ShowFullContact         *bool   `json:"showFullContact" gorm:"-"`
-	ContractNumberPrefix    *string `json:"contractNumberPrefix" gorm:"-"`
+	CustomerAutoDropEnabled *bool    `json:"customerAutoDropEnabled" gorm:"-"`
+	FollowUpDropDays        *int     `json:"followUpDropDays" gorm:"-"`
+	DealDropDays            *int     `json:"dealDropDays" gorm:"-"`
+	ClaimFreezeDays         *int     `json:"claimFreezeDays" gorm:"-"`
+	HolidayModeEnabled      *bool    `json:"holidayModeEnabled" gorm:"-"`
+	CustomerLimit           *int     `json:"customerLimit" gorm:"-"`
+	ShowFullContact         *bool    `json:"showFullContact" gorm:"-"`
+	ContractNumberPrefix    *string  `json:"contractNumberPrefix" gorm:"-"`
+	VisitPurposes           []string `json:"visitPurposes" gorm:"-"`
 }
 
 type CustomerLevelRequest struct {

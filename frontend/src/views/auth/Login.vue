@@ -5,6 +5,11 @@ import { Eye, EyeOff, AlertCircle, RefreshCw } from "lucide-vue-next";
 import { getLoginCaptcha } from "@/api/modules/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { getRequestErrorMessage } from "@/lib/http-error";
 import AuthenticationLayout from "@/layouts/AuthenticationLayout.vue";
@@ -147,8 +152,8 @@ onMounted(() => {
               换一张
             </button>
           </div>
-          <div class="flex gap-2">
-            <Input
+          <InputGroup>
+            <InputGroupInput
               id="captcha"
               v-model="captchaInput"
               type="text"
@@ -156,24 +161,26 @@ onMounted(() => {
               placeholder="请输入验证码"
               class="uppercase"
             />
-            <button
-              type="button"
-              class="h-10 w-[120px] shrink-0 overflow-hidden rounded-md border border-input bg-muted/40"
-              title="点击刷新验证码"
-              :disabled="captchaLoading"
-              @click="refreshCaptcha"
-            >
-              <img
-                v-if="captchaImage"
-                :src="captchaImage"
-                alt="验证码"
-                class="h-full w-full object-cover"
-              />
-              <span v-else class="text-xs text-muted-foreground">
-                {{ captchaLoading ? "加载中..." : "加载失败" }}
-              </span>
-            </button>
-          </div>
+            <InputGroupAddon class="w-[120px] overflow-hidden bg-muted/40 px-0">
+              <button
+                type="button"
+                class="h-full w-full shrink-0"
+                title="点击刷新验证码"
+                :disabled="captchaLoading"
+                @click="refreshCaptcha"
+              >
+                <img
+                  v-if="captchaImage"
+                  :src="captchaImage"
+                  alt="验证码"
+                  class="h-full w-full object-cover"
+                />
+                <span v-else class="text-xs text-muted-foreground">
+                  {{ captchaLoading ? "加载中..." : "加载失败" }}
+                </span>
+              </button>
+            </InputGroupAddon>
+          </InputGroup>
         </div>
 
         <Button type="submit" class="w-full" :disabled="loading">

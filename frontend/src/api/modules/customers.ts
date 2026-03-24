@@ -1,6 +1,8 @@
 import { request } from "@/api/http"
 import type {
   Customer,
+  CustomerAssignmentListParams,
+  CustomerAssignmentListResult,
   CustomerListResult,
   CustomerListParams,
   LegacyCustomerListParams,
@@ -24,6 +26,15 @@ const createEmptyListResult = (): CustomerListResult => {
   }
 }
 
+const createEmptyAssignmentListResult = (): CustomerAssignmentListResult => {
+  return {
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 20
+  }
+}
+
 const normalizeListResult = (data: CustomerListResult | null | undefined): CustomerListResult => {
   if (!data) return createEmptyListResult()
   return {
@@ -31,6 +42,18 @@ const normalizeListResult = (data: CustomerListResult | null | undefined): Custo
     total: Number.isFinite(data.total) ? data.total : 0,
     page: Number.isFinite(data.page) && data.page > 0 ? data.page : 1,
     pageSize: Number.isFinite(data.pageSize) && data.pageSize > 0 ? data.pageSize : 10
+  }
+}
+
+const normalizeAssignmentListResult = (
+  data: CustomerAssignmentListResult | null | undefined,
+): CustomerAssignmentListResult => {
+  if (!data) return createEmptyAssignmentListResult()
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    total: Number.isFinite(data.total) ? data.total : 0,
+    page: Number.isFinite(data.page) && data.page > 0 ? data.page : 1,
+    pageSize: Number.isFinite(data.pageSize) && data.pageSize > 0 ? data.pageSize : 20
   }
 }
 
@@ -59,6 +82,13 @@ export const listPoolCustomers = (params?: CustomerListParams) => listCustomerPa
 export const listPotentialCustomers = (params?: CustomerListParams) => listCustomerPage("/v1/customers/potential", params)
 export const listPartnerCustomers = (params?: CustomerListParams) => listCustomerPage("/v1/customers/partner", params)
 export const listSearchCustomers = (params?: CustomerListParams) => listCustomerPage("/v1/customers/search", params)
+export const listCustomerAssignments = (params?: CustomerAssignmentListParams) => {
+  return request<CustomerAssignmentListResult | null>({
+    method: "GET",
+    url: "/v1/customers/assignments",
+    params
+  }).then((data) => normalizeAssignmentListResult(data))
+}
 
 export const createCustomer = (data: CreateCustomerRequest) => {
   return request<Customer>({
@@ -94,6 +124,30 @@ export const releaseCustomer = (customerId: number) => {
   return request<Customer>({
     method: "POST",
     url: `/v1/customers/${customerId}/release`
+  })
+}
+
+export interface BatchRankedReassignCustomersResponseItem {
+  customerId: number
+  customerName: string
+  fromOwnerUserId?: number | null
+  toOwnerUserId?: number | null
+  success: boolean
+  message?: string
+}
+
+export interface BatchRankedReassignCustomersResponse {
+  total: number
+  successCount: number
+  failedCount: number
+  items: BatchRankedReassignCustomersResponseItem[]
+}
+
+export const batchReassignCustomersByRanking = (customerIds: number[]) => {
+  return request<BatchRankedReassignCustomersResponse>({
+    method: "POST",
+    url: "/v1/customers/reassign-by-ranking",
+    data: { customerIds }
   })
 }
 

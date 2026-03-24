@@ -4,6 +4,7 @@ export interface User {
   nickname: string
   email: string
   mobile: string
+  hanghangCrmMobile?: string
   avatar: string
   roleId: number
   parentId: number | null

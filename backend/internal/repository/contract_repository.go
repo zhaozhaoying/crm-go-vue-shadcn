@@ -241,7 +241,6 @@ func (r *gormContractRepository) Update(ctx context.Context, id int64, input mod
 			"payment_image":          input.PaymentImage,
 			"payment_status":         input.PaymentStatus,
 			"remark":                 input.Remark,
-			"user_id":                input.UserID,
 			"customer_id":            input.CustomerID,
 			"cooperation_type":       input.CooperationType,
 			"contract_number":        input.ContractNumber,

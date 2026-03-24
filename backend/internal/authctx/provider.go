@@ -26,19 +26,21 @@ type Claims struct {
 }
 
 type CurrentUser struct {
-	ID        int64     `json:"id"`
-	Username  string    `json:"username"`
-	Nickname  string    `json:"nickname"`
-	Email     string    `json:"email"`
-	Mobile    string    `json:"mobile"`
-	Avatar    string    `json:"avatar"`
-	RoleID    int64     `json:"roleId"`
-	RoleName  string    `json:"roleName"`
-	RoleLabel string    `json:"roleLabel"`
-	ParentID  *int64    `json:"parentId"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID                 int64     `json:"id"`
+	Username           string    `json:"username"`
+	Nickname           string    `json:"nickname"`
+	Email              string    `json:"email"`
+	Mobile             string    `json:"mobile"`
+	HanghangCRMMobile  string    `json:"hanghangCrmMobile"`
+	HanghangCRMMobiles []string  `json:"hanghangCrmMobiles"`
+	Avatar             string    `json:"avatar"`
+	RoleID             int64     `json:"roleId"`
+	RoleName           string    `json:"roleName"`
+	RoleLabel          string    `json:"roleLabel"`
+	ParentID           *int64    `json:"parentId"`
+	Status             string    `json:"status"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
 type Provider interface {
@@ -125,19 +127,21 @@ func (p *provider) GetCurrentUser(ctx context.Context, c *gin.Context) (*Current
 
 func mapUser(user *model.User, roleName, roleLabel string) *CurrentUser {
 	return &CurrentUser{
-		ID:        user.ID,
-		Username:  user.Username,
-		Nickname:  user.Nickname,
-		Email:     user.Email,
-		Mobile:    user.Mobile,
-		Avatar:    user.Avatar,
-		RoleID:    user.RoleID,
-		RoleName:  roleName,
-		RoleLabel: roleLabel,
-		ParentID:  user.ParentID,
-		Status:    user.Status,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
+		ID:                 user.ID,
+		Username:           user.Username,
+		Nickname:           user.Nickname,
+		Email:              user.Email,
+		Mobile:             user.Mobile,
+		HanghangCRMMobile:  user.HanghangCRMMobile,
+		HanghangCRMMobiles: user.HanghangCRMMobiles,
+		Avatar:             user.Avatar,
+		RoleID:             user.RoleID,
+		RoleName:           roleName,
+		RoleLabel:          roleLabel,
+		ParentID:           user.ParentID,
+		Status:             user.Status,
+		CreatedAt:          user.CreatedAt,
+		UpdatedAt:          user.UpdatedAt,
 	}
 }
 

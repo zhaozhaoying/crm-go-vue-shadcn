@@ -85,3 +85,11 @@ export async function request<T>(config: AxiosRequestConfig): Promise<T> {
 
   return payload as T
 }
+
+export async function requestBlob(config: AxiosRequestConfig): Promise<Blob> {
+  const response = await http.request<Blob>({
+    ...config,
+    responseType: "blob",
+  })
+  return response.data
+}

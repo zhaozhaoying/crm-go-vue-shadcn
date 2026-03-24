@@ -3,6 +3,20 @@
 .vscode
 .claude
 
+# cache files
+*.log
+*.cache
+*.tmp
+*.bak
+*.swp
+*.swo
+*.pid
+*.seed
+/.gocache
+/.gomodcache
+/backend/.gocache
+/backend/.gomodcache
+
 # Backend
 /backend/bin
 /backend/tmp

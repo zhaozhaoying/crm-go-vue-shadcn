@@ -6,7 +6,8 @@ import {
   Loader2,
   CircleCheck,
   CircleX,
-  Ellipsis,
+  Pencil,
+  Trash2,
 } from "lucide-vue-next"
 
 import { Button } from "@/components/ui/button"
@@ -19,10 +20,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Pagination } from "@/components/ui/pagination"
 
 import {
@@ -65,7 +62,8 @@ const filteredUsers = computed(() => {
       u.username.toLowerCase().includes(q) ||
       (u.nickname && u.nickname.toLowerCase().includes(q)) ||
       (u.email && u.email.toLowerCase().includes(q)) ||
-      (u.mobile && u.mobile.includes(q))
+      (u.mobile && u.mobile.includes(q)) ||
+      (u.hanghangCrmMobile && u.hanghangCrmMobile.includes(q))
   )
 })
 
@@ -166,6 +164,7 @@ const toggleStatus = async (user: UserWithRole) => {
       nickname: user.nickname,
       email: user.email,
       mobile: user.mobile,
+      hanghangCrmMobile: user.hanghangCrmMobile,
       roleId: user.roleId,
       parentId: user.parentId,
       status: newStatus,
@@ -226,13 +225,9 @@ onMounted(fetchData)
           <Plus class="h-4 w-4" />
           <span>添加</span>
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
+        <Button variant="outline" size="sm"
           class="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          :disabled="loading || batchDisabling || disableableSelectedIds.length === 0"
-          @click="handleBatchDisable"
-        >
+          :disabled="loading || batchDisabling || disableableSelectedIds.length === 0" @click="handleBatchDisable">
           <Loader2 v-if="batchDisabling" class="h-4 w-4 animate-spin" />
           <span>{{ batchDisabling ? "禁用中" : `批量禁用${selectedIds.length ? `(${selectedIds.length})` : ""}` }}</span>
         </Button>
@@ -265,14 +260,19 @@ onMounted(fetchData)
               </TableHead>
               <TableHead class="w-16">编号</TableHead>
               <TableHead>用户信息</TableHead>
-              <TableHead>系统角色</TableHead>
-              <TableHead>联系方式</TableHead>
+              <TableHead>电话</TableHead>
+              <TableHead>邮箱</TableHead>
               <TableHead>状态</TableHead>
-              <TableHead class="w-12" />
+              <TableHead>系统角色</TableHead>
+              <TableHead>坐席电话</TableHead>
+              <TableHead
+                class="sticky right-0 z-30 w-[120px] min-w-[120px] bg-muted/95 text-center border-l border-border before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border">
+                操作
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableRow v-for="user in paginatedUsers" :key="user.id"
+            <TableRow v-for="user in paginatedUsers" :key="user.id" class="group hover:bg-muted/20 transition-colors"
               :data-state="selectedIds.includes(user.id) ? 'selected' : undefined">
               <!-- Checkbox -->
               <TableCell>
@@ -304,19 +304,19 @@ onMounted(fetchData)
                 </div>
               </TableCell>
 
-              <!-- Role -->
+              <!-- Contact -->
               <TableCell>
-                <Badge variant="outline" class="text-muted-foreground">
-                  {{ user.roleLabel || user.roleName }}
-                </Badge>
+                <div class="text-sm text-muted-foreground">
+                  <p v-if="user.mobile" class="truncate max-w-[180px]">{{ user.mobile }}</p>
+                  <p v-if="!user.mobile" class="italic">—</p>
+                </div>
               </TableCell>
 
               <!-- Contact -->
               <TableCell>
                 <div class="text-sm text-muted-foreground">
                   <p v-if="user.email" class="truncate max-w-[180px]">{{ user.email }}</p>
-                  <p v-if="user.mobile" class="truncate max-w-[180px]">{{ user.mobile }}</p>
-                  <p v-if="!user.email && !user.mobile" class="italic">—</p>
+                  <p v-if="!user.email" class="italic">—</p>
                 </div>
               </TableCell>
 
@@ -329,32 +329,46 @@ onMounted(fetchData)
                 </Badge>
               </TableCell>
 
-              <!-- Actions -->
+              <!-- Role -->
               <TableCell>
-                <DropdownMenu>
-                  <DropdownMenuTrigger as-child>
-                    <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground">
-                      <Ellipsis class="h-4 w-4" />
-                      <span class="sr-only">操作菜单</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" class="w-36">
-                    <DropdownMenuItem @click="openEdit(user)">编辑</DropdownMenuItem>
-                    <DropdownMenuItem @click="toggleStatus(user)">
-                      {{ user.status === 'enabled' ? '禁用' : '启用' }}
-                    </DropdownMenuItem>
-                    <template v-if="user.roleName !== 'admin'">
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem class="text-destructive" @click="handleDelete(user)">删除</DropdownMenuItem>
-                    </template>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Badge variant="outline" class="text-muted-foreground">
+                  {{ user.roleLabel || user.roleName }}
+                </Badge>
+              </TableCell>
+              <!-- Hanghang CRM Mobile -->
+              <TableCell class="text-sm text-muted-foreground">
+                <span v-if="user.hanghangCrmMobile" class="inline-block max-w-[180px] truncate">
+                  {{ user.hanghangCrmMobile }}
+                </span>
+                <span v-else class="italic">—</span>
+              </TableCell>
+
+              <!-- Actions -->
+              <TableCell
+                class="sticky right-0 z-10 w-[120px] min-w-[120px] border-l border-border bg-background text-center before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border">
+                <div class="grid grid-cols-2 gap-1.5">
+                  <Button variant="ghost" size="sm" class="w-full justify-start gap-1.5" @click="openEdit(user)">
+                    <Pencil class="h-3.5 w-3.5" />
+                    <span>编辑</span>
+                  </Button>
+                  <Button variant="ghost" size="sm" class="w-full justify-start gap-1.5" @click="toggleStatus(user)">
+                    <CircleX v-if="user.status === 'enabled'" class="h-3.5 w-3.5 text-amber-600" />
+                    <CircleCheck v-else class="h-3.5 w-3.5 text-emerald-600" />
+                    <span>{{ user.status === 'enabled' ? '禁用' : '启用' }}</span>
+                  </Button>
+                  <Button v-if="user.roleName !== 'admin'" variant="ghost" size="sm"
+                    class="col-span-2 w-full justify-start gap-1.5 text-destructive hover:text-destructive"
+                    @click="handleDelete(user)">
+                    <Trash2 class="h-3.5 w-3.5" />
+                    <span>删除</span>
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
 
             <!-- Empty state -->
             <TableRow v-if="!loading && paginatedUsers.length === 0">
-              <TableCell :colspan="7" class="h-24 text-center text-muted-foreground">
+              <TableCell :colspan="8" class="h-24 text-center text-muted-foreground">
                 暂无数据
               </TableCell>
             </TableRow>

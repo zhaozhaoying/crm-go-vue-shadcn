@@ -256,10 +256,6 @@ func (s *customerAutoDropService) dropOne(
 		dropped = true
 
 		fromOwner := row.OwnerUserID
-		blockedDepartmentAnchorUserID, blockedUntil, err := buildClaimBlockInfo(ctx, repository.NewGormCustomerRepository(tx), row.OwnerUserID, claimFreezeDays, now)
-		if err != nil {
-			return err
-		}
 		if err := tx.Table("customer_owner_logs").Create(&ownerLogRow{
 			CustomerID:                    row.ID,
 			FromOwnerUserID:               &fromOwner,
@@ -267,8 +263,8 @@ func (s *customerAutoDropService) dropOne(
 			Action:                        "release",
 			Reason:                        model.CustomerOwnerLogReasonAutoDrop,
 			Content:                       reason,
-			BlockedDepartmentAnchorUserID: blockedDepartmentAnchorUserID,
-			BlockedUntil:                  blockedUntil,
+			BlockedDepartmentAnchorUserID: nil,
+			BlockedUntil:                  nil,
 			OperatorUserID:                row.OwnerUserID,
 			CreatedAt:                     now,
 		}).Error; err != nil {

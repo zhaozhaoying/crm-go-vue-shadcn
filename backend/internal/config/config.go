@@ -4,89 +4,115 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	AppEnv                  string
-	AppPort                 string
-	FrontendOrigin          string
-	DBDriver                string
-	DBPath                  string
-	GormLogLevel            string
-	GormSlowThresholdMS     int
-	MySQLDSN                string
-	MySQLHost               string
-	MySQLPort               string
-	MySQLUser               string
-	MySQLPassword           string
-	MySQLDB                 string
-	MySQLCharset            string
-	MySQLParseTime          string
-	MySQLLoc                string
-	JWTSecret               string
-	JWTExpiryHours          int
-	RefreshTokenExpiryHours int
-	BaiduMapAK              string
-	BaiduMapBaseURL         string
-	OSSEndpoint             string
-	OSSAccessKeyID          string
-	OSSAccessKeySecret      string
-	OSSBucketName           string
-	OSSBasePath             string
-	AlibabaSearchBaseURL    string
-	MadeInChinaBaseURL      string
-	MadeInChinaProxyURL     string
-	GoogleAPIKey            string
-	GoogleCX                string
-	GoogleSearchNum         int
-	GoogleProxyURL          string
-	SearchWorkerCount       int
-	SearchPollIntervalMS    int
+	AppEnv                   string
+	AppPort                  string
+	FrontendOrigin           string
+	TrustedProxies           []string
+	DBDriver                 string
+	DBPath                   string
+	GormLogLevel             string
+	GormSlowThresholdMS      int
+	MySQLDSN                 string
+	MySQLHost                string
+	MySQLPort                string
+	MySQLUser                string
+	MySQLPassword            string
+	MySQLDB                  string
+	MySQLCharset             string
+	MySQLParseTime           string
+	MySQLLoc                 string
+	FeigeCallRecordingCookie string
+	JWTSecret                string
+	JWTExpiryHours           int
+	RefreshTokenExpiryHours  int
+	ScheduleTimezone         string
+	HanghangCRMCloudToken    string
+	BaiduMapAK               string
+	BaiduMapBaseURL          string
+	ReverseGeocodeBaseURL    string
+	ReverseGeocodeUserAgent  string
+	OSSEndpoint              string
+	OSSAccessKeyID           string
+	OSSAccessKeySecret       string
+	OSSBucketName            string
+	OSSBasePath              string
+	AlibabaSearchBaseURL     string
+	MadeInChinaBaseURL       string
+	MadeInChinaProxyURL      string
+	GoogleAPIKey             string
+	GoogleCX                 string
+	GoogleSearchNum          int
+	GoogleProxyURL           string
+	SearchWorkerCount        int
+	SearchPollIntervalMS     int
 }
 
 func Load() Config {
 	_ = godotenv.Load()
 
 	return Config{
-		AppEnv:                  getEnv("APP_ENV", "local"),
-		AppPort:                 getEnv("APP_PORT", "8080"),
-		FrontendOrigin:          getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
-		DBDriver:                strings.ToLower(strings.TrimSpace(getEnv("DB_DRIVER", "sqlite"))),
-		DBPath:                  getEnv("DB_PATH", "data.db"),
-		GormLogLevel:            strings.ToLower(strings.TrimSpace(getEnv("GORM_LOG_LEVEL", "error"))),
-		GormSlowThresholdMS:     getEnvInt("GORM_SLOW_THRESHOLD_MS", 200),
-		MySQLDSN:                getEnv("MYSQL_DSN", ""),
-		MySQLHost:               getEnv("MYSQL_HOST", "127.0.0.1"),
-		MySQLPort:               getEnv("MYSQL_PORT", "3306"),
-		MySQLUser:               getEnv("MYSQL_USER", ""),
-		MySQLPassword:           getEnv("MYSQL_PASSWORD", ""),
-		MySQLDB:                 getEnv("MYSQL_DB", ""),
-		MySQLCharset:            getEnv("MYSQL_CHARSET", "utf8mb4"),
-		MySQLParseTime:          getEnv("MYSQL_PARSE_TIME", "true"),
-		MySQLLoc:                getEnv("MYSQL_LOC", "Local"),
-		JWTSecret:               getEnv("JWT_SECRET", "change-me-in-production"),
-		JWTExpiryHours:          getEnvInt("JWT_EXPIRY_HOURS", 24),
-		RefreshTokenExpiryHours: getEnvInt("REFRESH_TOKEN_EXPIRY_HOURS", 168),
-		BaiduMapAK:              getEnv("BAIDU_MAP_AK", ""),
-		BaiduMapBaseURL:         getEnv("BAIDU_MAP_BASE_URL", "https://api.map.baidu.com"),
-		OSSEndpoint:             getEnv("OSS_ENDPOINT", ""),
-		OSSAccessKeyID:          getEnv("OSS_ACCESS_KEY_ID", ""),
-		OSSAccessKeySecret:      getEnv("OSS_ACCESS_KEY_SECRET", ""),
-		OSSBucketName:           getEnv("OSS_BUCKET_NAME", ""),
-		OSSBasePath:             getEnv("OSS_BASE_PATH", "avatars/"),
-		AlibabaSearchBaseURL:    getEnv("ALIBABA_SEARCH_BASE_URL", "https://www.alibaba.com/search/api/supplierTextSearch"),
-		MadeInChinaBaseURL:      getEnv("MADE_IN_CHINA_BASE_URL", "https://www.made-in-china.com"),
-		MadeInChinaProxyURL:     strings.TrimSpace(getEnv("MADE_IN_CHINA_PROXY_URL", "")),
-		GoogleAPIKey:            getEnv("GOOGLE_API_KEY", ""),
-		GoogleCX:                getEnv("GOOGLE_CX", ""),
-		GoogleSearchNum:         getEnvInt("GOOGLE_SEARCH_NUM", 10),
-		GoogleProxyURL:          strings.TrimSpace(getEnv("GOOGLE_PROXY_URL", "")),
-		SearchWorkerCount:       getEnvInt("EXTERNAL_COMPANY_SEARCH_WORKER_COUNT", 2),
-		SearchPollIntervalMS:    getEnvInt("EXTERNAL_COMPANY_SEARCH_POLL_INTERVAL_MS", 1000),
+		AppEnv:                   getEnv("APP_ENV", "local"),
+		AppPort:                  getEnv("APP_PORT", "8080"),
+		FrontendOrigin:           getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
+		TrustedProxies:           getEnvCSV("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"}),
+		DBDriver:                 strings.ToLower(strings.TrimSpace(getEnv("DB_DRIVER", "sqlite"))),
+		DBPath:                   getEnv("DB_PATH", "data.db"),
+		GormLogLevel:             strings.ToLower(strings.TrimSpace(getEnv("GORM_LOG_LEVEL", "error"))),
+		GormSlowThresholdMS:      getEnvInt("GORM_SLOW_THRESHOLD_MS", 200),
+		MySQLDSN:                 getEnv("MYSQL_DSN", ""),
+		MySQLHost:                getEnv("MYSQL_HOST", "127.0.0.1"),
+		MySQLPort:                getEnv("MYSQL_PORT", "3306"),
+		MySQLUser:                getEnv("MYSQL_USER", ""),
+		MySQLPassword:            getEnv("MYSQL_PASSWORD", ""),
+		MySQLDB:                  getEnv("MYSQL_DB", ""),
+		MySQLCharset:             getEnv("MYSQL_CHARSET", "utf8mb4"),
+		MySQLParseTime:           getEnv("MYSQL_PARSE_TIME", "true"),
+		MySQLLoc:                 getEnv("MYSQL_LOC", "Local"),
+		FeigeCallRecordingCookie: strings.TrimSpace(getEnv("FEIGE_CALL_RECORDING_COOKIE", "")),
+		JWTSecret:                getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTExpiryHours:           getEnvInt("JWT_EXPIRY_HOURS", 24),
+		RefreshTokenExpiryHours:  getEnvInt("REFRESH_TOKEN_EXPIRY_HOURS", 168),
+		ScheduleTimezone:         strings.TrimSpace(getEnv("SCHEDULE_TIMEZONE", "Asia/Shanghai")),
+		HanghangCRMCloudToken:    strings.TrimSpace(getEnv("HANGHANG_CRM_CLOUD_TOKEN", "")),
+		BaiduMapAK:               getEnv("BAIDU_MAP_AK", ""),
+		BaiduMapBaseURL:          getEnv("BAIDU_MAP_BASE_URL", "https://api.map.baidu.com"),
+		ReverseGeocodeBaseURL:    strings.TrimSpace(getEnv("REVERSE_GEOCODE_BASE_URL", "https://nominatim.openstreetmap.org")),
+		ReverseGeocodeUserAgent:  strings.TrimSpace(getEnv("REVERSE_GEOCODE_USER_AGENT", "crm-go-vue-shadcn/1.0")),
+		OSSEndpoint:              getEnv("OSS_ENDPOINT", ""),
+		OSSAccessKeyID:           getEnv("OSS_ACCESS_KEY_ID", ""),
+		OSSAccessKeySecret:       getEnv("OSS_ACCESS_KEY_SECRET", ""),
+		OSSBucketName:            getEnv("OSS_BUCKET_NAME", ""),
+		OSSBasePath:              getEnv("OSS_BASE_PATH", "avatars/"),
+		AlibabaSearchBaseURL:     getEnv("ALIBABA_SEARCH_BASE_URL", "https://www.alibaba.com/search/api/supplierTextSearch"),
+		MadeInChinaBaseURL:       getEnv("MADE_IN_CHINA_BASE_URL", "https://www.made-in-china.com"),
+		MadeInChinaProxyURL:      strings.TrimSpace(getEnv("MADE_IN_CHINA_PROXY_URL", "")),
+		GoogleAPIKey:             getEnv("GOOGLE_API_KEY", ""),
+		GoogleCX:                 getEnv("GOOGLE_CX", ""),
+		GoogleSearchNum:          getEnvInt("GOOGLE_SEARCH_NUM", 10),
+		GoogleProxyURL:           strings.TrimSpace(getEnv("GOOGLE_PROXY_URL", "")),
+		SearchWorkerCount:        getEnvInt("EXTERNAL_COMPANY_SEARCH_WORKER_COUNT", 2),
+		SearchPollIntervalMS:     getEnvInt("EXTERNAL_COMPANY_SEARCH_POLL_INTERVAL_MS", 1000),
 	}
+}
+
+func (c Config) ScheduleLocation() *time.Location {
+	locationName := strings.TrimSpace(c.ScheduleTimezone)
+	if locationName == "" {
+		return time.Local
+	}
+	location, err := time.LoadLocation(locationName)
+	if err != nil {
+		return time.Local
+	}
+	return location
 }
 
 func (c Config) EffectiveMySQLDSN() string {
@@ -146,6 +172,27 @@ func getEnvInt(key string, fallback int) int {
 	return parsed
 }
 
+func getEnvCSV(key string, fallback []string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return slices.Clone(fallback)
+	}
+
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		result = append(result, trimmed)
+	}
+	if len(result) == 0 {
+		return slices.Clone(fallback)
+	}
+	return result
+}
+
 func (c Config) Validate() error {
 	driver := strings.ToLower(strings.TrimSpace(c.DBDriver))
 	switch driver {
@@ -175,6 +222,11 @@ func (c Config) Validate() error {
 	}
 	if c.RefreshTokenExpiryHours <= 0 {
 		return fmt.Errorf("REFRESH_TOKEN_EXPIRY_HOURS must be greater than 0")
+	}
+	if strings.TrimSpace(c.ScheduleTimezone) != "" {
+		if _, err := time.LoadLocation(strings.TrimSpace(c.ScheduleTimezone)); err != nil {
+			return fmt.Errorf("SCHEDULE_TIMEZONE must be a valid IANA timezone: %w", err)
+		}
 	}
 	if c.SearchWorkerCount <= 0 {
 		return fmt.Errorf("EXTERNAL_COMPANY_SEARCH_WORKER_COUNT must be greater than 0")

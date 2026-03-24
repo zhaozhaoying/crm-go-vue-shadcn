@@ -6,10 +6,11 @@ set -euo pipefail
 #
 # 这份脚本默认适配当前项目的线上结构：
 # 1. 前端静态文件发布到 /home/shipin/crm-go.zhaozhaoying.cn/dist/
-# 2. 后端二进制发布为 /home/shipin/crm-go.zhaozhaoying.cn/overseas_linux
-# 3. 远端 systemd 服务名为 crm-go
-# 4. 通过 zhangyang 用户 + SSH 私钥连接服务器
-# 5. 通过 sudo 密码提权重启 systemctl 服务
+# 2. check-in H5 静态文件发布到 /home/shipin/crm-go.zhaozhaoying.cn/check-in/
+# 3. 后端二进制发布为 /home/shipin/crm-go.zhaozhaoying.cn/overseas_linux
+# 4. 远端 systemd 服务名为 crm-go
+# 5. 通过 zhangyang 用户 + SSH 私钥连接服务器
+# 6. 通过 sudo 密码提权重启 systemctl 服务
 #
 # 为了避免把 sudo 密码硬编码到仓库里：
 # - 默认在执行时安全输入密码
@@ -193,6 +194,7 @@ prompt_sudo_password_if_needed
 
 LOCAL_RELEASE_DIR="${ROOT_DIR}/${DEPLOY_RELEASE_DIR}"
 LOCAL_DIST_DIR="${LOCAL_RELEASE_DIR}/dist/"
+LOCAL_CHECKIN_DIR="${LOCAL_RELEASE_DIR}/check-in/"
 LOCAL_BIN_PATH="${LOCAL_RELEASE_DIR}/${DEPLOY_BACKEND_BIN_NAME}"
 LOCAL_ENV_PATH="${DEPLOY_ENV_FILE}"
 REMOTE_BIN_PATH="${DEPLOY_REMOTE_DIR}/${DEPLOY_BACKEND_BIN_NAME}"
@@ -252,6 +254,11 @@ if [ "$DEPLOY_FRONTEND" -eq 1 ] && [ ! -d "$LOCAL_DIST_DIR" ]; then
   exit 1
 fi
 
+if [ "$DEPLOY_FRONTEND" -eq 1 ] && [ ! -d "$LOCAL_CHECKIN_DIR" ]; then
+  echo "check-in 产物不存在: $LOCAL_CHECKIN_DIR" >&2
+  exit 1
+fi
+
 if [ "$DEPLOY_BACKEND" -eq 1 ] && [ ! -f "$LOCAL_BIN_PATH" ]; then
   echo "后端产物不存在: $LOCAL_BIN_PATH" >&2
   exit 1
@@ -264,27 +271,30 @@ if [ "$DEPLOY_SYNC_ENV" = "1" ] && [ ! -f "$LOCAL_ENV_PATH" ]; then
 fi
 
 echo "==> 第二步：预创建远端目录"
-"${SSH_CMD[@]}" "$DEPLOY_SSH_TARGET" "mkdir -p '$DEPLOY_REMOTE_DIR' '$DEPLOY_REMOTE_DIR/dist'"
+"${SSH_CMD[@]}" "$DEPLOY_SSH_TARGET" "mkdir -p '$DEPLOY_REMOTE_DIR' '$DEPLOY_REMOTE_DIR/dist' '$DEPLOY_REMOTE_DIR/check-in'"
 
 if [ "$DEPLOY_FRONTEND" -eq 1 ]; then
   echo "==> 第三步：上传前端 dist"
   # 这里使用 rsync --delete，保证远端 dist 和本地 release/dist 一致。
   run_rsync -az --delete -e "$RSYNC_SSH_COMMAND" "$LOCAL_DIST_DIR" "${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_DIR}/dist/"
+
+  echo "==> 第四步：上传 check-in Web"
+  run_rsync -az --delete -e "$RSYNC_SSH_COMMAND" "$LOCAL_CHECKIN_DIR" "${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_DIR}/check-in/"
 fi
 
 if [ "$DEPLOY_BACKEND" -eq 1 ]; then
-  echo "==> 第四步：上传后端二进制到临时文件"
+  echo "==> 第五步：上传后端二进制到临时文件"
   # 后端发布改用 rsync，而不是默认 scp/sftp。
   # 原因：线上曾出现 sftp-server 残留句柄，导致目标二进制 Text file busy。
   run_rsync -az -e "$RSYNC_SSH_COMMAND" "$LOCAL_BIN_PATH" "${DEPLOY_SSH_TARGET}:${REMOTE_BIN_TMP_PATH}"
 fi
 
 if [ "$DEPLOY_SYNC_ENV" = "1" ]; then
-  echo "==> 第五步：显式上传根目录 .env"
+  echo "==> 第六步：显式上传根目录 .env"
   run_rsync -az -e "$RSYNC_SSH_COMMAND" "$LOCAL_ENV_PATH" "${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_DIR}/.env"
 fi
 
-echo "==> 第六步：远端切换产物并按需重启服务"
+echo "==> 第七步：远端切换产物并按需重启服务"
 "${SSH_CMD[@]}" "$DEPLOY_SSH_TARGET" \
   "DEPLOY_REMOTE_DIR='$DEPLOY_REMOTE_DIR' DEPLOY_REMOTE_SERVICE='$DEPLOY_REMOTE_SERVICE' DEPLOY_REMOTE_HEALTH_URL='$DEPLOY_REMOTE_HEALTH_URL' DEPLOY_RESTART_SERVICE='$DEPLOY_RESTART_SERVICE' DEPLOY_SUDO_PASSWORD_B64='$DEPLOY_SUDO_PASSWORD_B64' BACKEND_BIN_NAME='$DEPLOY_BACKEND_BIN_NAME' REMOTE_BIN_TMP_PATH='$REMOTE_BIN_TMP_PATH' DEPLOY_BACKEND='$DEPLOY_BACKEND' DEPLOY_FRONTEND='$DEPLOY_FRONTEND' DEPLOY_SYNC_ENV='$DEPLOY_SYNC_ENV' bash -s" <<'EOF'
 set -euo pipefail
@@ -367,6 +377,8 @@ fi
 if [ "$DEPLOY_FRONTEND" = "1" ]; then
   echo "==> 远端前端文件信息"
   stat "${DEPLOY_REMOTE_DIR}/dist/index.html"
+  echo "==> 远端 check-in 文件信息"
+  stat "${DEPLOY_REMOTE_DIR}/check-in/index.html"
 fi
 
 echo "==> 远端健康检查"

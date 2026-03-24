@@ -23,7 +23,7 @@ interface NavItem {
   url: string
   icon: any
   isActive?: boolean
-  items?: { title: string; url: string }[]
+  items?: { title: string; url: string; allowedRoles?: string[] }[]
 }
 
 interface Props {
@@ -38,6 +38,20 @@ const currentPath = computed(() => currentRoute.path)
 const isActive = (url: string) => {
   return currentPath.value === url || currentPath.value.startsWith(`${url}/`)
 }
+
+const handleNavClick = (url: string) => {
+  if (url === "/dashboard" && currentPath.value === "/dashboard") {
+    window.dispatchEvent(new Event("dashboard:refresh"))
+    return
+  }
+  if (url === "/sales-daily-scores" && currentPath.value === "/sales-daily-scores") {
+    window.dispatchEvent(new Event("sales-daily-scores:refresh"))
+  }
+}
+
+const hasActiveChild = (items?: { title: string; url: string; allowedRoles?: string[] }[]) => {
+  return Boolean(items?.some((item) => isActive(item.url)))
+}
 </script>
 
 <template>
@@ -45,12 +59,12 @@ const isActive = (url: string) => {
     <SidebarGroupLabel>主导航</SidebarGroupLabel>
     <SidebarMenu>
       <template v-for="mainItem in items" :key="mainItem.url">
-        <Collapsible :defaultOpen="isActive(mainItem.url)" class="group/collapsible">
+        <Collapsible :defaultOpen="isActive(mainItem.url) || hasActiveChild(mainItem.items)" class="group/collapsible">
           <SidebarMenuItem>
             <template v-if="mainItem.items">
               <CollapsibleTrigger as-child>
                 <SidebarMenuButton
-                  :is-active="isActive(mainItem.url)"
+                  :is-active="isActive(mainItem.url) || hasActiveChild(mainItem.items)"
                   class="font-medium"
                 >
                   <component v-if="mainItem.icon" :is="mainItem.icon" />
@@ -78,7 +92,7 @@ const isActive = (url: string) => {
                 :is-active="isActive(mainItem.url)"
                 class="font-medium"
               >
-                <RouterLink :to="mainItem.url">
+                <RouterLink :to="mainItem.url" @click="handleNavClick(mainItem.url)">
                   <component v-if="mainItem.icon" :is="mainItem.icon" />
                   <span>{{ mainItem.title }}</span>
                 </RouterLink>

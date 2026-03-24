@@ -288,6 +288,138 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/auth/reset-password": {
+            "post": {
+                "description": "验证账号与邮箱/手机号，通过后直接设置新密码",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "一步重置密码",
+                "parameters": [
+                    {
+                        "description": "重置信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ResetPasswordDirectRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/reset-password/confirm": {
+            "post": {
+                "description": "使用重置令牌设置新密码",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "重置密码",
+                "parameters": [
+                    {
+                        "description": "重置信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ResetPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/reset-password/verify": {
+            "post": {
+                "description": "验证用户名与邮箱/手机号，成功后返回重置令牌（15分钟有效）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "验证重置密码身份",
+                "parameters": [
+                    {
+                        "description": "验证信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.VerifyResetIdentityRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/handler.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.VerifyResetIdentityResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/contracts": {
             "get": {
                 "security": [
@@ -756,6 +888,91 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "资源不存在",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/customer-visits": {
+            "get": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "上门拜访"
+                ],
+                "summary": "获取上门拜访列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "关键词",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/handler.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.CustomerVisitListResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "上门拜访"
+                ],
+                "summary": "创建上门拜访签到",
+                "parameters": [
+                    {
+                        "description": "创建上门拜访",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateCustomerVisitRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -1507,6 +1724,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/customers/{id}/convert": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "将待转化客户按销售分配规则转化给负责人",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customers"
+                ],
+                "summary": "转化客户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "客户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/handler.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.Customer"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/customers/{id}/phones": {
             "get": {
                 "security": [
@@ -1964,6 +2227,69 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "未登录或登录已失效",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/external-company-search/companies/{id}/enrich": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "external-company-search"
+                ],
+                "summary": "深度获取企业联系方式和中文名称",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "企业ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/handler.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.ExternalCompany"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未登录或登录已失效",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "企业不存在",
                         "schema": {
                             "$ref": "#/definitions/handler.APIResponse"
                         }
@@ -3399,6 +3725,77 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/sales-daily-scores": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "每日排名"
+                ],
+                "summary": "获取每日排名列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "积分日期，格式：YYYY-MM-DD",
+                        "name": "scoreDate",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sales-daily-scores/{userId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "每日排名"
+                ],
+                "summary": "获取每日积分详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "积分日期，格式：YYYY-MM-DD",
+                        "name": "scoreDate",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/sales-follow-records": {
             "get": {
                 "consumes": [
@@ -3923,6 +4320,66 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/tasks/hanghang-crm-daily-user-call-stats/run": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "crontab"
+                ],
+                "summary": "执行航航CRM每日用户通话统计同步任务",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/handler.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.RunHanghangCRMDailyUserCallStatSyncTaskResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "航航CRM配置缺失",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未登录或登录已失效",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "请求航航CRM失败",
+                        "schema": {
+                            "$ref": "#/definitions/handler.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users": {
             "get": {
                 "security": [
@@ -4422,6 +4879,9 @@ const docTemplate = `{
         "handler.CheckCustomerUniqueRequest": {
             "type": "object",
             "properties": {
+                "contactName": {
+                    "type": "string"
+                },
                 "excludeCustomerId": {
                     "type": "integer"
                 },
@@ -4724,6 +5184,35 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.CreateCustomerVisitRequest": {
+            "type": "object",
+            "properties": {
+                "area": {},
+                "checkInLat": {
+                    "type": "number"
+                },
+                "checkInLng": {
+                    "type": "number"
+                },
+                "city": {},
+                "customerName": {
+                    "type": "string"
+                },
+                "detailAddress": {
+                    "type": "string"
+                },
+                "images": {
+                    "type": "string"
+                },
+                "province": {},
+                "remark": {
+                    "type": "string"
+                },
+                "visitPurpose": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.CreateExternalCompanySearchTasksRequest": {
             "type": "object",
             "required": [
@@ -4826,6 +5315,7 @@ const docTemplate = `{
         "handler.CreateUserRequest": {
             "type": "object",
             "required": [
+                "mobile",
                 "password",
                 "roleId",
                 "username"
@@ -4837,6 +5327,10 @@ const docTemplate = `{
                 "email": {
                     "type": "string",
                     "example": "zhangsan@example.com"
+                },
+                "hanghangCrmMobile": {
+                    "type": "string",
+                    "example": "13800138001"
                 },
                 "mobile": {
                     "type": "string",
@@ -4906,13 +5400,25 @@ const docTemplate = `{
         "handler.HealthPayload": {
             "type": "object",
             "properties": {
+                "buildTime": {
+                    "type": "string"
+                },
+                "gitCommit": {
+                    "type": "string"
+                },
                 "service": {
+                    "type": "string"
+                },
+                "startedAt": {
                     "type": "string"
                 },
                 "status": {
                     "type": "string"
                 },
                 "timestamp": {
+                    "type": "string"
+                },
+                "version": {
                     "type": "string"
                 }
             }
@@ -4991,6 +5497,41 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.ResetPasswordDirectRequest": {
+            "type": "object",
+            "required": [
+                "contact",
+                "newPassword",
+                "username"
+            ],
+            "properties": {
+                "contact": {
+                    "type": "string"
+                },
+                "newPassword": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.ResetPasswordRequest": {
+            "type": "object",
+            "required": [
+                "newPassword",
+                "resetToken"
+            ],
+            "properties": {
+                "newPassword": {
+                    "type": "string",
+                    "minLength": 6
+                },
+                "resetToken": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.ResourcePoolBatchConvertRequest": {
             "type": "object",
             "properties": {
@@ -5025,12 +5566,26 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.RunHanghangCRMDailyUserCallStatSyncTaskResponse": {
+            "type": "object",
+            "properties": {
+                "callStatSync": {
+                    "$ref": "#/definitions/service.SyncHanghangCRMDailyUserCallStatResult"
+                },
+                "salesScoreSync": {
+                    "$ref": "#/definitions/service.SyncSalesDailyScoreResult"
+                }
+            }
+        },
         "handler.TransferCustomerRequest": {
             "type": "object",
             "required": [
                 "toOwnerUserId"
             ],
             "properties": {
+                "note": {
+                    "type": "string"
+                },
                 "toOwnerUserId": {
                     "type": "integer"
                 }
@@ -5118,6 +5673,7 @@ const docTemplate = `{
         "handler.UpdateUserRequest": {
             "type": "object",
             "required": [
+                "mobile",
                 "roleId",
                 "username"
             ],
@@ -5126,6 +5682,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "email": {
+                    "type": "string"
+                },
+                "hanghangCrmMobile": {
                     "type": "string"
                 },
                 "mobile": {
@@ -5151,6 +5710,29 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 32,
                     "minLength": 3
+                }
+            }
+        },
+        "handler.VerifyResetIdentityRequest": {
+            "type": "object",
+            "required": [
+                "contact",
+                "username"
+            ],
+            "properties": {
+                "contact": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.VerifyResetIdentityResponse": {
+            "type": "object",
+            "properties": {
+                "resetToken": {
+                    "type": "string"
                 }
             }
         },
@@ -5180,6 +5762,9 @@ const docTemplate = `{
                 },
                 "userId": {
                     "type": "integer"
+                },
+                "userName": {
+                    "type": "string"
                 }
             }
         },
@@ -5319,6 +5904,9 @@ const docTemplate = `{
                 "contactName": {
                     "type": "string"
                 },
+                "convertedAt": {
+                    "type": "string"
+                },
                 "createUserId": {
                     "type": "integer"
                 },
@@ -5358,6 +5946,9 @@ const docTemplate = `{
                 "dropUserId": {
                     "type": "integer"
                 },
+                "dropUserName": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -5371,6 +5962,9 @@ const docTemplate = `{
                     }
                 },
                 "id": {
+                    "type": "integer"
+                },
+                "insideSalesUserId": {
                     "type": "integer"
                 },
                 "isInPool": {
@@ -5614,6 +6208,9 @@ const docTemplate = `{
         "model.CustomerUniqueCheckResult": {
             "type": "object",
             "properties": {
+                "contactNameExists": {
+                    "type": "boolean"
+                },
                 "duplicatePhones": {
                     "type": "array",
                     "items": {
@@ -5628,6 +6225,163 @@ const docTemplate = `{
                 },
                 "weixinExists": {
                     "type": "boolean"
+                }
+            }
+        },
+        "model.CustomerVisit": {
+            "type": "object",
+            "properties": {
+                "area": {
+                    "type": "string"
+                },
+                "checkInLat": {
+                    "type": "number"
+                },
+                "checkInLng": {
+                    "type": "number"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "customerName": {
+                    "type": "string"
+                },
+                "detailAddress": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "images": {
+                    "type": "string"
+                },
+                "operatorUserId": {
+                    "type": "integer"
+                },
+                "operatorUserName": {
+                    "type": "string"
+                },
+                "province": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "visitDate": {
+                    "type": "string"
+                },
+                "visitPurpose": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.CustomerVisitListResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.CustomerVisit"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.DailyUserCallStat": {
+            "type": "object",
+            "properties": {
+                "averageCallDuration": {
+                    "type": "number"
+                },
+                "averageCallSecond": {
+                    "type": "number"
+                },
+                "bindNum": {
+                    "type": "integer"
+                },
+                "callNum": {
+                    "type": "integer"
+                },
+                "connectionRate": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "mobile": {
+                    "type": "string"
+                },
+                "notConnected": {
+                    "type": "integer"
+                },
+                "realName": {
+                    "type": "string"
+                },
+                "statDate": {
+                    "type": "string"
+                },
+                "timeTotal": {
+                    "type": "integer"
+                },
+                "totalMinute": {
+                    "type": "string"
+                },
+                "totalSecond": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.DashboardAutoDropOverview": {
+            "type": "object",
+            "properties": {
+                "dealDueSoonCount": {
+                    "type": "integer"
+                },
+                "followUpDueSoonCount": {
+                    "type": "integer"
+                },
+                "monthlyDealDropped": {
+                    "type": "integer"
+                },
+                "monthlyFollowUpDropped": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.DashboardDailyCallSummary": {
+            "type": "object",
+            "properties": {
+                "scoreDate": {
+                    "type": "string"
+                },
+                "totalCallDurationSecond": {
+                    "type": "integer"
+                },
+                "totalConnectedDurationSecond": {
+                    "type": "integer"
                 }
             }
         },
@@ -5656,8 +6410,14 @@ const docTemplate = `{
         "model.DashboardOverview": {
             "type": "object",
             "properties": {
+                "autoDropOverview": {
+                    "$ref": "#/definitions/model.DashboardAutoDropOverview"
+                },
                 "conversionRate": {
                     "$ref": "#/definitions/model.DashboardStat"
+                },
+                "dailyCallSummary": {
+                    "$ref": "#/definitions/model.DashboardDailyCallSummary"
                 },
                 "monthlyContracts": {
                     "type": "array",
@@ -5691,6 +6451,26 @@ const docTemplate = `{
                 },
                 "revenue": {
                     "$ref": "#/definitions/model.DashboardStat"
+                },
+                "salesAdminOverview": {
+                    "$ref": "#/definitions/model.DashboardSalesAdminOverview"
+                },
+                "salesDailyPersonalOverview": {
+                    "$ref": "#/definitions/model.DashboardSalesDailyPersonalOverview"
+                }
+            }
+        },
+        "model.DashboardRankingItem": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "userId": {
+                    "type": "integer"
+                },
+                "userName": {
+                    "type": "string"
                 }
             }
         },
@@ -5746,6 +6526,64 @@ const docTemplate = `{
                 }
             }
         },
+        "model.DashboardSalesAdminOverview": {
+            "type": "object",
+            "properties": {
+                "monthlyFollowRecords": {
+                    "$ref": "#/definitions/model.DashboardStat"
+                },
+                "monthlyNewCustomers": {
+                    "$ref": "#/definitions/model.DashboardStat"
+                },
+                "todayFollowRecordRanks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.DashboardRankingItem"
+                    }
+                },
+                "todayFollowRecords": {
+                    "$ref": "#/definitions/model.DashboardStat"
+                },
+                "todayNewCustomerRanks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.DashboardRankingItem"
+                    }
+                },
+                "todayNewCustomers": {
+                    "$ref": "#/definitions/model.DashboardStat"
+                }
+            }
+        },
+        "model.DashboardSalesDailyPersonalOverview": {
+            "type": "object",
+            "properties": {
+                "callScore": {
+                    "type": "integer"
+                },
+                "hasData": {
+                    "type": "boolean"
+                },
+                "newCustomerScore": {
+                    "type": "integer"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "scoreDate": {
+                    "type": "string"
+                },
+                "totalScore": {
+                    "type": "integer"
+                },
+                "totalUsers": {
+                    "type": "integer"
+                },
+                "visitScore": {
+                    "type": "integer"
+                }
+            }
+        },
         "model.DashboardStat": {
             "type": "object",
             "properties": {
@@ -5757,6 +6595,107 @@ const docTemplate = `{
                 },
                 "previous": {
                     "type": "number"
+                }
+            }
+        },
+        "model.ExternalCompany": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "annualRevenue": {
+                    "type": "string"
+                },
+                "businessType": {
+                    "type": "string"
+                },
+                "certification": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "companyDesc": {
+                    "type": "string"
+                },
+                "companyImages": {
+                    "type": "string"
+                },
+                "companyLogo": {
+                    "type": "string"
+                },
+                "companyName": {
+                    "type": "string"
+                },
+                "companyNameEn": {
+                    "type": "string"
+                },
+                "companyNo": {
+                    "type": "string"
+                },
+                "companyUrl": {
+                    "type": "string"
+                },
+                "contact": {
+                    "type": "string"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "createTime": {
+                    "type": "string"
+                },
+                "dataVersion": {
+                    "type": "integer"
+                },
+                "dedupeKey": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "employeeCount": {
+                    "type": "string"
+                },
+                "establishedYear": {
+                    "type": "string"
+                },
+                "firstSeenAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "interestStatus": {
+                    "type": "integer"
+                },
+                "isDeleted": {
+                    "type": "boolean"
+                },
+                "lastSeenAt": {
+                    "type": "string"
+                },
+                "mainProducts": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "integer"
+                },
+                "platformCompanyId": {
+                    "type": "string"
+                },
+                "province": {
+                    "type": "string"
+                },
+                "rawPayload": {
+                    "type": "string"
+                },
+                "updateTime": {
+                    "type": "string"
                 }
             }
         },
@@ -6435,6 +7374,65 @@ const docTemplate = `{
                 }
             }
         },
+        "model.SalesDailyScore": {
+            "type": "object",
+            "properties": {
+                "callDurationSecond": {
+                    "type": "integer"
+                },
+                "callNum": {
+                    "type": "integer"
+                },
+                "callScore": {
+                    "type": "integer"
+                },
+                "callScoreByCount": {
+                    "type": "integer"
+                },
+                "callScoreByDuration": {
+                    "type": "integer"
+                },
+                "callScoreType": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "newCustomerCount": {
+                    "type": "integer"
+                },
+                "newCustomerScore": {
+                    "type": "integer"
+                },
+                "roleName": {
+                    "type": "string"
+                },
+                "scoreDate": {
+                    "type": "string"
+                },
+                "totalScore": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "integer"
+                },
+                "userName": {
+                    "type": "string"
+                },
+                "visitCount": {
+                    "type": "integer"
+                },
+                "visitScore": {
+                    "type": "integer"
+                }
+            }
+        },
         "model.SalesFollowRecord": {
             "type": "object",
             "properties": {
@@ -6508,8 +7506,14 @@ const docTemplate = `{
         "model.SystemSettingsResponse": {
             "type": "object",
             "properties": {
+                "claimFreezeDays": {
+                    "type": "integer"
+                },
                 "contractNumberPrefix": {
                     "type": "string"
+                },
+                "customerAutoDropEnabled": {
+                    "type": "boolean"
                 },
                 "customerLevels": {
                     "type": "array",
@@ -6537,14 +7541,26 @@ const docTemplate = `{
                 },
                 "showFullContact": {
                     "type": "boolean"
+                },
+                "visitPurposes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
         "model.UpdateSystemSettingsRequest": {
             "type": "object",
             "properties": {
+                "claimFreezeDays": {
+                    "type": "integer"
+                },
                 "contractNumberPrefix": {
                     "type": "string"
+                },
+                "customerAutoDropEnabled": {
+                    "type": "boolean"
                 },
                 "customerLimit": {
                     "type": "integer"
@@ -6560,6 +7576,12 @@ const docTemplate = `{
                 },
                 "showFullContact": {
                     "type": "boolean"
+                },
+                "visitPurposes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -6573,6 +7595,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "email": {
+                    "type": "string"
+                },
+                "hanghangCrmMobile": {
                     "type": "string"
                 },
                 "id": {
@@ -6614,6 +7639,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "email": {
+                    "type": "string"
+                },
+                "hanghangCrmMobile": {
                     "type": "string"
                 },
                 "id": {
@@ -6665,6 +7693,9 @@ const docTemplate = `{
         "service.CustomerAutoDropTaskResult": {
             "type": "object",
             "properties": {
+                "autoDropEnabled": {
+                    "type": "boolean"
+                },
                 "bothRulesMatchedDropped": {
                     "type": "integer"
                 },
@@ -6703,6 +7734,58 @@ const docTemplate = `{
                 },
                 "skipped": {
                     "type": "boolean"
+                }
+            }
+        },
+        "service.SyncHanghangCRMDailyUserCallStatResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.DailyUserCallStat"
+                    }
+                },
+                "matchedUserCount": {
+                    "type": "integer"
+                },
+                "pageCount": {
+                    "type": "integer"
+                },
+                "statDate": {
+                    "type": "string"
+                },
+                "totalFetched": {
+                    "type": "integer"
+                },
+                "totalSaved": {
+                    "type": "integer"
+                },
+                "unmatchedUserCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service.SyncSalesDailyScoreResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.SalesDailyScore"
+                    }
+                },
+                "scoreDate": {
+                    "type": "string"
+                },
+                "scoredSales": {
+                    "type": "integer"
+                },
+                "totalSales": {
+                    "type": "integer"
+                },
+                "totalSaved": {
+                    "type": "integer"
                 }
             }
         }

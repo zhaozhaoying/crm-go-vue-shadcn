@@ -33,6 +33,30 @@ type DashboardSalesAdminOverview struct {
 	TodayFollowRecordRanks []DashboardRankingItem `json:"todayFollowRecordRanks"`
 }
 
+type DashboardSalesDailyPersonalOverview struct {
+	ScoreDate        string `json:"scoreDate"`
+	TotalScore       int    `json:"totalScore"`
+	Rank             int    `json:"rank"`
+	TotalUsers       int    `json:"totalUsers"`
+	CallScore        int    `json:"callScore"`
+	VisitScore       int    `json:"visitScore"`
+	NewCustomerScore int    `json:"newCustomerScore"`
+	HasData          bool   `json:"hasData"`
+}
+
+type DashboardDailyCallSummary struct {
+	ScoreDate                    string `json:"scoreDate"`
+	TotalCallDurationSecond      int    `json:"totalCallDurationSecond"`
+	TotalConnectedDurationSecond int    `json:"totalConnectedDurationSecond"`
+}
+
+type DashboardSalesDailyMetricsOverview struct {
+	CallCount    DashboardStat `json:"callCount"`
+	CallDuration DashboardStat `json:"callDuration"`
+	VisitCount   DashboardStat `json:"visitCount"`
+	TotalScore   DashboardStat `json:"totalScore"`
+}
+
 type DashboardAutoDropOverview struct {
 	FollowUpDueSoonCount   int64 `json:"followUpDueSoonCount"`
 	DealDueSoonCount       int64 `json:"dealDueSoonCount"`
@@ -61,14 +85,17 @@ type DashboardRecentActivity struct {
 }
 
 type DashboardOverview struct {
-	Revenue            DashboardStat                   `json:"revenue"`
-	NewCustomers       DashboardStat                   `json:"newCustomers"`
-	NewOpportunities   DashboardStat                   `json:"newOpportunities"`
-	ConversionRate     DashboardStat                   `json:"conversionRate"`
-	MonthlyRevenue     []DashboardMonthlyRevenue       `json:"monthlyRevenue"`
-	MonthlyContracts   []DashboardMonthlyContractCount `json:"monthlyContracts"`
-	AutoDropOverview   DashboardAutoDropOverview       `json:"autoDropOverview"`
-	SalesAdminOverview *DashboardSalesAdminOverview    `json:"salesAdminOverview,omitempty"`
-	RecentDeals        []DashboardRecentDeal           `json:"recentDeals"`
-	RecentActivities   []DashboardRecentActivity       `json:"recentActivities"`
+	Revenue                    DashboardStat                        `json:"revenue"`
+	NewCustomers               DashboardStat                        `json:"newCustomers"`
+	NewOpportunities           DashboardStat                        `json:"newOpportunities"`
+	ConversionRate             DashboardStat                        `json:"conversionRate"`
+	MonthlyRevenue             []DashboardMonthlyRevenue            `json:"monthlyRevenue"`
+	MonthlyContracts           []DashboardMonthlyContractCount      `json:"monthlyContracts"`
+	AutoDropOverview           DashboardAutoDropOverview            `json:"autoDropOverview"`
+	SalesAdminOverview         *DashboardSalesAdminOverview         `json:"salesAdminOverview,omitempty"`
+	SalesDailyPersonalOverview *DashboardSalesDailyPersonalOverview `json:"salesDailyPersonalOverview,omitempty"`
+	SalesDailyMetricsOverview  *DashboardSalesDailyMetricsOverview  `json:"salesDailyMetricsOverview,omitempty"`
+	DailyCallSummary           *DashboardDailyCallSummary           `json:"dailyCallSummary,omitempty"`
+	RecentDeals                []DashboardRecentDeal                `json:"recentDeals"`
+	RecentActivities           []DashboardRecentActivity            `json:"recentActivities"`
 }

@@ -1,16 +1,20 @@
 package service
 
 import (
+	"backend/internal/model"
 	"context"
 	"testing"
+	"time"
 )
 
 type customerOwnerAssignmentRepoStub struct {
-	roles        map[int64]string
-	parents      map[int64]int64
-	enabledUsers map[int64]bool
-	subordinates map[int64][]int64
-	ownedCount   map[int64]int64
+	roles                       map[int64]string
+	parents                     map[int64]int64
+	enabledUsers                map[int64]bool
+	subordinates                map[int64][]int64
+	ownedCount                  map[int64]int64
+	rankedScores                []model.SalesDailyScore
+	latestAutoAssignOwnerUserID *int64
 }
 
 func (s *customerOwnerAssignmentRepoStub) GetUserRoleName(_ context.Context, userID int64) (string, error) {
@@ -67,7 +71,36 @@ func (s *customerOwnerAssignmentRepoStub) CountOwnedActiveByOwner(_ context.Cont
 	return s.ownedCount[ownerUserID], nil
 }
 
-func TestPickBalancedSalesOwnerUserIDKeepsTeamBoundary(t *testing.T) {
+func (s *customerOwnerAssignmentRepoStub) ListAutoAssignRankedOwnerScores(_ context.Context, _ string, userIDs []int64) ([]model.SalesDailyScore, error) {
+	if len(s.rankedScores) == 0 {
+		return []model.SalesDailyScore{}, nil
+	}
+	allowed := make(map[int64]struct{}, len(userIDs))
+	for _, userID := range userIDs {
+		allowed[userID] = struct{}{}
+	}
+	result := make([]model.SalesDailyScore, 0, len(s.rankedScores))
+	for _, score := range s.rankedScores {
+		if _, ok := allowed[score.UserID]; ok {
+			result = append(result, score)
+		}
+	}
+	return result, nil
+}
+
+func (s *customerOwnerAssignmentRepoStub) FindLatestAutoAssignOwnerUserID(_ context.Context, ownerUserIDs []int64, _ time.Time) (*int64, error) {
+	if s.latestAutoAssignOwnerUserID == nil {
+		return nil, nil
+	}
+	for _, ownerUserID := range ownerUserIDs {
+		if ownerUserID == *s.latestAutoAssignOwnerUserID {
+			return s.latestAutoAssignOwnerUserID, nil
+		}
+	}
+	return nil, nil
+}
+
+func TestPickBalancedSalesOwnerUserIDReturnsZeroWithoutRankedScoresAcrossTeam(t *testing.T) {
 	repo := &customerOwnerAssignmentRepoStub{
 		roles: map[int64]string{
 			1:  "sales_director",
@@ -104,12 +137,12 @@ func TestPickBalancedSalesOwnerUserIDKeepsTeamBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pickBalancedSalesOwnerUserID returned error: %v", err)
 	}
-	if ownerUserID != 3 {
-		t.Fatalf("expected owner 3 from same director team, got %d", ownerUserID)
+	if ownerUserID != 0 {
+		t.Fatalf("expected no assignment without ranked scores, got %d", ownerUserID)
 	}
 }
 
-func TestPickBalancedSalesOwnerUserIDDistributesEvenlyByLoad(t *testing.T) {
+func TestPickBalancedSalesOwnerUserIDReturnsZeroWithoutAnyScoreData(t *testing.T) {
 	repo := &customerOwnerAssignmentRepoStub{
 		roles: map[int64]string{
 			1: "sales_director",
@@ -131,28 +164,186 @@ func TestPickBalancedSalesOwnerUserIDDistributesEvenlyByLoad(t *testing.T) {
 		subordinates: map[int64][]int64{
 			1: {2, 3, 4},
 		},
-		ownedCount: map[int64]int64{
-			1: 0,
-			3: 0,
-			4: 0,
+	}
+	ownerUserID, err := pickBalancedSalesOwnerUserID(context.Background(), repo, 2)
+	if err != nil {
+		t.Fatalf("pickBalancedSalesOwnerUserID returned error: %v", err)
+	}
+	if ownerUserID != 0 {
+		t.Fatalf("expected no assignment without any ranked scores, got %d", ownerUserID)
+	}
+}
+
+func TestPickBalancedSalesOwnerUserIDUsesHighestRankedOwnerWhenScoresMeetThreshold(t *testing.T) {
+	repo := &customerOwnerAssignmentRepoStub{
+		roles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		enabledUsers: map[int64]bool{
+			1: true,
+			2: true,
+			3: true,
+			4: true,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		rankedScores: []model.SalesDailyScore{
+			{UserID: 4, TotalScore: 95},
+			{UserID: 3, TotalScore: 82},
+			{UserID: 1, TotalScore: 79},
 		},
 	}
 
-	got := make([]int64, 0, 3)
-	for i := 0; i < 3; i++ {
-		ownerUserID, err := pickBalancedSalesOwnerUserID(context.Background(), repo, 2)
-		if err != nil {
-			t.Fatalf("pickBalancedSalesOwnerUserID returned error: %v", err)
-		}
-		got = append(got, ownerUserID)
-		repo.ownedCount[ownerUserID]++
+	ownerUserID, err := pickBalancedSalesOwnerUserID(context.Background(), repo, 2)
+	if err != nil {
+		t.Fatalf("pickBalancedSalesOwnerUserID returned error: %v", err)
+	}
+	if ownerUserID != 4 {
+		t.Fatalf("expected highest ranked owner 4, got %d", ownerUserID)
+	}
+}
+
+func TestPickBalancedSalesOwnerUserIDRoundsRobinAcrossRankedOwnersExcludingLast(t *testing.T) {
+	latestOwnerUserID := int64(4)
+	repo := &customerOwnerAssignmentRepoStub{
+		roles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		enabledUsers: map[int64]bool{
+			1: true,
+			2: true,
+			3: true,
+			4: true,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		rankedScores: []model.SalesDailyScore{
+			{UserID: 4, TotalScore: 95},
+			{UserID: 3, TotalScore: 88},
+			{UserID: 1, TotalScore: 81},
+		},
+		latestAutoAssignOwnerUserID: &latestOwnerUserID,
 	}
 
-	want := []int64{1, 3, 4}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("expected evenly distributed owners %v, got %v", want, got)
-		}
+	ownerUserID, err := pickBalancedSalesOwnerUserID(context.Background(), repo, 2)
+	if err != nil {
+		t.Fatalf("pickBalancedSalesOwnerUserID returned error: %v", err)
+	}
+	if ownerUserID != 3 {
+		t.Fatalf("expected next eligible owner 3 after owner 4, got %d", ownerUserID)
+	}
+}
+
+func TestPickBalancedSalesOwnerUserIDUsesQualifiedSubsetWhenOnlyPartOfTeamReachesThreshold(t *testing.T) {
+	repo := &customerOwnerAssignmentRepoStub{
+		roles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		enabledUsers: map[int64]bool{
+			1: true,
+			2: true,
+			3: true,
+			4: true,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		rankedScores: []model.SalesDailyScore{
+			{UserID: 3, TotalScore: 85},
+			{UserID: 4, TotalScore: 79},
+			{UserID: 1, TotalScore: 60},
+		},
+	}
+
+	ownerUserID, err := pickBalancedSalesOwnerUserID(context.Background(), repo, 2)
+	if err != nil {
+		t.Fatalf("pickBalancedSalesOwnerUserID returned error: %v", err)
+	}
+	if ownerUserID != 3 {
+		t.Fatalf("expected ranked owner 3 to win, got %d", ownerUserID)
+	}
+}
+
+func TestPickBalancedSalesOwnerUserIDKeepsSingleRankedOwnerWhenAllReachThreshold(t *testing.T) {
+	repo := &customerOwnerAssignmentRepoStub{
+		roles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+		},
+		parents: map[int64]int64{
+			2: 1,
+		},
+		enabledUsers: map[int64]bool{
+			1: true,
+			2: true,
+		},
+		subordinates: map[int64][]int64{
+			1: {2},
+		},
+		rankedScores: []model.SalesDailyScore{
+			{UserID: 1, TotalScore: 88},
+		},
+	}
+
+	ownerUserID, err := pickBalancedSalesOwnerUserID(context.Background(), repo, 2)
+	if err != nil {
+		t.Fatalf("pickBalancedSalesOwnerUserID returned error: %v", err)
+	}
+	if ownerUserID != 1 {
+		t.Fatalf("expected single ranked owner 1 to remain assignable, got %d", ownerUserID)
+	}
+}
+
+func TestPickBalancedSalesOwnerUserIDKeepsSingleDirectorTeamFallback(t *testing.T) {
+	repo := &customerOwnerAssignmentRepoStub{
+		roles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+		},
+		parents: map[int64]int64{
+			2: 1,
+		},
+		enabledUsers: map[int64]bool{
+			1: true,
+			2: true,
+		},
+		subordinates: map[int64][]int64{
+			1: {2},
+		},
+	}
+
+	ownerUserID, err := pickBalancedSalesOwnerUserID(context.Background(), repo, 2)
+	if err != nil {
+		t.Fatalf("pickBalancedSalesOwnerUserID returned error: %v", err)
+	}
+	if ownerUserID != 0 {
+		t.Fatalf("expected no assignment for single-director team without scores, got %d", ownerUserID)
 	}
 }
 

@@ -34,6 +34,7 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("invalid config: %v", err)
 	}
+	scheduleLocation := cfg.ScheduleLocation()
 
 	db := database.Open(cfg)
 	sqlDB, err := db.DB()
@@ -56,8 +57,12 @@ func main() {
 	contractRepo := repository.NewGormContractRepository(db)
 	dashboardRepo := repository.NewGormDashboardRepository(db)
 	externalCompanySearchRepo := repository.NewGormExternalCompanySearchRepository(db)
+	hanghangCRMDailyUserCallStatRepo := repository.NewGormHanghangCRMDailyUserCallStatRepository(db)
+	salesDailyScoreRepo := repository.NewGormSalesDailyScoreRepository(db)
+	callRecordingRepo := repository.NewCallRecordingRepository(db)
 	activityLogRepo := repository.NewActivityLogRepository(db)
 	notificationRepo := repository.NewGormNotificationRepository(db)
+	customerVisitRepo := repository.NewCustomerVisitRepository(db)
 
 	customerService := service.NewCustomerService(customerRepo, systemSettingRepo, activityLogRepo)
 	customerImportService := service.NewCustomerImportService(db, activityLogRepo)
@@ -81,7 +86,17 @@ func main() {
 		cfg.BaiduMapBaseURL,
 	)
 	contractService := service.NewContractService(contractRepo, systemSettingRepo, activityLogRepo)
-	dashboardService := service.NewDashboardService(dashboardRepo)
+	dashboardService := service.NewDashboardService(dashboardRepo, scheduleLocation)
+	hanghangCRMDailyUserCallStatService := service.NewHanghangCRMDailyUserCallStatService(hanghangCRMDailyUserCallStatRepo, cfg.HanghangCRMCloudToken)
+	salesDailyScoreService := service.NewSalesDailyScoreService(salesDailyScoreRepo)
+	callRecordingService := service.NewCallRecordingService(callRecordingRepo)
+	callRecordingSyncService := service.NewCallRecordingSyncService(callRecordingService, cfg.FeigeCallRecordingCookie)
+	hanghangCRMDailyScoreRuntime := service.NewHanghangCRMDailyScoreRuntime(
+		hanghangCRMDailyUserCallStatService,
+		salesDailyScoreService,
+		time.Minute,
+		scheduleLocation,
+	)
 	customerAutoDropService := service.NewCustomerAutoDropService(db, systemSettingRepo, activityLogRepo)
 	customerAutoDropRuntime := service.NewCustomerAutoDropRuntime(customerAutoDropService, time.Minute)
 	captchaService := service.NewCaptchaService(2*time.Minute, 5)
@@ -126,12 +141,22 @@ func main() {
 	if err != nil {
 		log.Printf("upload service init failed: %v", err)
 	}
+	customerVisitLocationResolver := service.NewNominatimReverseGeocoder(
+		cfg.ReverseGeocodeBaseURL,
+		cfg.ReverseGeocodeUserAgent,
+	)
+	customerVisitService := service.NewCustomerVisitService(customerVisitRepo, customerVisitLocationResolver)
 
 	authContextProvider := authctx.NewProvider(userRepo, roleRepo)
 
 	healthHandler := handler.NewHealthHandler("backend", version, gitCommit, buildTime)
 	customerHandler := handler.NewCustomerHandler(customerService, customerImportService)
-	crontabHandler := handler.NewCrontabHandler(customerAutoDropService)
+	crontabHandler := handler.NewCrontabHandler(
+		customerAutoDropService,
+		hanghangCRMDailyUserCallStatService,
+		salesDailyScoreService,
+		scheduleLocation,
+	)
 	authHandler := handler.NewAuthHandler(authService, authContextProvider, captchaService)
 	userHandler := handler.NewUserHandler(userService)
 	roleHandler := handler.NewRoleHandler(roleService)
@@ -142,6 +167,9 @@ func main() {
 	contractHandler := handler.NewContractHandler(contractService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	notificationHandler := handler.NewNotificationHandler(activityLogRepo, notificationRepo)
+	customerVisitHandler := handler.NewCustomerVisitHandler(customerVisitService)
+	salesDailyScoreHandler := handler.NewSalesDailyScoreHandler(salesDailyScoreService)
+	callRecordingHandler := handler.NewCallRecordingHandler(callRecordingService, callRecordingSyncService, authContextProvider)
 	externalCompanySearchHandler := handler.NewExternalCompanySearchHandler(
 		externalCompanySearchService,
 		externalCompanyEnrichService,
@@ -151,6 +179,7 @@ func main() {
 
 	appCtx := context.Background()
 	customerAutoDropRuntime.Start(appCtx)
+	hanghangCRMDailyScoreRuntime.Start(appCtx)
 	externalCompanySearchRuntime.Start(appCtx)
 
 	engine := router.New(
@@ -169,8 +198,14 @@ func main() {
 		uploadHandler,
 		contractHandler,
 		notificationHandler,
+		customerVisitHandler,
+		salesDailyScoreHandler,
+		callRecordingHandler,
 		authTokenRepo,
 	)
+	if err := engine.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 	addr := ":" + cfg.AppPort
 
 	log.Printf(
