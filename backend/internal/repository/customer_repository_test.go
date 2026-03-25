@@ -106,3 +106,51 @@ func TestBuildCustomerAssignmentMeta(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCustomerListWhereIncludesOwnerUserID(t *testing.T) {
+	where, args := buildCustomerListWhere(model.CustomerListFilter{
+		Category:    "my",
+		OwnerUserID: 42,
+	})
+
+	found := false
+	for _, condition := range where {
+		if condition == "c.owner_user_id = ?" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected owner_user_id condition, got %#v", where)
+	}
+	if len(args) == 0 {
+		t.Fatalf("expected args to include owner user id, got %#v", args)
+	}
+	if ownerUserID, ok := args[0].(int64); !ok || ownerUserID != 42 {
+		t.Fatalf("expected first arg to be owner user id 42, got %#v", args[0])
+	}
+}
+
+func TestBuildCustomerListWhereUsesDropUserForPoolOwnerFilter(t *testing.T) {
+	where, args := buildCustomerListWhere(model.CustomerListFilter{
+		Category:    "pool",
+		OwnerUserID: 88,
+	})
+
+	found := false
+	for _, condition := range where {
+		if condition == "du.id = ?" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected pool owner filter to use drop user join, got %#v", where)
+	}
+	if len(args) == 0 {
+		t.Fatalf("expected args to include drop user id, got %#v", args)
+	}
+	if ownerUserID, ok := args[0].(int64); !ok || ownerUserID != 88 {
+		t.Fatalf("expected first arg to be drop user id 88, got %#v", args[0])
+	}
+}

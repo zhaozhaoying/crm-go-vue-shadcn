@@ -11,8 +11,11 @@ import (
 type salesDailyScoreRepoStub struct {
 	users             []model.SalesDailyScoreUser
 	callMetrics       []model.DailySalesCallMetric
+	callEvents        map[int64][]model.DailySalesCallEvent
 	visitCounts       map[int64]int
+	visitEventTimes   map[int64][]time.Time
 	newCustomerCounts map[int64]int
+	newCustomerEvents map[int64][]time.Time
 	upserts           []model.SalesDailyScoreUpsertInput
 	listByDateItems   []model.SalesDailyScore
 }
@@ -25,12 +28,44 @@ func (s *salesDailyScoreRepoStub) ListDailyCallMetrics(context.Context, string) 
 	return s.callMetrics, nil
 }
 
+func (s *salesDailyScoreRepoStub) ListDailyCallEventsByUser(
+	context.Context,
+	time.Time,
+	time.Time,
+) (map[int64][]model.DailySalesCallEvent, error) {
+	if s.callEvents == nil {
+		return map[int64][]model.DailySalesCallEvent{}, nil
+	}
+	return s.callEvents, nil
+}
+
 func (s *salesDailyScoreRepoStub) CountVisitByUserOnDate(context.Context, string) (map[int64]int, error) {
 	return s.visitCounts, nil
 }
 
+func (s *salesDailyScoreRepoStub) ListVisitEventTimesByUserOnDate(
+	context.Context,
+	string,
+) (map[int64][]time.Time, error) {
+	if s.visitEventTimes == nil {
+		return map[int64][]time.Time{}, nil
+	}
+	return s.visitEventTimes, nil
+}
+
 func (s *salesDailyScoreRepoStub) CountNewCustomersByUserBetween(context.Context, time.Time, time.Time) (map[int64]int, error) {
 	return s.newCustomerCounts, nil
+}
+
+func (s *salesDailyScoreRepoStub) ListNewCustomerEventTimesByUserBetween(
+	context.Context,
+	time.Time,
+	time.Time,
+) (map[int64][]time.Time, error) {
+	if s.newCustomerEvents == nil {
+		return map[int64][]time.Time{}, nil
+	}
+	return s.newCustomerEvents, nil
 }
 
 func (s *salesDailyScoreRepoStub) UpsertBatch(
@@ -57,6 +92,7 @@ func (s *salesDailyScoreRepoStub) UpsertBatch(
 			NewCustomerCount:    item.NewCustomerCount,
 			NewCustomerScore:    item.NewCustomerScore,
 			TotalScore:          item.TotalScore,
+			ScoreReachedAt:      item.ScoreReachedAt,
 		})
 	}
 	return result, nil
@@ -161,8 +197,67 @@ func TestSyncDailyScoresUsesProgressiveScoring(t *testing.T) {
 	if item.CallScoreType != model.SalesDailyScoreCallScoreTypeDuration || item.CallScore != 40 {
 		t.Fatalf("unexpected chosen call score: %+v", item)
 	}
-	if item.VisitScore != 20 || item.NewCustomerScore != 20 || item.TotalScore != 80 {
+	if item.VisitScore != 20 || item.NewCustomerScore != 10 || item.TotalScore != 70 {
 		t.Fatalf("unexpected progressive totals: %+v", item)
+	}
+}
+
+func TestSyncDailyScoresStoresScoreReachedAtForTieBreaking(t *testing.T) {
+	t.Parallel()
+
+	loc := time.FixedZone("CST", 8*3600)
+	reachedAt := time.Date(2026, 3, 20, 8, 0, 0, 0, loc).UTC()
+	repo := &salesDailyScoreRepoStub{
+		users: []model.SalesDailyScoreUser{
+			{UserID: 5, UserName: "赵六", RoleName: "销售员工"},
+		},
+		callMetrics: []model.DailySalesCallMetric{
+			{UserID: 5, CallNum: 1, CallDurationSecond: 50 * 60},
+		},
+		callEvents: map[int64][]model.DailySalesCallEvent{
+			5: []model.DailySalesCallEvent{
+				{
+					UserID:         5,
+					EventTime:      reachedAt,
+					DurationSecond: 50 * 60,
+				},
+			},
+		},
+		visitCounts: map[int64]int{
+			5: 1,
+		},
+		visitEventTimes: map[int64][]time.Time{
+			5: []time.Time{
+				time.Date(2026, 3, 20, 7, 50, 0, 0, loc).UTC(),
+			},
+		},
+		newCustomerCounts: map[int64]int{
+			5: 3,
+		},
+		newCustomerEvents: map[int64][]time.Time{
+			5: []time.Time{
+				time.Date(2026, 3, 20, 7, 45, 0, 0, loc).UTC(),
+				time.Date(2026, 3, 20, 7, 46, 0, 0, loc).UTC(),
+				time.Date(2026, 3, 20, 7, 47, 0, 0, loc).UTC(),
+			},
+		},
+	}
+
+	svc := NewSalesDailyScoreService(repo)
+	_, err := svc.SyncDailyScores(context.Background(), "2026-03-20")
+	if err != nil {
+		t.Fatalf("SyncDailyScores returned error: %v", err)
+	}
+	if len(repo.upserts) != 1 {
+		t.Fatalf("expected 1 upsert, got %d", len(repo.upserts))
+	}
+
+	item := repo.upserts[0]
+	if item.ScoreReachedAt == nil {
+		t.Fatal("expected score reached at to be set")
+	}
+	if !item.ScoreReachedAt.Equal(reachedAt) {
+		t.Fatalf("expected score reached at %v, got %v", reachedAt, item.ScoreReachedAt)
 	}
 }
 

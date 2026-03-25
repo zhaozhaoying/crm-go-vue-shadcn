@@ -9,6 +9,7 @@ import {
   createCustomer,
   updateCustomer,
 } from "@/api/modules/customers";
+import { listUsers } from "@/api/modules/users";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -40,6 +41,7 @@ import { useAuthStore } from "@/stores/auth";
 import PopupForm from "../my/popupForm.vue";
 import EmptyTablePlaceholder from "@/components/custom/EmptyTablePlaceholder.vue";
 import type { Customer, CustomerFormPayload } from "@/types/customer";
+import type { UserWithRole } from "@/types/user";
 
 const authStore = useAuthStore();
 
@@ -52,13 +54,14 @@ const totalCount = ref(0);
 const showSearch = ref(false);
 const pageIndex = ref(0);
 const pageSize = ref(10);
+const allUsers = ref<UserWithRole[]>([]);
 
 interface SearchForm {
   name: string;
   contactName: string;
   phone: string;
   weixin: string;
-  ownerUserName: string;
+  ownerUserId: string;
   province: string;
   city: string;
   area: string;
@@ -70,7 +73,7 @@ const createEmptySearchForm = (): SearchForm => {
     contactName: "",
     phone: "",
     weixin: "",
-    ownerUserName: "",
+    ownerUserId: "all",
     province: "",
     city: "",
     area: "",
@@ -134,6 +137,25 @@ const getPrimaryPhone = (customer: Customer) => {
   return primary?.phone || customer.phones[0].phone;
 }
 
+const getUserDisplayName = (user: Pick<UserWithRole, "id" | "nickname" | "username">) => {
+  return (user.nickname || user.username || "").trim() || `用户 #${user.id}`;
+}
+
+const ownerFilterOptions = computed(() =>
+  allUsers.value.map((user) => ({
+    value: String(user.id),
+    label: getUserDisplayName(user),
+  })),
+);
+
+const loadUserOptions = async () => {
+  try {
+    allUsers.value = await listUsers();
+  } catch {
+    allUsers.value = [];
+  }
+}
+
 const regionNameCache = new Map<
   string,
   { provinceName: string; cityName: string; areaName: string }
@@ -190,6 +212,12 @@ const normalizeRegionCode = (value: string): string | undefined => {
   return value;
 }
 
+const normalizeOwnerUserId = (value: string): number | undefined => {
+  if (!value || value === "all") return undefined;
+  const userId = Number(value);
+  return Number.isFinite(userId) && userId > 0 ? userId : undefined;
+}
+
 const buildListParams = () => {
   return {
     page: pageIndex.value + 1,
@@ -198,7 +226,7 @@ const buildListParams = () => {
     contactName: activeSearchForm.value.contactName || undefined,
     phone: activeSearchForm.value.phone || undefined,
     weixin: activeSearchForm.value.weixin || undefined,
-    ownerUserName: activeSearchForm.value.ownerUserName || undefined,
+    ownerUserId: normalizeOwnerUserId(activeSearchForm.value.ownerUserId),
     province: normalizeRegionCode(activeSearchForm.value.province),
     city: normalizeRegionCode(activeSearchForm.value.city),
     area: normalizeRegionCode(activeSearchForm.value.area),
@@ -359,8 +387,15 @@ const handleSubmit = async (payload: CustomerFormPayload) => {
   }
 }
 
-onMounted(fetchCustomers);
-onActivated(fetchCustomers);
+onMounted(async () => {
+  await Promise.all([loadUserOptions(), fetchCustomers()]);
+});
+onActivated(async () => {
+  if (allUsers.value.length === 0) {
+    await loadUserOptions();
+  }
+  await fetchCustomers();
+});
 </script>
 
 <template>
@@ -407,6 +442,28 @@ onActivated(fetchCustomers);
               placeholder="微信"
               class="h-9 w-40"
             />
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-muted-foreground whitespace-nowrap"
+              >负责人</label
+            >
+            <Select v-model="searchForm.ownerUserId">
+              <SelectTrigger class="h-9 w-40">
+                <SelectValue placeholder="全部负责人" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all">全部负责人</SelectItem>
+                  <SelectItem
+                    v-for="user in ownerFilterOptions"
+                    :key="user.value"
+                    :value="user.value"
+                  >
+                    {{ user.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
           <div class="flex items-center gap-2">
             <label class="text-sm text-muted-foreground whitespace-nowrap"

@@ -73,7 +73,7 @@ func VisitScore(visitCount int) int {
 }
 
 func NewCustomerScore(newCustomerCount int) int {
-	return scoreByUnit(int64(newCustomerCount), 3, 10)
+	return scoreByUnit(int64(newCustomerCount), 3, 10, 10)
 }
 
 func ChooseCallScore(callScoreByCount, callScoreByDuration int) (string, int) {
@@ -116,11 +116,15 @@ func scoreByAnchors(value int64, anchors []scoreAnchor) int {
 	return roundDownScore(previousScore)
 }
 
-func scoreByUnit(value int64, unit int64, scorePerUnit int) int {
+func scoreByUnit(value int64, unit int64, scorePerUnit int, maxScore int) int {
 	if value <= 0 || unit <= 0 || scorePerUnit <= 0 {
 		return 0
 	}
-	return int(value/unit) * scorePerUnit
+	score := int(value/unit) * scorePerUnit
+	if maxScore > 0 && score > maxScore {
+		return maxScore
+	}
+	return score
 }
 
 func roundDownScore(score int) int {

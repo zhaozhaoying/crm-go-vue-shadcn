@@ -134,6 +134,11 @@ func getMySQLMigrations() []Migration {
 			Name:    "dedupe_call_recordings",
 			Up:      upDedupeCallRecordingsMySQL,
 		},
+		{
+			Version: 2026032501,
+			Name:    "add_sales_daily_score_reached_at",
+			Up:      upAddSalesDailyScoreReachedAtMySQL,
+		},
 	}
 }
 
@@ -980,6 +985,28 @@ func upCreateSalesDailyScoresMySQL(tx *gorm.DB) error {
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='销售每日考核得分表'`,
 	}
 	return execStatements(tx, stmts)
+}
+
+func upAddSalesDailyScoreReachedAtMySQL(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("sales_daily_scores") {
+		return nil
+	}
+
+	if err := addColumnIfNotExists(
+		tx,
+		"sales_daily_scores",
+		"score_reached_at",
+		"DATETIME NULL COMMENT '达到当日最终分数的最早时间'",
+	); err != nil {
+		return err
+	}
+	return addIndexIfNotExists(
+		tx,
+		"sales_daily_scores",
+		"idx_sales_daily_scores_date_score_time_user",
+		"score_date, total_score, score_reached_at, user_id",
+		false,
+	)
 }
 
 func upCreateCustomerVisitsTableMySQL(tx *gorm.DB) error {

@@ -22,11 +22,11 @@ func TestBuildDailySalesScoreBreakdownUsesProgressiveRules(t *testing.T) {
 	if breakdown.VisitScore != 20 {
 		t.Fatalf("expected visit score 20, got %d", breakdown.VisitScore)
 	}
-	if breakdown.NewCustomerScore != 20 {
-		t.Fatalf("expected new customer score 20, got %d", breakdown.NewCustomerScore)
+	if breakdown.NewCustomerScore != 10 {
+		t.Fatalf("expected new customer score 10, got %d", breakdown.NewCustomerScore)
 	}
-	if breakdown.TotalScore != 80 {
-		t.Fatalf("expected total score 80, got %d", breakdown.TotalScore)
+	if breakdown.TotalScore != 70 {
+		t.Fatalf("expected total score 70, got %d", breakdown.TotalScore)
 	}
 }
 
@@ -44,19 +44,45 @@ func TestChooseCallScorePrefersHigherScore(t *testing.T) {
 	}
 }
 
-func TestCallAndVisitScoresReachConfiguredCaps(t *testing.T) {
+func TestDailySalesScoresReachConfiguredCaps(t *testing.T) {
 	t.Parallel()
 
 	if score := CallCountScore(180); score != 70 {
 		t.Fatalf("expected call count score 70, got %d", score)
 	}
+	if score := CallCountScore(260); score != 70 {
+		t.Fatalf("expected capped call count score 70, got %d", score)
+	}
 	if score := CallDurationScore(50 * 60); score != 70 {
 		t.Fatalf("expected call duration score 70, got %d", score)
+	}
+	if score := CallDurationScore(90 * 60); score != 70 {
+		t.Fatalf("expected capped call duration score 70, got %d", score)
 	}
 	if score := VisitScore(5); score != 60 {
 		t.Fatalf("expected visit score 60, got %d", score)
 	}
+	if score := VisitScore(10); score != 60 {
+		t.Fatalf("expected capped visit score 60, got %d", score)
+	}
 	if score := NewCustomerScore(3); score != 10 {
 		t.Fatalf("expected new customer score 10, got %d", score)
+	}
+	if score := NewCustomerScore(9); score != 10 {
+		t.Fatalf("expected capped new customer score 10, got %d", score)
+	}
+}
+
+func TestNewCustomerScoreRequiresThreeCustomers(t *testing.T) {
+	t.Parallel()
+
+	if score := NewCustomerScore(1); score != 0 {
+		t.Fatalf("expected new customer score 0 for 1 customer, got %d", score)
+	}
+	if score := NewCustomerScore(2); score != 0 {
+		t.Fatalf("expected new customer score 0 for 2 customers, got %d", score)
+	}
+	if score := NewCustomerScore(3); score != 10 {
+		t.Fatalf("expected new customer score 10 for 3 customers, got %d", score)
 	}
 }

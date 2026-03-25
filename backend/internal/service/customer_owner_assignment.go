@@ -1,8 +1,8 @@
 package service
 
 import (
-	"context"
 	"backend/internal/model"
+	"context"
 	"os"
 	"sort"
 	"strings"
@@ -10,18 +10,26 @@ import (
 )
 
 var assignableSalesOwnerRoleNames = []string{
-	"sales_director", "sales_manager", "sales_staff", roleSalesOutside,
+	"sales_director", "sales_manager", "sales_staff", roleSalesOutside, "sale_outside",
 	"销售总监", "销售经理", "销售员工", "销售", "Outside销售", "outside销售",
 }
 
 const autoAssignMinimumDailyScore = 80
 
+const (
+	autoAssignDirectorFallbackNicknameGe = "葛鹏辉"
+	autoAssignDirectorFallbackNicknameLi = "李龙泉"
+)
+
 type customerOwnerAssignmentRepo interface {
 	GetUserRoleName(ctx context.Context, userID int64) (string, error)
+	GetUserDisplayName(ctx context.Context, userID int64) (string, error)
 	GetParentUserID(ctx context.Context, userID int64) (int64, error)
 	ListEnabledUserIDsByRoleNames(ctx context.Context, roleNames []string) ([]int64, error)
 	ListDirectSubordinateUserIDsByRoleNames(ctx context.Context, parentIDs []int64, roleNames []string) ([]int64, error)
 	ListAutoAssignRankedOwnerScores(ctx context.Context, referenceDate string, userIDs []int64) ([]model.SalesDailyScore, error)
+	ListRecentContractExemptOwnerUserIDs(ctx context.Context, since time.Time, userIDs []int64) ([]int64, error)
+	FindEnabledUserIDByNickname(ctx context.Context, nickname string) (int64, error)
 	FindLatestAutoAssignOwnerUserID(ctx context.Context, ownerUserIDs []int64, since time.Time) (*int64, error)
 	CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error)
 }
@@ -49,6 +57,22 @@ func pickBalancedSalesOwnerUserID(ctx context.Context, repo customerOwnerAssignm
 	}
 	if ok {
 		return rankedOwnerUserID, nil
+	}
+
+	exemptOwnerUserID, ok, err := pickRecentContractExemptOwnerUserID(ctx, repo, candidateUserIDs)
+	if err != nil {
+		return 0, err
+	}
+	if ok {
+		return exemptOwnerUserID, nil
+	}
+
+	crossDirectorUserID, ok, err := pickCrossDepartmentFallbackOwnerUserID(ctx, repo, directorUserID)
+	if err != nil {
+		return 0, err
+	}
+	if ok {
+		return crossDirectorUserID, nil
 	}
 	return 0, nil
 }
@@ -222,6 +246,52 @@ func previousAutoAssignScoreDate() string {
 	return time.Now().In(location).AddDate(0, 0, -1).Format("2006-01-02")
 }
 
+func pickRecentContractExemptOwnerUserID(ctx context.Context, repo customerOwnerAssignmentRepo, candidateUserIDs []int64) (int64, bool, error) {
+	candidateUserIDs = uniquePositiveInt64(candidateUserIDs)
+	if len(candidateUserIDs) == 0 {
+		return 0, false, nil
+	}
+
+	exemptOwnerUserIDs, err := repo.ListRecentContractExemptOwnerUserIDs(ctx, recentAutoAssignContractExemptionSince(), candidateUserIDs)
+	if err != nil {
+		return 0, false, err
+	}
+	if len(exemptOwnerUserIDs) == 0 {
+		return 0, false, nil
+	}
+	return exemptOwnerUserIDs[0], true, nil
+}
+
+func pickCrossDepartmentFallbackOwnerUserID(ctx context.Context, repo customerOwnerAssignmentRepo, directorUserID int64) (int64, bool, error) {
+	if directorUserID <= 0 {
+		return 0, false, nil
+	}
+
+	directorName, err := repo.GetUserDisplayName(ctx, directorUserID)
+	if err != nil {
+		return 0, false, err
+	}
+
+	counterpartNickname := ""
+	switch strings.TrimSpace(directorName) {
+	case autoAssignDirectorFallbackNicknameLi:
+		counterpartNickname = autoAssignDirectorFallbackNicknameGe
+	case autoAssignDirectorFallbackNicknameGe:
+		counterpartNickname = autoAssignDirectorFallbackNicknameLi
+	default:
+		return 0, false, nil
+	}
+
+	counterpartUserID, err := repo.FindEnabledUserIDByNickname(ctx, counterpartNickname)
+	if err != nil {
+		return 0, false, err
+	}
+	if counterpartUserID <= 0 {
+		return 0, false, nil
+	}
+	return counterpartUserID, true, nil
+}
+
 func filterAutoAssignEligibleOwnerUserIDs(rankedScores []model.SalesDailyScore) []int64 {
 	if len(rankedScores) == 0 {
 		return []int64{}
@@ -256,6 +326,14 @@ func currentAutoAssignRotationStart() time.Time {
 	location := autoAssignBusinessLocation()
 	now := time.Now().In(location)
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location).UTC()
+}
+
+func recentAutoAssignContractExemptionSince() time.Time {
+	location := autoAssignBusinessLocation()
+	now := time.Now().In(location)
+	weekdayOffset := (int(now.Weekday()) + 6) % 7
+	weekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location).AddDate(0, 0, -weekdayOffset)
+	return weekStart.UTC()
 }
 
 func autoAssignBusinessLocation() *time.Location {

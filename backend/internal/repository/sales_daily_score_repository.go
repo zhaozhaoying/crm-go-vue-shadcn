@@ -3,7 +3,6 @@ package repository
 import (
 	"backend/internal/model"
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -32,8 +31,11 @@ var (
 type SalesDailyScoreRepository interface {
 	ListEnabledSalesUsers(ctx context.Context) ([]model.SalesDailyScoreUser, error)
 	ListDailyCallMetrics(ctx context.Context, scoreDate string) ([]model.DailySalesCallMetric, error)
+	ListDailyCallEventsByUser(ctx context.Context, startUTC, endUTC time.Time) (map[int64][]model.DailySalesCallEvent, error)
 	CountVisitByUserOnDate(ctx context.Context, scoreDate string) (map[int64]int, error)
+	ListVisitEventTimesByUserOnDate(ctx context.Context, scoreDate string) (map[int64][]time.Time, error)
 	CountNewCustomersByUserBetween(ctx context.Context, startUTC, endUTC time.Time) (map[int64]int, error)
+	ListNewCustomerEventTimesByUserBetween(ctx context.Context, startUTC, endUTC time.Time) (map[int64][]time.Time, error)
 	UpsertBatch(ctx context.Context, items []model.SalesDailyScoreUpsertInput) ([]model.SalesDailyScore, error)
 	ListByDate(ctx context.Context, scoreDate string, actorUserID int64, actorRole string) ([]model.SalesDailyScore, error)
 }
@@ -43,29 +45,45 @@ type gormSalesDailyScoreRepository struct {
 }
 
 type salesDailyScoreRow struct {
-	ID                  int64     `gorm:"column:id;primaryKey;autoIncrement"`
-	ScoreDate           string    `gorm:"column:score_date"`
-	UserID              int64     `gorm:"column:user_id"`
-	UserName            string    `gorm:"column:user_name"`
-	RoleName            string    `gorm:"column:role_name"`
-	CallNum             int       `gorm:"column:call_num"`
-	CallDurationSecond  int       `gorm:"column:call_duration_second"`
-	CallScoreByCount    int       `gorm:"column:call_score_by_count"`
-	CallScoreByDuration int       `gorm:"column:call_score_by_duration"`
-	CallScoreType       string    `gorm:"column:call_score_type"`
-	CallScore           int       `gorm:"column:call_score"`
-	VisitCount          int       `gorm:"column:visit_count"`
-	VisitScore          int       `gorm:"column:visit_score"`
-	NewCustomerCount    int       `gorm:"column:new_customer_count"`
-	NewCustomerScore    int       `gorm:"column:new_customer_score"`
-	TotalScore          int       `gorm:"column:total_score"`
-	CreatedAt           time.Time `gorm:"column:created_at"`
-	UpdatedAt           time.Time `gorm:"column:updated_at"`
+	ID                  int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	ScoreDate           string     `gorm:"column:score_date"`
+	UserID              int64      `gorm:"column:user_id"`
+	UserName            string     `gorm:"column:user_name"`
+	RoleName            string     `gorm:"column:role_name"`
+	CallNum             int        `gorm:"column:call_num"`
+	CallDurationSecond  int        `gorm:"column:call_duration_second"`
+	CallScoreByCount    int        `gorm:"column:call_score_by_count"`
+	CallScoreByDuration int        `gorm:"column:call_score_by_duration"`
+	CallScoreType       string     `gorm:"column:call_score_type"`
+	CallScore           int        `gorm:"column:call_score"`
+	VisitCount          int        `gorm:"column:visit_count"`
+	VisitScore          int        `gorm:"column:visit_score"`
+	NewCustomerCount    int        `gorm:"column:new_customer_count"`
+	NewCustomerScore    int        `gorm:"column:new_customer_score"`
+	TotalScore          int        `gorm:"column:total_score"`
+	ScoreReachedAt      *time.Time `gorm:"column:score_reached_at"`
+	CreatedAt           time.Time  `gorm:"column:created_at"`
+	UpdatedAt           time.Time  `gorm:"column:updated_at"`
 }
 
 type countByUserRow struct {
 	UserID int64 `gorm:"column:user_id"`
 	Count  int   `gorm:"column:item_count"`
+}
+
+type timeByUserRow struct {
+	UserID    int64     `gorm:"column:user_id"`
+	EventTime time.Time `gorm:"column:event_time"`
+}
+
+type callEventByUserRow struct {
+	UserID         int64     `gorm:"column:user_id"`
+	CallID         string    `gorm:"column:call_id"`
+	StartTime      int64     `gorm:"column:start_time"`
+	EndTime        int64     `gorm:"column:end_time"`
+	CreateTime     int64     `gorm:"column:create_time"`
+	DurationSecond int       `gorm:"column:duration_second"`
+	CreatedAt      time.Time `gorm:"column:created_at"`
 }
 
 func NewGormSalesDailyScoreRepository(db *gorm.DB) SalesDailyScoreRepository {
@@ -114,6 +132,44 @@ func (r *gormSalesDailyScoreRepository) ListDailyCallMetrics(
 	return rows, nil
 }
 
+func (r *gormSalesDailyScoreRepository) ListDailyCallEventsByUser(
+	ctx context.Context,
+	startUTC, endUTC time.Time,
+) (map[int64][]model.DailySalesCallEvent, error) {
+	startMillis := startUTC.UnixMilli()
+	endMillis := endUTC.UnixMilli()
+
+	var rows []callEventByUserRow
+	err := r.db.WithContext(ctx).
+		Table("call_recordings AS c").
+		Select(
+			"DISTINCT um.user_id AS user_id",
+			"c.id AS call_id",
+			"c.start_time AS start_time",
+			"c.end_time AS end_time",
+			"c.create_time AS create_time",
+			"c.duration AS duration_second",
+			"c.created_at AS created_at",
+		).
+		Joins("JOIN user_hanghang_crm_mobiles AS um ON (um.mobile = c.mobile OR um.mobile = c.tel_a)").
+		Where("c.start_time >= ? AND c.start_time < ?", startMillis, endMillis).
+		Order("um.user_id ASC, c.start_time ASC, c.id ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[int64][]model.DailySalesCallEvent, len(rows))
+	for _, row := range rows {
+		result[row.UserID] = append(result[row.UserID], model.DailySalesCallEvent{
+			UserID:         row.UserID,
+			EventTime:      resolveCallEventTime(row.StartTime, row.EndTime, row.CreateTime, row.DurationSecond, row.CreatedAt),
+			DurationSecond: row.DurationSecond,
+		})
+	}
+	return result, nil
+}
+
 func (r *gormSalesDailyScoreRepository) CountVisitByUserOnDate(
 	ctx context.Context,
 	scoreDate string,
@@ -132,6 +188,28 @@ func (r *gormSalesDailyScoreRepository) CountVisitByUserOnDate(
 	result := make(map[int64]int, len(rows))
 	for _, row := range rows {
 		result[row.UserID] = row.Count
+	}
+	return result, nil
+}
+
+func (r *gormSalesDailyScoreRepository) ListVisitEventTimesByUserOnDate(
+	ctx context.Context,
+	scoreDate string,
+) (map[int64][]time.Time, error) {
+	var rows []timeByUserRow
+	err := r.db.WithContext(ctx).
+		Table("customer_visits").
+		Select("operator_user_id AS user_id", "created_at AS event_time").
+		Where("visit_date = ?", strings.TrimSpace(scoreDate)).
+		Order("operator_user_id ASC, created_at ASC, id ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[int64][]time.Time, len(rows))
+	for _, row := range rows {
+		result[row.UserID] = append(result[row.UserID], row.EventTime)
 	}
 	return result, nil
 }
@@ -155,6 +233,29 @@ func (r *gormSalesDailyScoreRepository) CountNewCustomersByUserBetween(
 	result := make(map[int64]int, len(rows))
 	for _, row := range rows {
 		result[row.UserID] = row.Count
+	}
+	return result, nil
+}
+
+func (r *gormSalesDailyScoreRepository) ListNewCustomerEventTimesByUserBetween(
+	ctx context.Context,
+	startUTC, endUTC time.Time,
+) (map[int64][]time.Time, error) {
+	var rows []timeByUserRow
+	err := r.db.WithContext(ctx).
+		Table("customers").
+		Select("create_user_id AS user_id", "created_at AS event_time").
+		Where("create_user_id > 0").
+		Where("created_at >= ? AND created_at < ?", startUTC, endUTC).
+		Order("create_user_id ASC, created_at ASC, id ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[int64][]time.Time, len(rows))
+	for _, row := range rows {
+		result[row.UserID] = append(result[row.UserID], row.EventTime)
 	}
 	return result, nil
 }
@@ -187,6 +288,7 @@ func (r *gormSalesDailyScoreRepository) UpsertBatch(
 			NewCustomerCount:    item.NewCustomerCount,
 			NewCustomerScore:    item.NewCustomerScore,
 			TotalScore:          item.TotalScore,
+			ScoreReachedAt:      item.ScoreReachedAt,
 			CreatedAt:           now,
 			UpdatedAt:           now,
 		}
@@ -210,6 +312,7 @@ func (r *gormSalesDailyScoreRepository) UpsertBatch(
 				"new_customer_count":     row.NewCustomerCount,
 				"new_customer_score":     row.NewCustomerScore,
 				"total_score":            row.TotalScore,
+				"score_reached_at":       row.ScoreReachedAt,
 				"updated_at":             row.UpdatedAt,
 			}),
 		}).Create(&row).Error
@@ -233,15 +336,9 @@ func (r *gormSalesDailyScoreRepository) UpsertBatch(
 func (r *gormSalesDailyScoreRepository) ListByDate(
 	ctx context.Context,
 	scoreDate string,
-	actorUserID int64,
-	actorRole string,
+	_ int64,
+	_ string,
 ) ([]model.SalesDailyScore, error) {
-	showAll := isSalesDailyScoreGlobalRole(actorRole)
-	scopedUserIDs, err := r.resolveSalesDailyScoreScopeUserIDs(ctx, actorUserID, actorRole, showAll)
-	if err != nil {
-		return nil, err
-	}
-
 	var rows []salesDailyScoreRow
 	query := r.db.WithContext(ctx).
 		Table("sales_daily_scores AS s").
@@ -251,13 +348,7 @@ func (r *gormSalesDailyScoreRepository) ListByDate(
 		Where("s.score_date = ?", strings.TrimSpace(scoreDate)).
 		Where("u.status = ?", model.UserStatusEnabled).
 		Where("(r.name IN ? OR r.label IN ?)", salesDailyScoreRoleNames, salesDailyScoreRoleLabels)
-	if !showAll {
-		if len(scopedUserIDs) == 0 {
-			return []model.SalesDailyScore{}, nil
-		}
-		query = query.Where("u.id IN ?", scopedUserIDs)
-	}
-	err = query.Order("s.total_score DESC, s.user_id ASC").Find(&rows).Error
+	err := query.Order(salesDailyScoreOrderClause("s")).Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -270,192 +361,6 @@ func (r *gormSalesDailyScoreRepository) ListByDate(
 		items = append(items, mapSalesDailyScoreRowToModel(row))
 	}
 	return items, nil
-}
-
-func isSalesDailyScoreGlobalRole(role string) bool {
-	switch strings.TrimSpace(strings.ToLower(role)) {
-	case "admin", "管理员", "finance", "finance_manager", "财务", "财务经理":
-		return true
-	default:
-		return false
-	}
-}
-
-func isSalesDailyScoreTeamRole(role string) bool {
-	switch strings.TrimSpace(strings.ToLower(role)) {
-	case "sales_director", "销售总监",
-		"sales_manager", "销售经理",
-		"sales_staff", "销售员工",
-		"sales_outside", "sale_outside", "outside销售":
-		return true
-	default:
-		return false
-	}
-}
-
-func (r *gormSalesDailyScoreRepository) resolveSalesDailyScoreScopeUserIDs(ctx context.Context, actorUserID int64, actorRole string, showAll bool) ([]int64, error) {
-	if showAll {
-		return []int64{}, nil
-	}
-	if actorUserID <= 0 {
-		return []int64{}, nil
-	}
-
-	roleName, err := r.getUserRoleName(ctx, actorUserID)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(roleName) == "" {
-		roleName = strings.TrimSpace(actorRole)
-	}
-	if !isSalesDailyScoreTeamRole(roleName) {
-		return []int64{}, nil
-	}
-
-	anchorUserID, err := r.resolveSalesDailyScoreAnchorUserID(ctx, actorUserID)
-	if err != nil {
-		return nil, err
-	}
-	if anchorUserID <= 0 {
-		return []int64{actorUserID}, nil
-	}
-
-	descendantIDs, err := r.listAllDescendantUserIDs(ctx, anchorUserID)
-	if err != nil {
-		return nil, err
-	}
-
-	teamUserIDs := uniquePositiveInt64(append([]int64{anchorUserID}, descendantIDs...))
-	if len(teamUserIDs) == 0 {
-		return []int64{}, nil
-	}
-
-	var scopedUserIDs []int64
-	err = r.db.WithContext(ctx).
-		Table("users AS u").
-		Select("u.id").
-		Joins("JOIN roles AS r ON r.id = u.role_id").
-		Where("u.id IN ?", teamUserIDs).
-		Where("u.status = ?", model.UserStatusEnabled).
-		Where("(r.name IN ? OR r.label IN ?)", salesDailyScoreRoleNames, salesDailyScoreRoleLabels).
-		Order("u.id ASC").
-		Pluck("u.id", &scopedUserIDs).Error
-	if err != nil {
-		return nil, err
-	}
-	return uniquePositiveInt64(scopedUserIDs), nil
-}
-
-func (r *gormSalesDailyScoreRepository) resolveSalesDailyScoreAnchorUserID(ctx context.Context, userID int64) (int64, error) {
-	if userID <= 0 {
-		return 0, nil
-	}
-
-	visited := map[int64]struct{}{}
-	currentUserID := userID
-	for currentUserID > 0 {
-		if _, seen := visited[currentUserID]; seen {
-			return 0, nil
-		}
-		visited[currentUserID] = struct{}{}
-
-		roleName, err := r.getUserRoleName(ctx, currentUserID)
-		if err != nil {
-			return 0, err
-		}
-		if strings.EqualFold(strings.TrimSpace(roleName), "sales_director") || strings.TrimSpace(roleName) == "销售总监" {
-			return currentUserID, nil
-		}
-
-		parentUserID, err := r.getParentUserID(ctx, currentUserID)
-		if err != nil {
-			return 0, err
-		}
-		currentUserID = parentUserID
-	}
-
-	return 0, nil
-}
-
-func (r *gormSalesDailyScoreRepository) getUserRoleName(ctx context.Context, userID int64) (string, error) {
-	if userID <= 0 {
-		return "", nil
-	}
-
-	var roleName string
-	err := r.db.WithContext(ctx).
-		Table("users AS u").
-		Select("COALESCE(r.name, '')").
-		Joins("LEFT JOIN roles r ON r.id = u.role_id").
-		Where("u.id = ?", userID).
-		Limit(1).
-		Scan(&roleName).Error
-	if err != nil {
-		return "", err
-	}
-	return roleName, nil
-}
-
-func (r *gormSalesDailyScoreRepository) getParentUserID(ctx context.Context, userID int64) (int64, error) {
-	if userID <= 0 {
-		return 0, nil
-	}
-
-	type parentRow struct {
-		ParentID *int64 `gorm:"column:parent_id"`
-	}
-
-	var row parentRow
-	if err := r.db.WithContext(ctx).
-		Table("users").
-		Select("parent_id").
-		Where("id = ?", userID).
-		Take(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	if row.ParentID == nil || *row.ParentID <= 0 {
-		return 0, nil
-	}
-	return *row.ParentID, nil
-}
-
-func (r *gormSalesDailyScoreRepository) listAllDescendantUserIDs(ctx context.Context, rootUserID int64) ([]int64, error) {
-	if rootUserID <= 0 {
-		return []int64{}, nil
-	}
-
-	queue := []int64{rootUserID}
-	seen := map[int64]struct{}{rootUserID: {}}
-	result := make([]int64, 0)
-
-	for len(queue) > 0 {
-		var nextLevel []int64
-		if err := r.db.WithContext(ctx).
-			Table("users").
-			Where("parent_id IN ?", queue).
-			Order("id ASC").
-			Pluck("id", &nextLevel).Error; err != nil {
-			return nil, err
-		}
-
-		queue = queue[:0]
-		for _, id := range nextLevel {
-			if id <= 0 {
-				continue
-			}
-			if _, exists := seen[id]; exists {
-				continue
-			}
-			seen[id] = struct{}{}
-			result = append(result, id)
-			queue = append(queue, id)
-		}
-	}
-
-	return result, nil
 }
 
 func dedupeSalesDailyScoreUpsertInputs(
@@ -488,6 +393,7 @@ func dedupeSalesDailyScoreUpsertInputs(
 			NewCustomerCount:    item.NewCustomerCount,
 			NewCustomerScore:    item.NewCustomerScore,
 			TotalScore:          item.TotalScore,
+			ScoreReachedAt:      item.ScoreReachedAt,
 		}
 	}
 
@@ -516,7 +422,43 @@ func mapSalesDailyScoreRowToModel(row salesDailyScoreRow) model.SalesDailyScore 
 		NewCustomerCount:    row.NewCustomerCount,
 		NewCustomerScore:    row.NewCustomerScore,
 		TotalScore:          row.TotalScore,
+		ScoreReachedAt:      row.ScoreReachedAt,
 		CreatedAt:           row.CreatedAt,
 		UpdatedAt:           row.UpdatedAt,
+	}
+}
+
+func salesDailyScoreOrderClause(alias string) string {
+	prefix := ""
+	if trimmed := strings.TrimSpace(alias); trimmed != "" {
+		prefix = trimmed + "."
+	}
+	return fmt.Sprintf(
+		"%stotal_score DESC, CASE WHEN %sscore_reached_at IS NULL THEN 1 ELSE 0 END ASC, %sscore_reached_at ASC, %suser_id ASC",
+		prefix,
+		prefix,
+		prefix,
+		prefix,
+	)
+}
+
+func resolveCallEventTime(
+	startTime int64,
+	endTime int64,
+	createTime int64,
+	durationSecond int,
+	createdAt time.Time,
+) time.Time {
+	switch {
+	case endTime > 0:
+		return time.UnixMilli(endTime).UTC()
+	case startTime > 0 && durationSecond > 0:
+		return time.UnixMilli(startTime).Add(time.Duration(durationSecond) * time.Second).UTC()
+	case startTime > 0:
+		return time.UnixMilli(startTime).UTC()
+	case createTime > 0:
+		return time.UnixMilli(createTime).UTC()
+	default:
+		return createdAt.UTC()
 	}
 }

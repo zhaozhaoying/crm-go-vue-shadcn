@@ -87,6 +87,7 @@ export interface CustomerListParams {
   contactName?: string
   phone?: string
   weixin?: string
+  ownerUserId?: number
   ownerUserName?: string
   province?: string
   city?: string

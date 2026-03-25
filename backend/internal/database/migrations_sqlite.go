@@ -129,6 +129,11 @@ func getSQLiteMigrations() []Migration {
 			Name:    "dedupe_call_recordings",
 			Up:      upDedupeCallRecordings,
 		},
+		{
+			Version: 2026032501,
+			Name:    "add_sales_daily_score_reached_at",
+			Up:      upAddSalesDailyScoreReachedAt,
+		},
 	}
 }
 
@@ -757,6 +762,23 @@ func upCreateSalesDailyScores(tx *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_sales_daily_scores_user_id ON sales_daily_scores(user_id)`,
 	}
 	return execStatements(tx, stmts)
+}
+
+func upAddSalesDailyScoreReachedAt(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("sales_daily_scores") {
+		return nil
+	}
+
+	if err := addColumnIfNotExists(tx, "sales_daily_scores", "score_reached_at", "DATETIME"); err != nil {
+		return err
+	}
+	return addIndexIfNotExists(
+		tx,
+		"sales_daily_scores",
+		"idx_sales_daily_scores_date_score_time_user",
+		"score_date, total_score, score_reached_at, user_id",
+		false,
+	)
 }
 
 func upCreateAuthTokenTables(tx *gorm.DB) error {

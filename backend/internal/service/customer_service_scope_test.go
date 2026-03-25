@@ -30,9 +30,13 @@ func (s *customerSettingReaderStub) GetSetting(key string) (*model.SystemSetting
 type customerScopeRepoStub struct {
 	roleUsers                            map[string][]int64
 	userRoles                            map[int64]string
+	displayNames                         map[int64]string
 	subordinates                         map[int64][]int64
 	parents                              map[int64]int64
 	rankedUserIDs                        []int64
+	recentContractExemptUserIDs          []int64
+	enabledUserIDsByNickname             map[string]int64
+	lastRecentContractSince              time.Time
 	lastRankReferenceDate                string
 	latestAutoAssignOwnerUserID          *int64
 	activeBlockedUntilByDepartmentAnchor map[int64]time.Time
@@ -113,6 +117,13 @@ func (s *customerScopeRepoStub) GetUserRoleName(ctx context.Context, userID int6
 	return s.userRoles[userID], nil
 }
 
+func (s *customerScopeRepoStub) GetUserDisplayName(ctx context.Context, userID int64) (string, error) {
+	if s.displayNames != nil {
+		return s.displayNames[userID], nil
+	}
+	return "", nil
+}
+
 func (s *customerScopeRepoStub) GetParentUserID(ctx context.Context, userID int64) (int64, error) {
 	if s.parents == nil {
 		return 0, nil
@@ -156,6 +167,31 @@ func (s *customerScopeRepoStub) ListAutoAssignRankedOwnerScores(ctx context.Cont
 		}
 	}
 	return result, nil
+}
+
+func (s *customerScopeRepoStub) ListRecentContractExemptOwnerUserIDs(ctx context.Context, since time.Time, userIDs []int64) ([]int64, error) {
+	s.lastRecentContractSince = since
+	if len(s.recentContractExemptUserIDs) == 0 {
+		return []int64{}, nil
+	}
+	allowed := make(map[int64]struct{}, len(userIDs))
+	for _, userID := range userIDs {
+		allowed[userID] = struct{}{}
+	}
+	result := make([]int64, 0, len(s.recentContractExemptUserIDs))
+	for _, userID := range s.recentContractExemptUserIDs {
+		if _, ok := allowed[userID]; ok {
+			result = append(result, userID)
+		}
+	}
+	return result, nil
+}
+
+func (s *customerScopeRepoStub) FindEnabledUserIDByNickname(ctx context.Context, nickname string) (int64, error) {
+	if s.enabledUserIDsByNickname == nil {
+		return 0, nil
+	}
+	return s.enabledUserIDsByNickname[nickname], nil
 }
 
 func (s *customerScopeRepoStub) FindLatestAutoAssignOwnerUserID(ctx context.Context, ownerUserIDs []int64, since time.Time) (*int64, error) {
@@ -829,6 +865,157 @@ func TestCreateCustomerInsideSalesAutoAssignsTopRankedOwner(t *testing.T) {
 	}
 }
 
+func TestCreateCustomerInsideSalesAutoAssignsRankedSaleOutsideAliasOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sale_outside": {4},
+		},
+		userRoles: map[int64]string{
+			1: "sales_director",
+			4: "sale_outside",
+			9: "sale_inside",
+		},
+		parents: map[int64]int64{
+			9: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {9, 4},
+		},
+		rankedUserIDs: []int64{4},
+		createResult: &model.Customer{
+			ID:   20021,
+			Name: "别名外销自动分配客户",
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.CreateCustomer(context.Background(), model.CustomerCreateInput{
+		Name:           "别名外销自动分配客户",
+		LegalName:      "张三",
+		ContactName:    "李四",
+		Status:         model.CustomerStatusPool,
+		OperatorUserID: 9,
+		Phones: []model.CustomerPhoneInput{{
+			Phone:     "13800138021",
+			IsPrimary: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateCustomer returned error: %v", err)
+	}
+	if repoStub.lastCreateInput.OwnerUserID == nil || *repoStub.lastCreateInput.OwnerUserID != 4 {
+		t.Fatalf("expected ranked sale_outside alias owner 4, got %v", repoStub.lastCreateInput.OwnerUserID)
+	}
+}
+
+func TestCreateCustomerInsideSalesFallsBackToRecentContractExemptOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		userRoles: map[int64]string{
+			1: "sales_director",
+			3: "sales_staff",
+			4: "sales_staff",
+			9: "sales_inside",
+		},
+		parents: map[int64]int64{
+			9: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {9, 3, 4},
+		},
+		recentContractExemptUserIDs: []int64{3, 4},
+		createResult: &model.Customer{
+			ID:   2003,
+			Name: "签单豁免客户",
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.CreateCustomer(context.Background(), model.CustomerCreateInput{
+		Name:           "签单豁免客户",
+		LegalName:      "张三",
+		ContactName:    "李四",
+		Status:         model.CustomerStatusPool,
+		OperatorUserID: 9,
+		Phones: []model.CustomerPhoneInput{{
+			Phone:     "13800138011",
+			IsPrimary: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateCustomer returned error: %v", err)
+	}
+	if repoStub.lastCreateInput.OwnerUserID == nil || *repoStub.lastCreateInput.OwnerUserID != 3 {
+		t.Fatalf("expected recent contract exempt owner 3, got %v", repoStub.lastCreateInput.OwnerUserID)
+	}
+	if repoStub.lastCreateInput.ConvertedAt == nil {
+		t.Fatalf("expected recent contract exempt assignment to mark convertedAt")
+	}
+}
+
+func TestCreateCustomerInsideSalesFallsBackToCounterpartDirectorWhenLiTeamHasNoThresholdOrContracts(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		roleUsers: map[string][]int64{
+			"sales_director": {1, 7},
+			"sales_staff":    {3, 4},
+		},
+		userRoles: map[int64]string{
+			1: "sales_director",
+			3: "sales_staff",
+			4: "sales_staff",
+			7: "sales_director",
+			9: "sales_inside",
+		},
+		displayNames: map[int64]string{
+			1: "李龙泉",
+			7: "葛鹏辉",
+		},
+		enabledUserIDsByNickname: map[string]int64{
+			"葛鹏辉": 7,
+		},
+		parents: map[int64]int64{
+			9: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {9, 3, 4},
+		},
+		createResult: &model.Customer{
+			ID:   2004,
+			Name: "跨部门兜底客户",
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.CreateCustomer(context.Background(), model.CustomerCreateInput{
+		Name:           "跨部门兜底客户",
+		LegalName:      "张三",
+		ContactName:    "李四",
+		Status:         model.CustomerStatusPool,
+		OperatorUserID: 9,
+		Phones: []model.CustomerPhoneInput{{
+			Phone:     "13800138012",
+			IsPrimary: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateCustomer returned error: %v", err)
+	}
+	if repoStub.lastCreateInput.OwnerUserID == nil || *repoStub.lastCreateInput.OwnerUserID != 7 {
+		t.Fatalf("expected counterpart director owner 7, got %v", repoStub.lastCreateInput.OwnerUserID)
+	}
+	if repoStub.lastCreateInput.ConvertedAt == nil {
+		t.Fatalf("expected counterpart fallback assignment to mark convertedAt")
+	}
+}
+
 func TestClaimCustomerInsideSalesAutoAssignsTopRankedOwner(t *testing.T) {
 	repoStub := &customerScopeRepoStub{
 		userRoles: map[int64]string{
@@ -872,6 +1059,89 @@ func TestClaimCustomerInsideSalesAutoAssignsTopRankedOwner(t *testing.T) {
 	}
 	if repoStub.lastRankReferenceDate != previousAutoAssignScoreDate() {
 		t.Fatalf("expected yesterday reference date %q, got %q", previousAutoAssignScoreDate(), repoStub.lastRankReferenceDate)
+	}
+}
+
+func TestClaimCustomerInsideSalesAutoAssignsRankedSaleOutsideAliasOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sale_inside",
+			4: "sale_outside",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 4},
+		},
+		roleUsers: map[string][]int64{
+			"sale_outside": {4},
+		},
+		rankedUserIDs: []int64{4},
+		findByID: &model.Customer{
+			ID:       21021,
+			Name:     "别名外销公海客户",
+			IsInPool: true,
+		},
+		claimResult: &model.Customer{
+			ID:       21021,
+			Name:     "别名外销公海客户",
+			IsInPool: false,
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ClaimCustomer(context.Background(), 21021, 2)
+	if err != nil {
+		t.Fatalf("ClaimCustomer returned error: %v", err)
+	}
+	if repoStub.claimOwnerUserID != 4 {
+		t.Fatalf("expected ranked sale_outside alias claim owner 4, got %d", repoStub.claimOwnerUserID)
+	}
+}
+
+func TestClaimCustomerInsideSalesFallsBackToRecentContractExemptOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		recentContractExemptUserIDs: []int64{4, 3},
+		findByID: &model.Customer{
+			ID:       2104,
+			Name:     "签单豁免公海客户",
+			IsInPool: true,
+		},
+		claimResult: &model.Customer{
+			ID:       2104,
+			Name:     "签单豁免公海客户",
+			IsInPool: false,
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ClaimCustomer(context.Background(), 2104, 2)
+	if err != nil {
+		t.Fatalf("ClaimCustomer returned error: %v", err)
+	}
+	if repoStub.claimOwnerUserID != 4 {
+		t.Fatalf("expected recent contract exempt claim owner 4, got %d", repoStub.claimOwnerUserID)
 	}
 }
 
@@ -964,6 +1234,51 @@ func TestConvertCustomerInsideSalesKeepsCustomerOnInsideSalesWhenNoScores(t *tes
 	}
 	if repoStub.convertOwner != 2 {
 		t.Fatalf("expected inside-sales owner 2, got %d", repoStub.convertOwner)
+	}
+}
+
+func TestConvertCustomerInsideSalesFallsBackToRecentContractExemptOwner(t *testing.T) {
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			1: "sales_director",
+			2: "sales_inside",
+			3: "sales_staff",
+			4: "sales_staff",
+		},
+		parents: map[int64]int64{
+			2: 1,
+			3: 1,
+			4: 1,
+		},
+		subordinates: map[int64][]int64{
+			1: {2, 3, 4},
+		},
+		roleUsers: map[string][]int64{
+			"sales_director": {1},
+			"sales_staff":    {3, 4},
+		},
+		recentContractExemptUserIDs: []int64{3, 4},
+		findByID: &model.Customer{
+			ID:           3004,
+			Name:         "签单豁免待转化客户",
+			CreateUserID: 2,
+			IsInPool:     true,
+		},
+		convertResult: &model.Customer{
+			ID:           3004,
+			Name:         "签单豁免待转化客户",
+			CreateUserID: 2,
+			IsInPool:     false,
+		},
+	}
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ConvertCustomer(context.Background(), 3004, 2)
+	if err != nil {
+		t.Fatalf("ConvertCustomer returned error: %v", err)
+	}
+	if repoStub.convertOwner != 3 {
+		t.Fatalf("expected recent contract exempt convert owner 3, got %d", repoStub.convertOwner)
 	}
 }
 

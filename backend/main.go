@@ -35,6 +35,7 @@ func main() {
 		log.Fatalf("invalid config: %v", err)
 	}
 	scheduleLocation := cfg.ScheduleLocation()
+	config.ApplyProcessTimezone(scheduleLocation)
 
 	db := database.Open(cfg)
 	sqlDB, err := db.DB()

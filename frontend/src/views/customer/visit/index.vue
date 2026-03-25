@@ -478,11 +478,24 @@ onMounted(() => {
                     </div>
                     <span v-else class="text-muted-foreground">-</span>
                   </TableCell>
-                  <TableCell
-                    class="max-w-[150px] truncate text-sm"
-                    :title="record.remark"
-                  >
-                    {{ record.remark || "-" }}
+                  <TableCell class="max-w-[150px] text-sm text-muted-foreground">
+                    <template v-if="record.remark">
+                      <TooltipProvider :delayDuration="200">
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <div class="cursor-help truncate">
+                              {{ record.remark }}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            class="max-w-sm whitespace-pre-wrap break-words text-left"
+                          >
+                            <p>{{ record.remark }}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </template>
+                    <span v-else>-</span>
                   </TableCell>
                   <TableCell>
                     <Badge

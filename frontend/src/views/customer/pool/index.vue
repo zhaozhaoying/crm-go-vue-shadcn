@@ -44,6 +44,7 @@ import type {
   Customer,
   CustomerFormPayload,
 } from "@/types/customer";
+import type { UserWithRole } from "@/types/user";
 
 const authStore = useAuthStore();
 
@@ -56,6 +57,7 @@ const totalCount = ref(0);
 const showSearch = ref(false);
 const pageIndex = ref(0);
 const pageSize = ref(10);
+const allUsers = ref<UserWithRole[]>([]);
 const userDisplayNameMap = ref<Record<number, string>>({});
 const isInsideSales = computed(() => isInsideSalesUser(authStore.user));
 
@@ -64,7 +66,7 @@ interface SearchForm {
   contactName: string;
   phone: string;
   weixin: string;
-  ownerUserName: string;
+  ownerUserId: string;
   province: string;
   city: string;
   area: string;
@@ -76,7 +78,7 @@ const createEmptySearchForm = (): SearchForm => {
     contactName: "",
     phone: "",
     weixin: "",
-    ownerUserName: "",
+    ownerUserId: "all",
     province: "",
     city: "",
     area: "",
@@ -168,17 +170,28 @@ const renderDropUser = (customer: Customer) => {
   return "-";
 }
 
-const fetchUserDisplayNameMap = async () => {
+const getUserDisplayName = (user: Pick<UserWithRole, "id" | "nickname" | "username">) => {
+  return (user.nickname || user.username || "").trim() || `用户 #${user.id}`;
+}
+
+const ownerFilterOptions = computed(() =>
+  allUsers.value.map((user) => ({
+    value: String(user.id),
+    label: getUserDisplayName(user),
+  })),
+);
+
+const loadUserOptions = async () => {
   try {
     const users = await listUsers();
+    allUsers.value = users;
     userDisplayNameMap.value = Object.fromEntries(
       users.map((user) => {
-        const displayName =
-          (user.nickname || user.username || "").trim() || `用户 #${user.id}`;
-        return [user.id, displayName];
+        return [user.id, getUserDisplayName(user)];
       }),
     );
   } catch {
+    allUsers.value = [];
     userDisplayNameMap.value = {};
   }
 }
@@ -239,6 +252,12 @@ const normalizeRegionCode = (value: string): string | undefined => {
   return value;
 }
 
+const normalizeOwnerUserId = (value: string): number | undefined => {
+  if (!value || value === "all") return undefined;
+  const userId = Number(value);
+  return Number.isFinite(userId) && userId > 0 ? userId : undefined;
+}
+
 const buildListParams = () => {
   return {
     page: pageIndex.value + 1,
@@ -247,7 +266,7 @@ const buildListParams = () => {
     contactName: activeSearchForm.value.contactName || undefined,
     phone: activeSearchForm.value.phone || undefined,
     weixin: activeSearchForm.value.weixin || undefined,
-    ownerUserName: activeSearchForm.value.ownerUserName || undefined,
+    ownerUserId: normalizeOwnerUserId(activeSearchForm.value.ownerUserId),
     province: normalizeRegionCode(activeSearchForm.value.province),
     city: normalizeRegionCode(activeSearchForm.value.city),
     area: normalizeRegionCode(activeSearchForm.value.area),
@@ -414,11 +433,11 @@ const handleSubmit = async (payload: CustomerFormPayload) => {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchUserDisplayNameMap(), fetchCustomers()]);
+  await Promise.all([loadUserOptions(), fetchCustomers()]);
 });
 onActivated(async () => {
   if (Object.keys(userDisplayNameMap.value).length === 0) {
-    await fetchUserDisplayNameMap();
+    await loadUserOptions();
   }
   await fetchCustomers();
 });
@@ -471,13 +490,25 @@ onActivated(async () => {
           </div>
           <div class="flex items-center gap-2">
             <label class="text-sm text-muted-foreground whitespace-nowrap"
-              >负责人</label
+              >跟进人</label
             >
-            <Input
-              v-model="searchForm.ownerUserName"
-              placeholder="输入负责人"
-              class="h-9 w-40"
-            />
+            <Select v-model="searchForm.ownerUserId">
+              <SelectTrigger class="h-9 w-40">
+                <SelectValue placeholder="全部跟进人" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all">全部跟进人</SelectItem>
+                  <SelectItem
+                    v-for="user in ownerFilterOptions"
+                    :key="user.value"
+                    :value="user.value"
+                  >
+                    {{ user.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
           <div class="flex items-center gap-2">
             <label class="text-sm text-muted-foreground whitespace-nowrap"

@@ -109,6 +109,7 @@ func NewCustomerHandler(
 // @Param       contactName query string false "联系人"
 // @Param       phone query string false "手机号"
 // @Param       weixin query string false "微信"
+// @Param       ownerUserId query int false "负责人ID"
 // @Param       ownerUserName query string false "负责人"
 // @Param       province query int false "省编码"
 // @Param       city query int false "市编码"
@@ -129,6 +130,7 @@ func (h *CustomerHandler) List(c *gin.Context) {
 // @Produce     json
 // @Security    BearerAuth
 // @Param       ownershipScope query string false "查看范围（全部/我的/下属/销售）"
+// @Param       ownerUserId query int false "负责人ID"
 // @Param       keyword query string false "关键词"
 // @Param       page query int false "页码，从1开始"
 // @Param       pageSize query int false "每页条数"
@@ -281,6 +283,7 @@ func (h *CustomerHandler) listByCategory(c *gin.Context, category string) {
 		ContactName:    strings.TrimSpace(c.Query("contactName")),
 		Phone:          strings.TrimSpace(c.Query("phone")),
 		Weixin:         strings.TrimSpace(c.Query("weixin")),
+		OwnerUserID:    parseInt64Query(c.Query("ownerUserId")),
 		OwnerUserName:  strings.TrimSpace(c.Query("ownerUserName")),
 		Province:       parseCodeQuery(c.Query("province")),
 		City:           parseCodeQuery(c.Query("city")),
@@ -324,6 +327,18 @@ func parseCodeQuery(raw string) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
+		return 0
+	}
+	return parsed
+}
+
+func parseInt64Query(raw string) int64 {
+	value := strings.TrimSpace(raw)
+	if value == "" || value == "all" {
+		return 0
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed <= 0 {
 		return 0
 	}
 	return parsed

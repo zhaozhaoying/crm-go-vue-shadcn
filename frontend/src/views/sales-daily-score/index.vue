@@ -66,6 +66,25 @@ const formatDuration = (seconds: number) => {
   return `${remain}秒`
 }
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "-"
+  try {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return "-"
+    }
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    const hours = String(date.getHours()).padStart(2, "0")
+    const minutes = String(date.getMinutes()).padStart(2, "0")
+    const seconds = String(date.getSeconds()).padStart(2, "0")
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+  } catch {
+    return "-"
+  }
+}
+
 const exportRankings = () => {
   if (items.value.length === 0) {
     toast.error("暂无可导出数据")
@@ -86,6 +105,7 @@ const exportRankings = () => {
       "通话时长",
       "拜访数",
       "新增客户数",
+      "更新时间",
     ],
     ...items.value.map((item) => [
       activeScoreDate.value,
@@ -100,6 +120,7 @@ const exportRankings = () => {
       formatDuration(item.callDurationSecond),
       String(item.visitCount),
       String(item.newCustomerCount),
+      formatDateTime(item.updatedAt),
     ]),
   ]
 
@@ -232,6 +253,7 @@ onBeforeUnmount(() => {
                   <TableHead class="w-32 whitespace-nowrap">通话时长</TableHead>
                   <TableHead class="w-20 whitespace-nowrap">拜访数</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">新增客户数</TableHead>
+                  <TableHead class="w-44 whitespace-nowrap">更新时间</TableHead>
                   <TableHead
                     class="sticky right-0 z-30 w-[80px] min-w-[80px] bg-muted/95 text-center border-l border-border before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border">
                     操作</TableHead>
@@ -261,6 +283,9 @@ onBeforeUnmount(() => {
                   <TableCell>{{ formatDuration(item.callDurationSecond) }}</TableCell>
                   <TableCell>{{ item.visitCount }}</TableCell>
                   <TableCell>{{ item.newCustomerCount }}</TableCell>
+                  <TableCell class="tabular-nums whitespace-nowrap text-muted-foreground">
+                    {{ formatDateTime(item.updatedAt) }}
+                  </TableCell>
                   <TableCell
                     class="sticky right-0 z-10 w-[80px] min-w-[80px] border-l border-border bg-background text-center before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border">
                     <div class="flex justify-end">
@@ -270,7 +295,7 @@ onBeforeUnmount(() => {
                     </div>
                   </TableCell>
                 </TableRow>
-                <EmptyTablePlaceholder v-if="items.length === 0" :colspan="12" text="暂无每日排名数据" />
+                <EmptyTablePlaceholder v-if="items.length === 0" :colspan="13" text="暂无每日排名数据" />
               </TableBody>
             </Table>
           </div>

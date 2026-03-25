@@ -67,12 +67,37 @@ const formatDateTime = (value?: number) => {
   })
 }
 
+const formatDateTimeParts = (value?: number) => {
+  const formatted = formatDateTime(value)
+  if (formatted === "-") {
+    return { date: "-", time: "" }
+  }
+  const [date = "-", time = ""] = formatted.split(" ")
+  return { date, time }
+}
+
 const formatDuration = (seconds?: number) => {
   const safe = Math.max(0, Math.floor(Number(seconds) || 0))
   const minutes = Math.floor(safe / 60)
   const remain = safe % 60
   if (minutes > 0) return `${minutes}分${remain}秒`
   return `${remain}秒`
+}
+
+const normalizeDisplayText = (value?: string | null) => {
+  const trimmed = String(value ?? "").trim()
+  if (!trimmed) return "-"
+  const lowered = trimmed.toLowerCase()
+  if (lowered === "null" || lowered === "undefined") return "-"
+  return trimmed
+}
+
+const pickDisplayText = (...values: Array<string | null | undefined>) => {
+  for (const value of values) {
+    const normalized = normalizeDisplayText(value)
+    if (normalized !== "-") return normalized
+  }
+  return "-"
 }
 
 const normalizeDuration = (value: string) => {
@@ -252,7 +277,7 @@ onBeforeUnmount(() => {
       </CardHeader>
 
       <CardContent class="pt-4">
-        <div class="overflow-hidden rounded-lg border border-border/60 bg-background">
+        <div class="overflow-hidden rounded-lg bg-background">
           <div v-if="loading" class="flex items-center justify-center py-24">
             <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
@@ -262,62 +287,103 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-else class="overflow-x-auto">
-            <Table class="w-max min-w-full">
+            <Table class="w-full min-w-[920px] table-fixed">
               <TableHeader class="sticky top-0 z-20 bg-muted/40">
                 <TableRow>
-                  <TableHead class="text-center">坐席信息</TableHead>
-                  <TableHead class="text-center">主叫 / 被叫</TableHead>
-                  <TableHead class="text-center">录音</TableHead>
-                  <TableHead class="text-center">线路 / 接口</TableHead>
-                  <TableHead class="text-center">开始时间</TableHead>
+                  <TableHead class="w-[190px] text-center">坐席信息</TableHead>
+                  <TableHead class="w-[340px] text-center">主叫 / 被叫</TableHead>
+                  <TableHead class="w-[300px] text-center">录音</TableHead>
+                  <TableHead class="w-[190px] text-center">开始时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow v-for="record in items" :key="record.id" class="group hover:bg-muted/30 transition-colors">
-                   <TableCell class="align-top text-center">
-                    <div class="space-y-1">
-                      <div class="font-medium">{{ record.realName || record.mobile || "-" }}</div>
-                      <div class="text-sm text-muted-foreground">{{ record.mobile || "-" }}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell class="align-top text-center">
-                    <div class="space-y-1">
-                      <div class="flex items-center gap-2 text-sm">
-                        <span>{{ record.telA || record.mobile || "-" }}/{{ record.callerAttr || "-" }}/
-                           <Badge variant="secondary">
-                          {{ record.finishStatusName || `结果 ${record.finishStatus}` }}
-                        </Badge>
-                        </span>
+                <TableRow
+                  v-for="record in items"
+                  :key="record.id"
+                  class="group hover:bg-muted/30 transition-colors"
+                >
+                  <TableCell class="align-middle py-4">
+                    <div class="mx-auto flex w-[146px] flex-col rounded-2xl bg-muted/[0.14] px-4 py-3 text-left">
+                      <div class="truncate text-sm font-semibold text-foreground">
+                        {{ pickDisplayText(record.realName, record.mobile) }}
                       </div>
-                      <div class="text-sm">{{ record.telB || record.phone || "-" }}/{{ record.calleeAttr || "-" }}/
-                        <Badge variant="outline" class="bg-background">
-                          {{ record.callStatusName || `状态 ${record.callStatus}` }}
-                        </Badge></div>
-                    </div>
-                  </TableCell>
-                  <TableCell class="align-top text-center">
-                    <div class="space-y-2 flex flex-col items-center">
-                      {{ formatDuration(record.duration) }}
-                      <audio v-if="record.preRecordUrl"  class="h-10 w-[240px]" controls preload="none"
-                        :src="record.preRecordUrl" />
-                    </div>
-                  </TableCell>
-                  <TableCell class="align-top text-center">
-                    <div class="space-y-1">
-                      <div class="text-sm">{{ record.lineName || "-" }}</div>
-                      <div class="text-xs text-muted-foreground">
-                        {{ record.interfaceName || "-" }}<span v-if="record.interfaceId"> / {{ record.interfaceId
-                          }}</span>
+                      <div class="mt-1 truncate text-xs text-muted-foreground tabular-nums">
+                        {{ pickDisplayText(record.mobile) }}
                       </div>
                     </div>
                   </TableCell>
 
-                  <TableCell class="align-top text-center text-xs text-muted-foreground">
-                    {{ formatDateTime(record.startTime || record.createTime) }}
+                  <TableCell class="align-middle py-4">
+                    <div class="mx-auto flex w-[312px] flex-col gap-2 text-sm">
+                      <div class="grid grid-cols-[42px_102px_minmax(0,1fr)_auto] items-center gap-2 rounded-2xl bg-muted/[0.12] px-3 py-2">
+                        <span class="inline-flex items-center justify-center rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                          主叫
+                        </span>
+                        <span class="truncate font-medium tabular-nums text-foreground">
+                          {{ pickDisplayText(record.telA, record.mobile) }}
+                        </span>
+                        <span class="truncate text-muted-foreground">
+                          {{ pickDisplayText(record.callerAttr) }}
+                        </span>
+                        <Badge variant="secondary" class="justify-self-start whitespace-nowrap border-transparent px-2.5">
+                          {{
+                            pickDisplayText(record.finishStatusName) !== "-"
+                              ? record.finishStatusName
+                              : `结果 ${record.finishStatus}`
+                          }}
+                        </Badge>
+                      </div>
+
+                      <div class="grid grid-cols-[42px_102px_minmax(0,1fr)_auto] items-center gap-2 rounded-2xl bg-muted/[0.08] px-3 py-2">
+                        <span class="inline-flex items-center justify-center rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                          被叫
+                        </span>
+                        <span class="truncate font-medium tabular-nums text-foreground">
+                          {{ pickDisplayText(record.telB, record.phone) }}
+                        </span>
+                        <span class="truncate text-muted-foreground">
+                          {{ pickDisplayText(record.calleeAttr) }}
+                        </span>
+                        <Badge variant="outline" class="justify-self-start whitespace-nowrap border-transparent bg-background/90 px-2.5">
+                          {{
+                            pickDisplayText(record.callStatusName) !== "-"
+                              ? record.callStatusName
+                              : `状态 ${record.callStatus}`
+                          }}
+                        </Badge>
+                      </div>
+                    </div>
+                  </TableCell>
+
+                  <TableCell class="align-middle py-4">
+                    <div class="mx-auto flex w-[272px] flex-col items-center gap-2 rounded-2xl bg-muted/[0.14] px-4 py-3">
+                      <div class="min-h-6 text-sm font-semibold text-foreground tabular-nums">
+                        {{ formatDuration(record.duration) }}
+                      </div>
+                      <audio
+                        v-if="record.preRecordUrl"
+                        class="h-10 w-full shrink-0"
+                        controls
+                        preload="none"
+                        :src="record.preRecordUrl"
+                      />
+                      <span v-else class="text-sm text-muted-foreground">暂无录音</span>
+                    </div>
+                  </TableCell>
+
+                  <TableCell class="align-middle py-4">
+                    <div class="mx-auto flex w-[156px] flex-col items-center rounded-2xl bg-muted/[0.14] px-3 py-3 text-center">
+                      <div class="text-sm font-medium text-foreground tabular-nums whitespace-nowrap">
+                        {{ formatDateTimeParts(record.startTime || record.createTime).date }}
+                      </div>
+                      <div class="mt-1 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                        {{ formatDateTimeParts(record.startTime || record.createTime).time || "--:--:--" }}
+                      </div>
+                    </div>
                   </TableCell>
                 </TableRow>
 
-                <EmptyTablePlaceholder v-if="items.length === 0" :colspan="9" text="暂无通话录音数据" />
+                <EmptyTablePlaceholder v-if="items.length === 0" :colspan="4" text="暂无通话录音数据" />
               </TableBody>
             </Table>
           </div>

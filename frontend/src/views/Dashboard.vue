@@ -193,7 +193,7 @@ const showSalesAdminOverview = computed(
   () => (isAdminUser(authStore.user) || isSalesRole.value) && !!salesAdminOverview.value,
 )
 const showSalesDailyPersonalOverview = computed(
-  () => isSalesRole.value && !!salesDailyPersonalOverview.value,
+  () => !!salesDailyPersonalOverview.value,
 )
 const showDailyCallSummary = computed(
   () => isAdminUser(authStore.user) && !!dailyCallSummary.value,
@@ -374,9 +374,15 @@ const salesDailyPersonalBanner = computed(() => {
   if (!data) return null
   const targetScore = 80
   const scoreGap = Math.max(0, targetScore - Number(data.totalScore || 0))
+  const firstGap = Math.max(0, Number(data.gapFromFirst || 0))
   const scoreText = data.hasData ? `当前 ${data.totalScore} 分` : "当日积分待生成"
   const rankText =
     data.rank > 0 ? `部门第 ${data.rank} 名` : "部门排名待生成"
+  const firstGapText = data.hasData
+    ? firstGap > 0
+      ? `还差 ${firstGap} 分`
+      : "已是第一名"
+    : "等待今日积分生成"
   const gapText = data.hasData
     ? scoreGap > 0
       ? `距 80 分还差 ${scoreGap} 分`
@@ -398,6 +404,7 @@ const salesDailyPersonalBanner = computed(() => {
   return {
     scoreText,
     rankText,
+    firstGapText,
     gapText,
     breakdownText,
     totalUsersText: data.totalUsers > 0 ? `本部门共 ${data.totalUsers} 人参与排名` : "暂无排名数据",
@@ -653,15 +660,12 @@ onBeforeUnmount(() => {
             <p class="text-sm font-semibold text-[#171717]">{{ salesDailyPersonalBanner.scoreText }}</p>
           </div>
           <div class="rounded-full border border-[#eadfca] bg-white/85 px-3 py-2 shadow-sm">
-            <p class="text-[11px] text-[#8b816b]">部门排名</p>
-            <p class="text-sm font-semibold text-[#171717]">{{ salesDailyPersonalBanner.rankText }}</p>
+            <p class="text-[11px] text-[#8b816b]">距离第一名</p>
+            <p class="text-sm font-semibold text-[#171717]">{{ salesDailyPersonalBanner.firstGapText }}</p>
           </div>
           <div class="rounded-full border border-[#eadfca] bg-white/85 px-3 py-2 shadow-sm">
             <p class="text-[11px] text-[#8b816b]">距离 80 分</p>
             <p class="text-sm font-semibold text-[#171717]">{{ salesDailyPersonalBanner.gapText }}</p>
-          </div>
-          <div class="rounded-full border border-transparent bg-[#fff3d7] px-3 py-2 text-[11px] text-[#8b6f2a]">
-            {{ salesDailyPersonalBanner.totalUsersText }}
           </div>
         </div>
       </div>

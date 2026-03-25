@@ -31,8 +31,11 @@ type CustomerRepository interface {
 	ListEnabledUserIDsByRoleNames(ctx context.Context, roleNames []string) ([]int64, error)
 	ListDirectSubordinateUserIDsByRoleNames(ctx context.Context, parentIDs []int64, roleNames []string) ([]int64, error)
 	GetUserRoleName(ctx context.Context, userID int64) (string, error)
+	GetUserDisplayName(ctx context.Context, userID int64) (string, error)
 	GetParentUserID(ctx context.Context, userID int64) (int64, error)
 	ListAutoAssignRankedOwnerScores(ctx context.Context, referenceDate string, userIDs []int64) ([]model.SalesDailyScore, error)
+	ListRecentContractExemptOwnerUserIDs(ctx context.Context, since time.Time, userIDs []int64) ([]int64, error)
+	FindEnabledUserIDByNickname(ctx context.Context, nickname string) (int64, error)
 	FindLatestAutoAssignOwnerUserID(ctx context.Context, ownerUserIDs []int64, since time.Time) (*int64, error)
 	ResolveDepartmentAnchorUserID(ctx context.Context, userID int64) (int64, error)
 	GetActiveBlockedUntilByDepartmentAnchor(ctx context.Context, customerID, departmentAnchorUserID int64, now time.Time) (*time.Time, error)
@@ -657,6 +660,49 @@ func (r *gormCustomerRepository) GetUserRoleName(ctx context.Context, userID int
 	return roleName, nil
 }
 
+func (r *gormCustomerRepository) GetUserDisplayName(ctx context.Context, userID int64) (string, error) {
+	if userID <= 0 {
+		return "", nil
+	}
+
+	var displayName string
+	err := r.db.WithContext(ctx).
+		Table("users").
+		Select("COALESCE(NULLIF(nickname, ''), NULLIF(username, ''), '')").
+		Where("id = ?", userID).
+		Limit(1).
+		Scan(&displayName).Error
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(displayName), nil
+}
+
+func (r *gormCustomerRepository) FindEnabledUserIDByNickname(ctx context.Context, nickname string) (int64, error) {
+	trimmed := strings.TrimSpace(nickname)
+	if trimmed == "" {
+		return 0, nil
+	}
+
+	type userRow struct {
+		ID int64 `gorm:"column:id"`
+	}
+
+	var row userRow
+	err := r.db.WithContext(ctx).
+		Table("users").
+		Select("id").
+		Where("nickname = ?", trimmed).
+		Where("status = ?", model.UserStatusEnabled).
+		Order("id ASC").
+		Limit(1).
+		Scan(&row).Error
+	if err != nil {
+		return 0, err
+	}
+	return row.ID, nil
+}
+
 func (r *gormCustomerRepository) ResolveDepartmentAnchorUserID(ctx context.Context, userID int64) (int64, error) {
 	if userID <= 0 {
 		return 0, nil
@@ -758,10 +804,10 @@ func (r *gormCustomerRepository) ListAutoAssignRankedOwnerScores(ctx context.Con
 	rankedScores := make([]model.SalesDailyScore, 0, len(cleanUserIDs))
 	err = r.db.WithContext(ctx).
 		Table("sales_daily_scores").
-		Select("user_id", "total_score").
+		Select("user_id", "total_score", "score_reached_at").
 		Where("score_date = ?", latest.ScoreDate).
 		Where("user_id IN ?", cleanUserIDs).
-		Order("total_score DESC, user_id ASC").
+		Order(salesDailyScoreOrderClause("")).
 		Scan(&rankedScores).Error
 	if err != nil {
 		return nil, err
@@ -801,6 +847,42 @@ func (r *gormCustomerRepository) FindLatestAutoAssignOwnerUserID(ctx context.Con
 	}
 	ownerUserID := row.ToOwnerUserID.Int64
 	return &ownerUserID, nil
+}
+
+func (r *gormCustomerRepository) ListRecentContractExemptOwnerUserIDs(ctx context.Context, since time.Time, userIDs []int64) ([]int64, error) {
+	cleanUserIDs := uniquePositiveInt64(userIDs)
+	if len(cleanUserIDs) == 0 {
+		return []int64{}, nil
+	}
+
+	type exemptOwnerRow struct {
+		UserID           int64     `gorm:"column:user_id"`
+		LatestContractAt time.Time `gorm:"column:latest_contract_at"`
+	}
+
+	rows := make([]exemptOwnerRow, 0, len(cleanUserIDs))
+	query := r.db.WithContext(ctx).
+		Table("contracts").
+		Select("user_id, MAX(created_at) AS latest_contract_at").
+		Where("user_id IN ?", cleanUserIDs)
+	if !since.IsZero() {
+		query = query.Where("created_at >= ?", since)
+	}
+	if err := query.
+		Group("user_id").
+		Order("latest_contract_at DESC, user_id ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		if row.UserID <= 0 {
+			continue
+		}
+		result = append(result, row.UserID)
+	}
+	return result, nil
 }
 
 func (r *gormCustomerRepository) GetActiveBlockedUntilByDepartmentAnchor(ctx context.Context, customerID, departmentAnchorUserID int64, now time.Time) (*time.Time, error) {
@@ -979,8 +1061,20 @@ func buildCustomerListWhere(filter model.CustomerListFilter) ([]string, []interf
 		where = append(where, "COALESCE(c.weixin, '') LIKE ?")
 		args = append(args, "%"+filter.Weixin+"%")
 	}
+	if filter.OwnerUserID > 0 {
+		if filter.Category == "pool" {
+			where = append(where, "du.id = ?")
+		} else {
+			where = append(where, "c.owner_user_id = ?")
+		}
+		args = append(args, filter.OwnerUserID)
+	}
 	if filter.OwnerUserName != "" {
-		where = append(where, "COALESCE(u.nickname, '') LIKE ?")
+		if filter.Category == "pool" {
+			where = append(where, "COALESCE(NULLIF(du.nickname, ''), NULLIF(du.username, ''), '') LIKE ?")
+		} else {
+			where = append(where, "COALESCE(u.nickname, '') LIKE ?")
+		}
 		args = append(args, "%"+filter.OwnerUserName+"%")
 	}
 	if filter.Province > 0 {

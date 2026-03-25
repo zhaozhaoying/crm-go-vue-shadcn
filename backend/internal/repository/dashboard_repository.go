@@ -241,7 +241,7 @@ func (r *gormDashboardRepository) GetOverview(ctx context.Context, now time.Time
 	}
 
 	var salesDailyPersonalOverview *model.DashboardSalesDailyPersonalOverview
-	if isDashboardSalesDailyScoreRole(effectiveRole) && !isDashboardGlobalRole(effectiveRole) {
+	if actorUserID > 0 {
 		salesDailyPersonalOverview, err = r.getSalesDailyPersonalOverview(ctx, scoreDate, actorUserID, effectiveRole)
 		if err != nil {
 			return model.DashboardOverview{}, err
@@ -360,6 +360,9 @@ func (r *gormDashboardRepository) getSalesDailyPersonalOverview(
 		return nil, err
 	}
 	if len(scopedUserIDs) == 0 {
+		if !isDashboardSalesDailyScoreRole(actorRole) {
+			return nil, nil
+		}
 		return &model.DashboardSalesDailyPersonalOverview{
 			ScoreDate:  strings.TrimSpace(scoreDate),
 			TotalUsers: 0,
@@ -396,17 +399,25 @@ func (r *gormDashboardRepository) getSalesDailyPersonalOverview(
 		TotalUsers: len(rows),
 		HasData:    false,
 	}
+	topScore := 0
+	if len(rows) > 0 {
+		topScore = rows[0].TotalScore
+	}
 	for idx, row := range rows {
 		if row.UserID != actorUserID {
 			continue
 		}
 		overview.TotalScore = row.TotalScore
 		overview.Rank = idx + 1
+		overview.GapFromFirst = maxDashboardScoreGap(topScore, row.TotalScore)
 		overview.CallScore = row.CallScore
 		overview.VisitScore = row.VisitScore
 		overview.NewCustomerScore = row.NewCustomerScore
 		overview.HasData = true
 		break
+	}
+	if !overview.HasData && !isDashboardSalesDailyScoreRole(actorRole) {
+		return nil, nil
 	}
 	return overview, nil
 }
@@ -1123,7 +1134,7 @@ func (r *gormDashboardRepository) listSalesCustomerRanksBetween(ctx context.Cont
 	if len(items) > limit {
 		items = items[:limit]
 	}
-	return items, nil
+	return applyDashboardRankingGapFromTop(items), nil
 }
 
 func (r *gormDashboardRepository) listSalesFollowRecordRanksBetween(ctx context.Context, start, end time.Time, limit int, scopedUserIDs []int64, showAll bool) ([]model.DashboardRankingItem, error) {
@@ -1161,7 +1172,33 @@ func (r *gormDashboardRepository) listSalesFollowRecordRanksBetween(ctx context.
 			Count:    row.Count,
 		})
 	}
-	return items, nil
+	return applyDashboardRankingGapFromTop(items), nil
+}
+
+func applyDashboardRankingGapFromTop(items []model.DashboardRankingItem) []model.DashboardRankingItem {
+	if len(items) == 0 {
+		return items
+	}
+
+	topCount := items[0].Count
+	for idx := range items {
+		items[idx].GapFromTop = maxDashboardCountGap(topCount, items[idx].Count)
+	}
+	return items
+}
+
+func maxDashboardScoreGap(topScore, currentScore int) int {
+	if topScore <= currentScore {
+		return 0
+	}
+	return topScore - currentScore
+}
+
+func maxDashboardCountGap(topCount, currentCount int64) int64 {
+	if topCount <= currentCount {
+		return 0
+	}
+	return topCount - currentCount
 }
 
 func (r *gormDashboardRepository) listMonthlyRevenue(ctx context.Context, currentMonthStart time.Time, months int, scopedUserIDs []int64, showAll bool) ([]model.DashboardMonthlyRevenue, error) {

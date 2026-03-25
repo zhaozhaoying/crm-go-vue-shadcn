@@ -32,13 +32,13 @@ func (h *SalesDailyScoreHandler) ListDailyRankings(c *gin.Context) {
 		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
-	actorRole := currentUserRole(c)
-	if !canViewSalesDailyScores(actorRole) {
-		Error(c, http.StatusForbidden, 91102, "当前角色无权查看每日排名")
-		return
-	}
 
-	result, err := h.service.ListDailyRankings(c.Request.Context(), strings.TrimSpace(c.Query("scoreDate")), actorUserID, actorRole)
+	result, err := h.service.ListDailyRankings(
+		c.Request.Context(),
+		strings.TrimSpace(c.Query("scoreDate")),
+		actorUserID,
+		currentUserRole(c),
+	)
 	if err != nil {
 		ErrorWithDetail(c, http.StatusInternalServerError, 91103, "加载每日排名失败", err)
 		return
@@ -61,11 +61,6 @@ func (h *SalesDailyScoreHandler) GetDailyScoreDetail(c *gin.Context) {
 		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
 		return
 	}
-	actorRole := currentUserRole(c)
-	if !canViewSalesDailyScores(actorRole) {
-		Error(c, http.StatusForbidden, 91104, "当前角色无权查看积分详情")
-		return
-	}
 
 	userID, err := strconv.ParseInt(c.Param("userId"), 10, 64)
 	if err != nil || userID <= 0 {
@@ -73,7 +68,13 @@ func (h *SalesDailyScoreHandler) GetDailyScoreDetail(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.GetDailyScoreDetail(c.Request.Context(), strings.TrimSpace(c.Query("scoreDate")), userID, actorUserID, actorRole)
+	result, err := h.service.GetDailyScoreDetail(
+		c.Request.Context(),
+		strings.TrimSpace(c.Query("scoreDate")),
+		userID,
+		actorUserID,
+		currentUserRole(c),
+	)
 	if err != nil {
 		if errors.Is(err, service.ErrSalesDailyScoreNotFound) {
 			Error(c, http.StatusNotFound, 91106, "未找到对应日期的积分详情")
@@ -83,18 +84,4 @@ func (h *SalesDailyScoreHandler) GetDailyScoreDetail(c *gin.Context) {
 		return
 	}
 	Success(c, result)
-}
-
-func canViewSalesDailyScores(role string) bool {
-	switch strings.TrimSpace(strings.ToLower(role)) {
-	case "admin", "管理员",
-		"finance", "finance_manager", "财务", "财务经理",
-		"sales_director", "销售总监",
-		"sales_manager", "销售经理",
-		"sales_staff", "销售员工",
-		"sales_outside", "sale_outside", "outside销售":
-		return true
-	default:
-		return false
-	}
 }

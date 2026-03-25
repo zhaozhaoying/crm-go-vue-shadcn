@@ -19,9 +19,10 @@ type DashboardMonthlyContractCount struct {
 }
 
 type DashboardRankingItem struct {
-	UserID   int64  `json:"userId"`
-	UserName string `json:"userName"`
-	Count    int64  `json:"count"`
+	UserID     int64  `json:"userId"`
+	UserName   string `json:"userName"`
+	Count      int64  `json:"count"`
+	GapFromTop int64  `json:"gapFromTop"`
 }
 
 type DashboardSalesAdminOverview struct {
@@ -38,6 +39,7 @@ type DashboardSalesDailyPersonalOverview struct {
 	TotalScore       int    `json:"totalScore"`
 	Rank             int    `json:"rank"`
 	TotalUsers       int    `json:"totalUsers"`
+	GapFromFirst     int    `json:"gapFromFirst"`
 	CallScore        int    `json:"callScore"`
 	VisitScore       int    `json:"visitScore"`
 	NewCustomerScore int    `json:"newCustomerScore"`

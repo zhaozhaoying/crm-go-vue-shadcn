@@ -18,6 +18,7 @@ export interface DashboardRankingItem {
   userId: number
   userName: string
   count: number
+  gapFromTop: number
 }
 
 export interface DashboardSalesAdminOverview {
@@ -34,6 +35,7 @@ export interface DashboardSalesDailyPersonalOverview {
   totalScore: number
   rank: number
   totalUsers: number
+  gapFromFirst: number
   callScore: number
   visitScore: number
   newCustomerScore: number

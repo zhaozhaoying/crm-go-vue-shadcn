@@ -52,13 +52,25 @@ func (s *salesDailyScoreService) SyncDailyScores(
 	if err != nil {
 		return SyncSalesDailyScoreResult{}, err
 	}
+	callEventsByUser, err := s.repo.ListDailyCallEventsByUser(ctx, startUTC, endUTC)
+	if err != nil {
+		return SyncSalesDailyScoreResult{}, err
+	}
 
 	visitCounts, err := s.repo.CountVisitByUserOnDate(ctx, normalizedDate)
 	if err != nil {
 		return SyncSalesDailyScoreResult{}, err
 	}
+	visitEventTimesByUser, err := s.repo.ListVisitEventTimesByUserOnDate(ctx, normalizedDate)
+	if err != nil {
+		return SyncSalesDailyScoreResult{}, err
+	}
 
 	newCustomerCounts, err := s.repo.CountNewCustomersByUserBetween(ctx, startUTC, endUTC)
+	if err != nil {
+		return SyncSalesDailyScoreResult{}, err
+	}
+	newCustomerEventTimesByUser, err := s.repo.ListNewCustomerEventTimesByUserBetween(ctx, startUTC, endUTC)
 	if err != nil {
 		return SyncSalesDailyScoreResult{}, err
 	}
@@ -80,6 +92,12 @@ func (s *salesDailyScoreService) SyncDailyScores(
 			visitCount,
 			newCustomerCount,
 		)
+		scoreReachedAt := scoring.CalculateDailySalesScoreReachedAt(
+			breakdown,
+			callEventsByUser[user.UserID],
+			visitEventTimesByUser[user.UserID],
+			newCustomerEventTimesByUser[user.UserID],
+		)
 		if breakdown.TotalScore > 0 {
 			scoredSales++
 		}
@@ -100,6 +118,7 @@ func (s *salesDailyScoreService) SyncDailyScores(
 			NewCustomerCount:    newCustomerCount,
 			NewCustomerScore:    breakdown.NewCustomerScore,
 			TotalScore:          breakdown.TotalScore,
+			ScoreReachedAt:      scoreReachedAt,
 		})
 	}
 

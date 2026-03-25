@@ -80,6 +80,7 @@ import SalesFollowUpDialog from "@/components/custom/SalesFollowUpDialog.vue";
 import OperationFollowUpDialog from "@/components/custom/OperationFollowUpDialog.vue";
 import type { Customer, CustomerFormPayload } from "@/types/customer";
 import type { Contract, ContractFormPayload } from "@/types/contract";
+import type { UserWithRole } from "@/types/user";
 
 const authStore = useAuthStore();
 
@@ -141,6 +142,7 @@ interface SearchForm {
   contactName: string;
   phone: string;
   weixin: string;
+  ownerUserId: string;
   ownerUserName: string;
   province: string;
   city: string;
@@ -153,6 +155,7 @@ const createEmptySearchForm = (): SearchForm => {
     contactName: "",
     phone: "",
     weixin: "",
+    ownerUserId: "all",
     ownerUserName: "",
     province: "",
     city: "",
@@ -162,6 +165,16 @@ const createEmptySearchForm = (): SearchForm => {
 
 const searchForm = ref<SearchForm>(createEmptySearchForm());
 const activeSearchForm = ref<SearchForm>(createEmptySearchForm());
+const allUserOptions = ref<UserWithRole[]>([]);
+
+const getUserDisplayName = (user: Pick<UserWithRole, "id" | "nickname" | "username">) =>
+  (user.nickname || user.username || "").trim() || `用户 #${user.id}`;
+
+const ownerFilterOptions = computed(() =>
+  [...allUserOptions.value].sort((left, right) =>
+    getUserDisplayName(left).localeCompare(getUserDisplayName(right), "zh-CN"),
+  ),
+);
 
 const dialogOpen = ref(false);
 const dialogMode = ref<"create" | "edit">("create");
@@ -426,6 +439,13 @@ const normalizeRegionCode = (value: string): string | undefined => {
   return value;
 };
 
+const normalizeOwnerUserId = (value: string): number | undefined => {
+  if (!value || value === "all") return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.floor(parsed);
+};
+
 const buildListParams = () => {
   return {
     page: pageIndex.value + 1,
@@ -435,6 +455,7 @@ const buildListParams = () => {
     contactName: activeSearchForm.value.contactName || undefined,
     phone: activeSearchForm.value.phone || undefined,
     weixin: activeSearchForm.value.weixin || undefined,
+    ownerUserId: normalizeOwnerUserId(activeSearchForm.value.ownerUserId),
     ownerUserName: activeSearchForm.value.ownerUserName || undefined,
     province: normalizeRegionCode(activeSearchForm.value.province),
     city: normalizeRegionCode(activeSearchForm.value.city),
@@ -774,18 +795,16 @@ const handleSubmit = async (payload: CustomerFormPayload) => {
   }
 };
 
-const checkSubordinates = async () => {
+const loadUserOptions = async () => {
   try {
-    const currentUserId = authStore.user?.id;
-    if (!currentUserId) {
-      hasSubordinates.value = false;
-      return;
-    }
     const users = await listUsers();
-    hasSubordinates.value = users.some(
-      (u) => u.parentId === currentUserId,
-    );
+    allUserOptions.value = Array.isArray(users) ? users : [];
+    const currentUserId = Number(authStore.user?.id || 0);
+    hasSubordinates.value =
+      currentUserId > 0 &&
+      allUserOptions.value.some((user) => Number(user.parentId || 0) === currentUserId);
   } catch {
+    allUserOptions.value = [];
     hasSubordinates.value = false;
   }
 };
@@ -793,13 +812,13 @@ const checkSubordinates = async () => {
 onMounted(async () => {
   startCountdownTimer();
   await loadDropSettings();
-  await checkSubordinates();
+  await loadUserOptions();
   fetchCustomers();
 });
 onActivated(async () => {
   startCountdownTimer();
   await loadDropSettings();
-  await checkSubordinates();
+  await loadUserOptions();
   fetchCustomers();
 });
 onDeactivated(() => {
@@ -854,6 +873,28 @@ onUnmounted(() => {
               placeholder="微信"
               class="h-9 w-40"
             />
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-muted-foreground whitespace-nowrap"
+              >负责人</label
+            >
+            <Select v-model="searchForm.ownerUserId">
+              <SelectTrigger class="h-9 w-44">
+                <SelectValue placeholder="选择负责人" />
+              </SelectTrigger>
+              <SelectContent class="max-h-72">
+                <SelectGroup>
+                  <SelectItem value="all">全部负责人</SelectItem>
+                  <SelectItem
+                    v-for="user in ownerFilterOptions"
+                    :key="user.id"
+                    :value="String(user.id)"
+                  >
+                    {{ getUserDisplayName(user) }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
           <div class="flex items-center gap-2">
             <label class="text-sm text-muted-foreground whitespace-nowrap"

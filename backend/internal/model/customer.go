@@ -119,6 +119,7 @@ type CustomerListFilter struct {
 	ContactName    string `gorm:"-"`
 	Phone          string `gorm:"-"`
 	Weixin         string `gorm:"-"`
+	OwnerUserID    int64  `gorm:"-"`
 	OwnerUserName  string `gorm:"-"`
 	Province       int    `gorm:"-"`
 	City           int    `gorm:"-"`
@@ -199,8 +200,8 @@ type CustomerTransferInput struct {
 }
 
 type CustomerBatchRankedReassignInput struct {
-	CustomerIDs     []int64 `gorm:"-"`
-	OperatorUserID  int64   `gorm:"-"`
+	CustomerIDs    []int64 `gorm:"-"`
+	OperatorUserID int64   `gorm:"-"`
 }
 
 type CustomerBatchRankedReassignItem struct {
