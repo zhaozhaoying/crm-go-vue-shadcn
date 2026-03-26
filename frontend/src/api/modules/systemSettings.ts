@@ -22,6 +22,7 @@ export interface SystemSettings {
   customerAutoDropEnabled: boolean;
   followUpDropDays: number;
   dealDropDays: number;
+  salesAssignDealDropDays: number;
   claimFreezeDays: number;
   holidayModeEnabled: boolean;
   customerLimit: number;
@@ -36,6 +37,7 @@ export interface UpdateSystemSettingsRequest {
   customerAutoDropEnabled?: boolean;
   followUpDropDays?: number;
   dealDropDays?: number;
+  salesAssignDealDropDays?: number;
   claimFreezeDays?: number;
   holidayModeEnabled?: boolean;
   customerLimit?: number;

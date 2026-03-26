@@ -74,11 +74,12 @@ func (r *CustomerAutoDropRuntime) runOnce(ctx context.Context) {
 	}
 
 	log.Printf(
-		"customer auto drop executed: evaluated=%d dropped=%d follow_timeout=%d deal_timeout=%d both=%d failures=%d skipped=%t",
+		"customer auto drop executed: evaluated=%d dropped=%d follow_timeout=%d deal_timeout=%d sales_assign_deal_timeout=%d both=%d failures=%d skipped=%t",
 		result.Evaluated,
 		result.Dropped,
 		result.FollowUpTimeoutDropped,
 		result.DealTimeoutDropped,
+		result.SalesAssignDealTimeoutDropped,
 		result.BothRulesMatchedDropped,
 		len(result.Failures),
 		result.Skipped,

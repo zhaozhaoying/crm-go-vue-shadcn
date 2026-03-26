@@ -196,6 +196,8 @@ var fieldTranslations = map[string]string{
 	"next_time":          "下次跟进时间",
 	"collecttime":        "领取时间",
 	"collect_time":       "领取时间",
+	"assigntime":         "分配时间",
+	"assign_time":        "分配时间",
 	"appointmenttime":    "约见时间",
 	"appointment_time":   "约见时间",
 	"shootingtime":       "拍摄时间",

@@ -32,6 +32,7 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 	customerAutoDropEnabled := s.getBoolSetting("customer_auto_drop_enabled", true)
 	followUpDays := s.getIntSetting("follow_up_drop_days", 30)
 	dealDays := s.getIntSetting("deal_drop_days", 90)
+	salesAssignDealDropDays := s.getIntSetting("sales_assign_deal_drop_days", 30)
 	claimFreezeDays := s.getIntSetting("claim_freeze_days", 7)
 	holidayMode := s.getBoolSetting("holiday_mode_enabled", false)
 	customerLimit := s.getIntSetting("customer_limit", 100)
@@ -53,6 +54,7 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 		CustomerAutoDropEnabled: customerAutoDropEnabled,
 		FollowUpDropDays:        followUpDays,
 		DealDropDays:            dealDays,
+		SalesAssignDealDropDays: salesAssignDealDropDays,
 		ClaimFreezeDays:         claimFreezeDays,
 		HolidayModeEnabled:      holidayMode,
 		CustomerLimit:           customerLimit,
@@ -81,6 +83,11 @@ func (s *SystemSettingService) UpdateSettings(req *model.UpdateSystemSettingsReq
 	}
 	if req.DealDropDays != nil {
 		if err := s.repo.UpsertSetting("deal_drop_days", strconv.Itoa(*req.DealDropDays), "多少天不签单自动掉库"); err != nil {
+			return err
+		}
+	}
+	if req.SalesAssignDealDropDays != nil {
+		if err := s.repo.UpsertSetting("sales_assign_deal_drop_days", strconv.Itoa(*req.SalesAssignDealDropDays), "电销分配给销售后多少天未签单自动掉库"); err != nil {
 			return err
 		}
 	}

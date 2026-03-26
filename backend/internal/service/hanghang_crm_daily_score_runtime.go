@@ -10,15 +10,16 @@ import (
 const defaultHanghangCRMDailyScoreScheduleHour = 21
 
 type HanghangCRMDailyScoreRuntime struct {
-	callStatService       HanghangCRMDailyUserCallStatService
+	callStatService        HanghangCRMDailyUserCallStatService
 	salesDailyScoreService SalesDailyScoreService
-	interval              time.Duration
-	runTimeout            time.Duration
-	scheduleHour          int
-	location              *time.Location
-	nowFunc               func() time.Time
-	runningLock           sync.Mutex
-	lastSuccessfulDate    string
+	interval               time.Duration
+	runTimeout             time.Duration
+	scheduleHour           int
+	location               *time.Location
+	nowFunc                func() time.Time
+	holidayModeFunc        func() bool
+	runningLock            sync.Mutex
+	lastSuccessfulDate     string
 }
 
 func NewHanghangCRMDailyScoreRuntime(
@@ -26,6 +27,7 @@ func NewHanghangCRMDailyScoreRuntime(
 	salesDailyScoreService SalesDailyScoreService,
 	interval time.Duration,
 	location *time.Location,
+	holidayModeFunc ...func() bool,
 ) *HanghangCRMDailyScoreRuntime {
 	if interval <= 0 {
 		interval = time.Minute
@@ -33,7 +35,7 @@ func NewHanghangCRMDailyScoreRuntime(
 	if location == nil {
 		location = time.Local
 	}
-	return &HanghangCRMDailyScoreRuntime{
+	r := &HanghangCRMDailyScoreRuntime{
 		callStatService:        callStatService,
 		salesDailyScoreService: salesDailyScoreService,
 		interval:               interval,
@@ -42,6 +44,10 @@ func NewHanghangCRMDailyScoreRuntime(
 		location:               location,
 		nowFunc:                time.Now,
 	}
+	if len(holidayModeFunc) > 0 && holidayModeFunc[0] != nil {
+		r.holidayModeFunc = holidayModeFunc[0]
+	}
+	return r
 }
 
 func (r *HanghangCRMDailyScoreRuntime) Start(ctx context.Context) {
@@ -126,6 +132,12 @@ func (r *HanghangCRMDailyScoreRuntime) shouldRunNow() bool {
 		return false
 	}
 	now := r.nowFunc().In(r.location)
+	if now.Weekday() == time.Saturday || now.Weekday() == time.Sunday {
+		return false
+	}
+	if r.holidayModeFunc != nil && r.holidayModeFunc() {
+		return false
+	}
 	if now.Hour() < r.scheduleHour {
 		return false
 	}

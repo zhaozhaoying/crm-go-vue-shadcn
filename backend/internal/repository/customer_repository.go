@@ -99,6 +99,7 @@ type customerListRow struct {
 	NextTimeUnix               sql.NullInt64 `gorm:"column:next_time_unix"`
 	FollowTimeUnix             sql.NullInt64 `gorm:"column:follow_time_unix"`
 	CollectTimeUnix            sql.NullInt64 `gorm:"column:collect_time_unix"`
+	AssignTimeUnix             sql.NullInt64 `gorm:"column:assign_time_unix"`
 	DropTimeUnix               sql.NullInt64 `gorm:"column:drop_time_unix"`
 	DropUserID                 sql.NullInt64 `gorm:"column:drop_user_id"`
 	DropUserName               string        `gorm:"column:drop_user_name"`
@@ -185,6 +186,24 @@ func customerOwnerLogContent(note string, fallback string) string {
 		return trimmed
 	}
 	return fallback
+}
+
+func assignedSalesUnix(insideSalesUserID *int64, ownerUserID int64, now time.Time) *int64 {
+	if insideSalesUserID == nil || *insideSalesUserID <= 0 || ownerUserID <= 0 {
+		return nil
+	}
+	if ownerUserID == *insideSalesUserID {
+		return nil
+	}
+	assignedAt := now.Unix()
+	return &assignedAt
+}
+
+func collectTimeUnixOrNow(current *time.Time, now time.Time) int64 {
+	if current != nil && !current.IsZero() {
+		return current.Unix()
+	}
+	return now.Unix()
 }
 
 func NewGormCustomerRepository(db *gorm.DB) CustomerRepository {
@@ -448,6 +467,7 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 			NULLIF(c.next_time, 0) AS next_time_unix,
 			NULLIF(c.follow_time, 0) AS follow_time_unix,
 			NULLIF(c.collect_time, 0) AS collect_time_unix,
+			NULLIF(c.assign_time, 0) AS assign_time_unix,
 			NULLIF(c.drop_time, 0) AS drop_time_unix,
 			` + dropUserExpr + ` AS drop_user_id,
 			COALESCE(NULLIF(du.nickname, ''), NULLIF(du.username, ''), '') AS drop_user_name,
@@ -516,6 +536,7 @@ func (r *gormCustomerRepository) List(ctx context.Context, filter model.Customer
 		item.NextTime = nullableUnixToTime(row.NextTimeUnix)
 		item.FollowTime = nullableUnixToTime(row.FollowTimeUnix)
 		item.CollectTime = nullableUnixToTime(row.CollectTimeUnix)
+		item.AssignTime = nullableUnixToTime(row.AssignTimeUnix)
 		item.DropTime = nullableUnixToTime(row.DropTimeUnix)
 		if row.DropUserID.Valid {
 			item.DropUserID = &row.DropUserID.Int64
@@ -793,6 +814,7 @@ func (r *gormCustomerRepository) ListAutoAssignRankedOwnerScores(ctx context.Con
 		Select("MAX(score_date) AS score_date").
 		Where("user_id IN ?", cleanUserIDs).
 		Where("score_date <= ?", strings.TrimSpace(referenceDate)).
+		Where("total_score > 0").
 		Scan(&latest).Error
 	if err != nil {
 		return nil, err
@@ -1205,6 +1227,7 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 		CreateUserID      int64      `gorm:"column:create_user_id"`
 		OperateUserID     int64      `gorm:"column:operate_user_id"`
 		CollectTime       *int64     `gorm:"column:collect_time"`
+		AssignTime        *int64     `gorm:"column:assign_time"`
 		NextTime          int64      `gorm:"column:next_time"`
 		CreatedAt         time.Time  `gorm:"column:created_at"`
 		UpdatedAt         time.Time  `gorm:"column:updated_at"`
@@ -1233,11 +1256,13 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 
 	now := time.Now().UTC()
 	var collectTime *int64
+	var assignTime *int64
 	nextTime := int64(0)
 	if ownerUserID != nil {
 		collectAt := now.Unix()
 		collectTime = &collectAt
 		nextTime = collectAt
+		assignTime = assignedSalesUnix(input.InsideSalesUserID, *ownerUserID, now)
 	}
 
 	row := customerCreateRow{
@@ -1261,6 +1286,7 @@ func (r *gormCustomerRepository) Create(ctx context.Context, input model.Custome
 		CreateUserID:      input.OperatorUserID,
 		OperateUserID:     input.OperatorUserID,
 		CollectTime:       collectTime,
+		AssignTime:        assignTime,
 		NextTime:          nextTime,
 		CreatedAt:         now,
 		UpdatedAt:         now,
@@ -1396,6 +1422,7 @@ func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, ownerUse
 		"owner_user_id": ownerUserID,
 		"status":        "owned",
 		"collect_time":  now.Unix(),
+		"assign_time":   nil,
 		"follow_time":   nil,
 		"next_time":     now.Unix(),
 		"drop_time":     nil,
@@ -1403,6 +1430,7 @@ func (r *gormCustomerRepository) Claim(ctx context.Context, customerID, ownerUse
 	}
 	if insideSalesUserID != nil && *insideSalesUserID > 0 {
 		updates["inside_sales_user_id"] = *insideSalesUserID
+		updates["assign_time"] = assignedSalesUnix(insideSalesUserID, ownerUserID, now)
 		if ownerUserID != *insideSalesUserID {
 			updates["converted_at"] = now
 		} else {
@@ -1473,6 +1501,11 @@ func (r *gormCustomerRepository) Convert(ctx context.Context, customerID, ownerU
 	if insideSalesUserID == nil || *insideSalesUserID <= 0 || ownerUserID != *insideSalesUserID {
 		convertedAtValue = now
 	}
+	collectTimeValue := collectTimeUnixOrNow(customer.CollectTime, now)
+	assignTimeValue := interface{}(nil)
+	if assignedAt := assignedSalesUnix(insideSalesUserID, ownerUserID, now); assignedAt != nil {
+		assignTimeValue = *assignedAt
+	}
 	if err := tx.Table("customers").
 		Where("id = ?", customerID).
 		Updates(map[string]interface{}{
@@ -1480,7 +1513,8 @@ func (r *gormCustomerRepository) Convert(ctx context.Context, customerID, ownerU
 			"inside_sales_user_id": insideSalesValue,
 			"converted_at":         convertedAtValue,
 			"status":               "owned",
-			"collect_time":         now.Unix(),
+			"collect_time":         collectTimeValue,
+			"assign_time":          assignTimeValue,
 			"follow_time":          nil,
 			"next_time":            now.Unix(),
 			"drop_time":            nil,
@@ -1549,6 +1583,7 @@ func (r *gormCustomerRepository) Release(ctx context.Context, customerID, operat
 		Updates(map[string]interface{}{
 			"owner_user_id": nil,
 			"status":        "pool",
+			"assign_time":   nil,
 			"drop_time":     now.Unix(),
 			"drop_user_id":  operatorUserID,
 			"updated_at":    now,
@@ -1598,13 +1633,27 @@ func (r *gormCustomerRepository) Transfer(ctx context.Context, input model.Custo
 	}
 
 	now := time.Now().UTC()
+	updates := map[string]interface{}{
+		"owner_user_id": input.ToOwnerUserID,
+		"status":        "owned",
+		"collect_time":  now.Unix(),
+		"next_time":     now.Unix(),
+		"follow_time":   nil,
+		"drop_time":     nil,
+		"updated_at":    now,
+	}
+	if customer.InsideSalesUserID != nil && *customer.InsideSalesUserID > 0 {
+		switch {
+		case input.ToOwnerUserID == *customer.InsideSalesUserID:
+			updates["assign_time"] = nil
+		case customer.OwnerUserID != nil && *customer.OwnerUserID == *customer.InsideSalesUserID:
+			updates["collect_time"] = collectTimeUnixOrNow(customer.CollectTime, now)
+			updates["assign_time"] = now.Unix()
+		}
+	}
 	if err := tx.Table("customers").
 		Where("id = ?", input.CustomerID).
-		Updates(map[string]interface{}{
-			"owner_user_id": input.ToOwnerUserID,
-			"status":        "owned",
-			"updated_at":    now,
-		}).Error; err != nil {
+		Updates(updates).Error; err != nil {
 		return nil, err
 	}
 
@@ -1638,6 +1687,7 @@ func (r *gormCustomerRepository) getCustomerForUpdate(tx *gorm.DB, customerID in
 		Status            string        `gorm:"column:status"`
 		DealStatus        string        `gorm:"column:deal_status"`
 		CreateUserID      int64         `gorm:"column:create_user_id"`
+		CollectTime       sql.NullInt64 `gorm:"column:collect_time"`
 		InsideSalesUserID sql.NullInt64 `gorm:"column:inside_sales_user_id"`
 		ConvertedAt       sql.NullTime  `gorm:"column:converted_at"`
 		OwnerUser         sql.NullInt64 `gorm:"column:owner_user_id"`
@@ -1655,6 +1705,7 @@ func (r *gormCustomerRepository) getCustomerForUpdate(tx *gorm.DB, customerID in
 			status,
 			deal_status,
 			create_user_id,
+			NULLIF(collect_time, 0) AS collect_time,
 			inside_sales_user_id,
 			converted_at,
 			owner_user_id,
@@ -1694,6 +1745,7 @@ func (r *gormCustomerRepository) getCustomerForUpdate(tx *gorm.DB, customerID in
 	if row.InsideSalesUserID.Valid {
 		customer.InsideSalesUserID = &row.InsideSalesUserID.Int64
 	}
+	customer.CollectTime = nullableUnixToTime(row.CollectTime)
 	if row.ConvertedAt.Valid {
 		convertedAt := row.ConvertedAt.Time
 		customer.ConvertedAt = &convertedAt
@@ -1738,14 +1790,15 @@ func (r *gormCustomerRepository) getCustomer(ctx context.Context, customerID int
 			c.owner_user_id AS owner_user_id,
 			COALESCE(u.nickname, '') AS owner_user_name,
 			COALESCE(NULLIF(du.nickname, ''), NULLIF(du.username, ''), '') AS drop_user_name,
-				c.created_at AS created_at,
-				c.updated_at AS updated_at,
-				NULLIF(c.next_time, 0) AS next_time_unix,
-				NULLIF(c.follow_time, 0) AS follow_time_unix,
-				NULLIF(c.collect_time, 0) AS collect_time_unix,
-				NULLIF(c.drop_time, 0) AS drop_time_unix,
-				COALESCE(
-					c.drop_user_id,
+			c.created_at AS created_at,
+			c.updated_at AS updated_at,
+			NULLIF(c.next_time, 0) AS next_time_unix,
+			NULLIF(c.follow_time, 0) AS follow_time_unix,
+			NULLIF(c.collect_time, 0) AS collect_time_unix,
+			NULLIF(c.assign_time, 0) AS assign_time_unix,
+			NULLIF(c.drop_time, 0) AS drop_time_unix,
+			COALESCE(
+				c.drop_user_id,
 					(
 						SELECT COALESCE(l.from_owner_user_id, l.operator_user_id)
 						FROM customer_owner_logs l
@@ -1818,6 +1871,7 @@ func (r *gormCustomerRepository) getCustomer(ctx context.Context, customerID int
 	customer.NextTime = nullableUnixToTime(row.NextTimeUnix)
 	customer.FollowTime = nullableUnixToTime(row.FollowTimeUnix)
 	customer.CollectTime = nullableUnixToTime(row.CollectTimeUnix)
+	customer.AssignTime = nullableUnixToTime(row.AssignTimeUnix)
 	customer.DropTime = nullableUnixToTime(row.DropTimeUnix)
 	if row.DropUserID.Valid {
 		customer.DropUserID = &row.DropUserID.Int64

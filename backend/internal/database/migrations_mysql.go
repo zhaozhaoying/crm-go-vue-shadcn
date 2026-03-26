@@ -139,6 +139,11 @@ func getMySQLMigrations() []Migration {
 			Name:    "add_sales_daily_score_reached_at",
 			Up:      upAddSalesDailyScoreReachedAtMySQL,
 		},
+		{
+			Version: 2026032601,
+			Name:    "add_customer_assign_time_and_sales_assign_drop_setting",
+			Up:      upAddCustomerAssignTimeAndSalesAssignDropSettingMySQL,
+		},
 	}
 }
 
@@ -1107,6 +1112,33 @@ func upAddCustomerVisitsCheckInIPMySQL(tx *gorm.DB) error {
 		"operator_user_id, visit_date, check_in_ip, customer_name",
 		false,
 	)
+}
+
+func upAddCustomerAssignTimeAndSalesAssignDropSettingMySQL(tx *gorm.DB) error {
+	if err := addColumnIfNotExists(tx, "customers", "assign_time", "BIGINT NULL"); err != nil {
+		return err
+	}
+	if err := addIndexIfNotExists(tx, "customers", "idx_customers_assign_time", "assign_time", false); err != nil {
+		return err
+	}
+
+	stmts := []string{
+		`UPDATE customers
+		SET assign_time = COALESCE(
+			CASE
+				WHEN converted_at IS NOT NULL THEN UNIX_TIMESTAMP(converted_at)
+				ELSE NULL
+			END,
+			collect_time
+		)
+		WHERE COALESCE(assign_time, 0) = 0
+			AND inside_sales_user_id IS NOT NULL
+			AND owner_user_id IS NOT NULL
+			AND owner_user_id <> inside_sales_user_id
+			AND status <> 'pool'`,
+		`INSERT IGNORE INTO system_settings(` + "`key`" + `, value, description) VALUES ('sales_assign_deal_drop_days','30','电销分配给销售后多少天未签单自动掉库')`,
+	}
+	return execStatements(tx, stmts)
 }
 
 func upCreateCallRecordingsMySQL(tx *gorm.DB) error {

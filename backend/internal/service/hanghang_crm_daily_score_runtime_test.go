@@ -118,6 +118,59 @@ func TestHanghangCRMDailyScoreRuntimeRunsOncePerDayAfterScheduledHour(t *testing
 	}
 }
 
+func TestHanghangCRMDailyScoreRuntimeSkipsOnWeekends(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		now  time.Time
+	}{
+		{"Saturday", time.Date(2026, 3, 28, 21, 5, 0, 0, time.Local)},
+		{"Sunday", time.Date(2026, 3, 29, 21, 5, 0, 0, time.Local)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			callStatStub := &runtimeCallStatServiceStub{}
+			scoreStub := &runtimeSalesDailyScoreServiceStub{}
+			runtime := NewHanghangCRMDailyScoreRuntime(callStatStub, scoreStub, time.Minute, time.Local)
+			runtime.nowFunc = func() time.Time { return tt.now }
+
+			runtime.runOnce(context.Background())
+
+			if callStatStub.calls != 0 {
+				t.Fatalf("expected no call-stat sync on %s, got %d calls", tt.name, callStatStub.calls)
+			}
+			if scoreStub.calls != 0 {
+				t.Fatalf("expected no score sync on %s, got %d calls", tt.name, scoreStub.calls)
+			}
+		})
+	}
+}
+
+func TestHanghangCRMDailyScoreRuntimeSkipsWhenHolidayModeEnabled(t *testing.T) {
+	t.Parallel()
+
+	callStatStub := &runtimeCallStatServiceStub{}
+	scoreStub := &runtimeSalesDailyScoreServiceStub{}
+	runtime := NewHanghangCRMDailyScoreRuntime(
+		callStatStub, scoreStub, time.Minute, time.Local,
+		func() bool { return true },
+	)
+	runtime.nowFunc = func() time.Time {
+		return time.Date(2026, 3, 25, 21, 5, 0, 0, time.Local) // Wednesday
+	}
+
+	runtime.runOnce(context.Background())
+
+	if callStatStub.calls != 0 {
+		t.Fatalf("expected no call-stat sync when holiday mode enabled, got %d calls", callStatStub.calls)
+	}
+	if scoreStub.calls != 0 {
+		t.Fatalf("expected no score sync when holiday mode enabled, got %d calls", scoreStub.calls)
+	}
+}
+
 func TestHanghangCRMDailyScoreRuntimeRetriesAfterFailure(t *testing.T) {
 	t.Parallel()
 

@@ -63,6 +63,7 @@ export interface Customer {
 
   customerStatus?: number
   collectTime?: string
+  assignTime?: string
   dropTime?: string
   dropUserId?: number
   dropUserName?: string

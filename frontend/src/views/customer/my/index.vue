@@ -223,6 +223,7 @@ const canBatchReassign = computed(() => isAdmin.value);
 const currentUserId = computed(() => Number(authStore.user?.id || 0));
 const followUpDropDays = ref(30);
 const dealDropDays = ref(90);
+const salesAssignDealDropDays = ref(30);
 const countdownNowMs = ref(Date.now());
 let countdownTimer: number | null = null;
 const isPoolCustomer = (customer: Customer) => {
@@ -344,12 +345,29 @@ const getFollowUpCountdownDisplay = (customer: Customer) =>
     countdownNowMs.value,
   );
 
+const shouldUseSalesAssignDealCountdown = (customer: Customer) => {
+  if (isInsideSales.value) return false;
+
+  const insideSalesUserId = Number(customer.insideSalesUserId || 0);
+  const ownerUserId = Number(customer.ownerUserId || 0);
+  if (insideSalesUserId <= 0 || ownerUserId <= 0) return false;
+
+  return insideSalesUserId !== ownerUserId;
+};
+
 const getDealCountdownDisplay = (customer: Customer) =>
   getDealDropCountdown(
     customer,
     dealDropDays.value,
+    salesAssignDealDropDays.value,
     countdownNowMs.value,
+    shouldUseSalesAssignDealCountdown(customer),
   );
+
+const getDealCountdownBaseTime = (customer: Customer) =>
+  shouldUseSalesAssignDealCountdown(customer)
+    ? (customer.assignTime || customer.collectTime)
+    : customer.collectTime;
 
 const getCountdownCellClass = (isWarning: boolean) =>
   isWarning ? "font-medium text-destructive" : "text-muted-foreground";
@@ -363,9 +381,13 @@ const loadDropSettings = async () => {
     dealDropDays.value = Number(settings.dealDropDays) > 0
       ? Number(settings.dealDropDays)
       : 90;
+    salesAssignDealDropDays.value = Number(settings.salesAssignDealDropDays) > 0
+      ? Number(settings.salesAssignDealDropDays)
+      : 30;
   } catch {
     followUpDropDays.value = 30;
     dealDropDays.value = 90;
+    salesAssignDealDropDays.value = 30;
   }
 };
 
@@ -1200,7 +1222,7 @@ onUnmounted(() => {
                   </TableCell>
                   <TableCell class="text-xs">
                     <span class="block whitespace-nowrap text-muted-foreground mb-2">
-                      {{ formatDateTime(customer.collectTime) }}
+                      {{ formatDateTime(getDealCountdownBaseTime(customer)) }}
                     </span>
                     <span
                       class="mt-1 block whitespace-nowrap"

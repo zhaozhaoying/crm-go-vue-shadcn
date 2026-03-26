@@ -28,6 +28,7 @@ type SystemSettingsResponse struct {
 	CustomerAutoDropEnabled bool             `json:"customerAutoDropEnabled" gorm:"-"`
 	FollowUpDropDays        int              `json:"followUpDropDays" gorm:"-"`
 	DealDropDays            int              `json:"dealDropDays" gorm:"-"`
+	SalesAssignDealDropDays int              `json:"salesAssignDealDropDays" gorm:"-"`
 	ClaimFreezeDays         int              `json:"claimFreezeDays" gorm:"-"`
 	HolidayModeEnabled      bool             `json:"holidayModeEnabled" gorm:"-"`
 	CustomerLimit           int              `json:"customerLimit" gorm:"-"`
@@ -42,6 +43,7 @@ type UpdateSystemSettingsRequest struct {
 	CustomerAutoDropEnabled *bool    `json:"customerAutoDropEnabled" gorm:"-"`
 	FollowUpDropDays        *int     `json:"followUpDropDays" gorm:"-"`
 	DealDropDays            *int     `json:"dealDropDays" gorm:"-"`
+	SalesAssignDealDropDays *int     `json:"salesAssignDealDropDays" gorm:"-"`
 	ClaimFreezeDays         *int     `json:"claimFreezeDays" gorm:"-"`
 	HolidayModeEnabled      *bool    `json:"holidayModeEnabled" gorm:"-"`
 	CustomerLimit           *int     `json:"customerLimit" gorm:"-"`

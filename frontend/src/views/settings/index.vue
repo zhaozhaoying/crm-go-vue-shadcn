@@ -45,6 +45,7 @@ const settings = ref<SystemSettings>({
   customerAutoDropEnabled: true,
   followUpDropDays: 30,
   dealDropDays: 90,
+  salesAssignDealDropDays: 30,
   claimFreezeDays: 7,
   holidayModeEnabled: false,
   customerLimit: 100,
@@ -150,6 +151,7 @@ const saveRules = async () => {
       customerAutoDropEnabled: settings.value.customerAutoDropEnabled,
       followUpDropDays: settings.value.followUpDropDays,
       dealDropDays: settings.value.dealDropDays,
+      salesAssignDealDropDays: settings.value.salesAssignDealDropDays,
       claimFreezeDays,
       holidayModeEnabled: settings.value.holidayModeEnabled,
       customerLimit: settings.value.customerLimit,
@@ -457,6 +459,21 @@ onMounted(() => {
                 <Input
                   id="dealDropDays"
                   v-model.number="settings.dealDropDays"
+                  type="number"
+                  min="1"
+                  :disabled="!settings.customerAutoDropEnabled"
+                  class="h-9 pr-8"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">天</span>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-4">
+              <Label for="salesAssignDealDropDays" class="text-sm whitespace-nowrap">电销分配销售未签单掉库</Label>
+              <div class="relative w-32">
+                <Input
+                  id="salesAssignDealDropDays"
+                  v-model.number="settings.salesAssignDealDropDays"
                   type="number"
                   min="1"
                   :disabled="!settings.customerAutoDropEnabled"

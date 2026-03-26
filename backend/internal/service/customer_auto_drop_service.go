@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	defaultFollowUpDropDays = 30
-	defaultDealDropDays     = 90
+	defaultFollowUpDropDays        = 30
+	defaultDealDropDays            = 90
+	defaultSalesAssignDealDropDays = 30
 )
 
 type CustomerAutoDropTaskFailure struct {
@@ -23,19 +24,21 @@ type CustomerAutoDropTaskFailure struct {
 }
 
 type CustomerAutoDropTaskResult struct {
-	ExecutedAt              time.Time                     `json:"executedAt"`
-	AutoDropEnabled         bool                          `json:"autoDropEnabled"`
-	FollowUpDropDays        int                           `json:"followUpDropDays"`
-	DealDropDays            int                           `json:"dealDropDays"`
-	HolidayModeEnabled      bool                          `json:"holidayModeEnabled"`
-	Skipped                 bool                          `json:"skipped"`
-	SkipReason              string                        `json:"skipReason,omitempty"`
-	Evaluated               int                           `json:"evaluated"`
-	Dropped                 int                           `json:"dropped"`
-	FollowUpTimeoutDropped  int                           `json:"followUpTimeoutDropped"`
-	DealTimeoutDropped      int                           `json:"dealTimeoutDropped"`
-	BothRulesMatchedDropped int                           `json:"bothRulesMatchedDropped"`
-	Failures                []CustomerAutoDropTaskFailure `json:"failures"`
+	ExecutedAt                    time.Time                     `json:"executedAt"`
+	AutoDropEnabled               bool                          `json:"autoDropEnabled"`
+	FollowUpDropDays              int                           `json:"followUpDropDays"`
+	DealDropDays                  int                           `json:"dealDropDays"`
+	SalesAssignDealDropDays       int                           `json:"salesAssignDealDropDays"`
+	HolidayModeEnabled            bool                          `json:"holidayModeEnabled"`
+	Skipped                       bool                          `json:"skipped"`
+	SkipReason                    string                        `json:"skipReason,omitempty"`
+	Evaluated                     int                           `json:"evaluated"`
+	Dropped                       int                           `json:"dropped"`
+	FollowUpTimeoutDropped        int                           `json:"followUpTimeoutDropped"`
+	DealTimeoutDropped            int                           `json:"dealTimeoutDropped"`
+	SalesAssignDealTimeoutDropped int                           `json:"salesAssignDealTimeoutDropped"`
+	BothRulesMatchedDropped       int                           `json:"bothRulesMatchedDropped"`
+	Failures                      []CustomerAutoDropTaskFailure `json:"failures"`
 }
 
 type CustomerAutoDropService interface {
@@ -56,6 +59,7 @@ type autoDropCandidateRow struct {
 	OwnerUserName string    `gorm:"column:owner_user_name"`
 	NextTime      *int64    `gorm:"column:next_time"`
 	CollectTime   *int64    `gorm:"column:collect_time"`
+	AssignTime    *int64    `gorm:"column:assign_time"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
 }
 
@@ -111,12 +115,13 @@ func NewCustomerAutoDropService(
 func (s *customerAutoDropService) Run(ctx context.Context) (CustomerAutoDropTaskResult, error) {
 	now := time.Now().UTC()
 	result := CustomerAutoDropTaskResult{
-		ExecutedAt:         now,
-		AutoDropEnabled:    s.getBoolSetting("customer_auto_drop_enabled", true),
-		FollowUpDropDays:   s.getIntSetting("follow_up_drop_days", defaultFollowUpDropDays),
-		DealDropDays:       s.getIntSetting("deal_drop_days", defaultDealDropDays),
-		HolidayModeEnabled: s.getBoolSetting("holiday_mode_enabled", false),
-		Failures:           make([]CustomerAutoDropTaskFailure, 0),
+		ExecutedAt:              now,
+		AutoDropEnabled:         s.getBoolSetting("customer_auto_drop_enabled", true),
+		FollowUpDropDays:        s.getIntSetting("follow_up_drop_days", defaultFollowUpDropDays),
+		DealDropDays:            s.getIntSetting("deal_drop_days", defaultDealDropDays),
+		SalesAssignDealDropDays: s.getIntSetting("sales_assign_deal_drop_days", defaultSalesAssignDealDropDays),
+		HolidayModeEnabled:      s.getBoolSetting("holiday_mode_enabled", false),
+		Failures:                make([]CustomerAutoDropTaskFailure, 0),
 	}
 	claimFreezeDays := s.getIntSetting("claim_freeze_days", defaultClaimFreezeDays)
 
@@ -130,7 +135,7 @@ func (s *customerAutoDropService) Run(ctx context.Context) (CustomerAutoDropTask
 		result.SkipReason = "holiday mode enabled"
 		return result, nil
 	}
-	if result.FollowUpDropDays <= 0 && result.DealDropDays <= 0 {
+	if result.FollowUpDropDays <= 0 && result.DealDropDays <= 0 && result.SalesAssignDealDropDays <= 0 {
 		result.Skipped = true
 		result.SkipReason = "drop rules disabled"
 		return result, nil
@@ -146,14 +151,25 @@ func (s *customerAutoDropService) Run(ctx context.Context) (CustomerAutoDropTask
 		followTimeout := result.FollowUpDropDays > 0 &&
 			row.NextTime != nil &&
 			*row.NextTime+int64(result.FollowUpDropDays)*24*60*60 <= now.Unix()
-		dealTimeout := result.DealDropDays > 0 &&
-			row.CollectTime != nil &&
-			*row.CollectTime+int64(result.DealDropDays)*24*60*60 <= now.Unix()
-		if !followTimeout && !dealTimeout {
+		dealTimeout := false
+		salesAssignDealTimeout := false
+		if row.AssignTime != nil && result.SalesAssignDealDropDays > 0 {
+			salesAssignDealTimeout = *row.AssignTime+int64(result.SalesAssignDealDropDays)*24*60*60 <= now.Unix()
+		} else if result.DealDropDays > 0 && row.CollectTime != nil {
+			dealTimeout = *row.CollectTime+int64(result.DealDropDays)*24*60*60 <= now.Unix()
+		}
+		if !followTimeout && !dealTimeout && !salesAssignDealTimeout {
 			continue
 		}
 
-		triggerType, reason := autoDropReason(result.FollowUpDropDays, result.DealDropDays, followTimeout, dealTimeout)
+		triggerType, reason := autoDropReason(
+			result.FollowUpDropDays,
+			result.DealDropDays,
+			result.SalesAssignDealDropDays,
+			followTimeout,
+			dealTimeout,
+			salesAssignDealTimeout,
+		)
 		dropped, dropErr := s.dropOne(
 			ctx,
 			row,
@@ -163,8 +179,10 @@ func (s *customerAutoDropService) Run(ctx context.Context) (CustomerAutoDropTask
 			claimFreezeDays,
 			result.FollowUpDropDays,
 			result.DealDropDays,
+			result.SalesAssignDealDropDays,
 			followTimeout,
 			dealTimeout,
+			salesAssignDealTimeout,
 		)
 		if dropErr != nil {
 			if len(result.Failures) < s.maxFailItems {
@@ -181,12 +199,18 @@ func (s *customerAutoDropService) Run(ctx context.Context) (CustomerAutoDropTask
 
 		result.Dropped++
 		switch {
-		case followTimeout && dealTimeout:
+		case followTimeout && (dealTimeout || salesAssignDealTimeout):
 			result.BothRulesMatchedDropped++
 			result.FollowUpTimeoutDropped++
-			result.DealTimeoutDropped++
+			if salesAssignDealTimeout {
+				result.SalesAssignDealTimeoutDropped++
+			} else {
+				result.DealTimeoutDropped++
+			}
 		case followTimeout:
 			result.FollowUpTimeoutDropped++
+		case salesAssignDealTimeout:
+			result.SalesAssignDealTimeoutDropped++
 		case dealTimeout:
 			result.DealTimeoutDropped++
 		}
@@ -206,6 +230,7 @@ func (s *customerAutoDropService) listCandidates(ctx context.Context) ([]autoDro
 			COALESCE(NULLIF(u.nickname, ''), NULLIF(u.username, ''), '') AS owner_user_name,
 			NULLIF(customers.next_time, 0) AS next_time,
 			NULLIF(customers.collect_time, 0) AS collect_time,
+			NULLIF(customers.assign_time, 0) AS assign_time,
 			customers.created_at
 		`).
 		Joins("LEFT JOIN users AS u ON u.id = customers.owner_user_id").
@@ -229,8 +254,10 @@ func (s *customerAutoDropService) dropOne(
 	claimFreezeDays int,
 	followUpDropDays int,
 	dealDropDays int,
+	salesAssignDealDropDays int,
 	followTimeout bool,
 	dealTimeout bool,
+	salesAssignDealTimeout bool,
 ) (bool, error) {
 	dropped := false
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -243,6 +270,7 @@ func (s *customerAutoDropService) dropOne(
 			Updates(map[string]interface{}{
 				"owner_user_id": nil,
 				"status":        model.CustomerStatusPool,
+				"assign_time":   nil,
 				"drop_time":     now.Unix(),
 				"drop_user_id":  row.OwnerUserID,
 				"updated_at":    now,
@@ -283,7 +311,16 @@ func (s *customerAutoDropService) dropOne(
 			return err
 		}
 
-		logs := s.buildAutoDropActivityLogs(row, now, followUpDropDays, dealDropDays, followTimeout, dealTimeout)
+		logs := s.buildAutoDropActivityLogs(
+			row,
+			now,
+			followUpDropDays,
+			dealDropDays,
+			salesAssignDealDropDays,
+			followTimeout,
+			dealTimeout,
+			salesAssignDealTimeout,
+		)
 		if len(logs) > 0 {
 			if err := tx.Table("activity_logs").Create(&logs).Error; err != nil {
 				return err
@@ -360,12 +397,23 @@ func buildClaimBlockInfo(
 	return &anchorUserID, &blockedUntil, nil
 }
 
-func autoDropReason(followDays, dealDays int, followTimeout, dealTimeout bool) (int, string) {
+func autoDropReason(
+	followDays int,
+	dealDays int,
+	salesAssignDealDropDays int,
+	followTimeout bool,
+	dealTimeout bool,
+	salesAssignDealTimeout bool,
+) (int, string) {
 	switch {
+	case followTimeout && salesAssignDealTimeout:
+		return 4, fmt.Sprintf("系统自动掉库：超过%d天未跟进且电销分配后超过%d天未签单", followDays, salesAssignDealDropDays)
 	case followTimeout && dealTimeout:
 		return 4, fmt.Sprintf("系统自动掉库：超过%d天未跟进且超过%d天未签单", followDays, dealDays)
 	case followTimeout:
 		return 3, fmt.Sprintf("系统自动掉库：超过%d天未跟进", followDays)
+	case salesAssignDealTimeout:
+		return 4, fmt.Sprintf("系统自动掉库：电销分配后超过%d天未签单", salesAssignDealDropDays)
 	case dealTimeout:
 		return 4, fmt.Sprintf("系统自动掉库：超过%d天未签单", dealDays)
 	default:
@@ -378,14 +426,16 @@ func (s *customerAutoDropService) buildAutoDropActivityLogs(
 	now time.Time,
 	followUpDropDays int,
 	dealDropDays int,
+	salesAssignDealDropDays int,
 	followTimeout bool,
 	dealTimeout bool,
+	salesAssignDealTimeout bool,
 ) []activityLogRow {
 	if s.activityRepo == nil {
 		return nil
 	}
 
-	logs := make([]activityLogRow, 0, 2)
+	logs := make([]activityLogRow, 0, 3)
 	customerName := strings.TrimSpace(row.Name)
 	if customerName == "" {
 		customerName = fmt.Sprintf("客户%d", row.ID)
@@ -425,6 +475,23 @@ func (s *customerAutoDropService) buildAutoDropActivityLogs(
 				customerName,
 				ownerName,
 				dealDropDays,
+				timeText,
+			),
+			CreatedAt: now,
+		})
+	}
+	if salesAssignDealTimeout {
+		logs = append(logs, activityLogRow{
+			UserID:     row.OwnerUserID,
+			Action:     model.ActionAutoDropDeal,
+			TargetType: model.TargetTypeCustomer,
+			TargetID:   row.ID,
+			TargetName: customerName,
+			Content: fmt.Sprintf(
+				"客户【%s】因销售【%s】在电销分配后%d天未签单，系统于%s自动触发掉库。",
+				customerName,
+				ownerName,
+				salesAssignDealDropDays,
 				timeText,
 			),
 			CreatedAt: now,

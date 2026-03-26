@@ -243,7 +243,18 @@ func pickRankedSalesOwnerUserIDByDate(
 
 func previousAutoAssignScoreDate() string {
 	location := autoAssignBusinessLocation()
-	return time.Now().In(location).AddDate(0, 0, -1).Format("2006-01-02")
+	return previousBusinessDate(time.Now().In(location)).Format("2006-01-02")
+}
+
+// previousBusinessDate returns the most recent weekday (Mon-Fri) strictly
+// before the given time's date. It walks backwards from yesterday, skipping
+// Saturday and Sunday.
+func previousBusinessDate(now time.Time) time.Time {
+	d := now.AddDate(0, 0, -1)
+	for d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+		d = d.AddDate(0, 0, -1)
+	}
+	return d
 }
 
 func pickRecentContractExemptOwnerUserID(ctx context.Context, repo customerOwnerAssignmentRepo, candidateUserIDs []int64) (int64, bool, error) {

@@ -593,6 +593,61 @@ func TestPickBalancedSalesOwnerUserIDKeepsSingleDirectorTeamFallback(t *testing.
 	}
 }
 
+func TestPreviousBusinessDate(t *testing.T) {
+	t.Parallel()
+	loc := time.FixedZone("CST", 8*3600)
+
+	tests := []struct {
+		name        string
+		now         time.Time
+		wantWeekday time.Weekday
+		wantDate    string
+	}{
+		{
+			name:        "Monday returns Friday",
+			now:         time.Date(2026, 3, 23, 10, 0, 0, 0, loc), // Monday
+			wantWeekday: time.Friday,
+			wantDate:    "2026-03-20",
+		},
+		{
+			name:        "Tuesday returns Monday",
+			now:         time.Date(2026, 3, 24, 10, 0, 0, 0, loc), // Tuesday
+			wantWeekday: time.Monday,
+			wantDate:    "2026-03-23",
+		},
+		{
+			name:        "Wednesday returns Tuesday",
+			now:         time.Date(2026, 3, 25, 10, 0, 0, 0, loc), // Wednesday
+			wantWeekday: time.Tuesday,
+			wantDate:    "2026-03-24",
+		},
+		{
+			name:        "Saturday returns Friday",
+			now:         time.Date(2026, 3, 28, 10, 0, 0, 0, loc), // Saturday
+			wantWeekday: time.Friday,
+			wantDate:    "2026-03-27",
+		},
+		{
+			name:        "Sunday returns Friday",
+			now:         time.Date(2026, 3, 29, 10, 0, 0, 0, loc), // Sunday
+			wantWeekday: time.Friday,
+			wantDate:    "2026-03-27",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := previousBusinessDate(tt.now)
+			if got.Weekday() != tt.wantWeekday {
+				t.Errorf("expected weekday %s, got %s", tt.wantWeekday, got.Weekday())
+			}
+			if got.Format("2006-01-02") != tt.wantDate {
+				t.Errorf("expected date %s, got %s", tt.wantDate, got.Format("2006-01-02"))
+			}
+		})
+	}
+}
+
 func TestResolveSalesDirectorUserIDReturnsZeroWithoutDirectorAncestor(t *testing.T) {
 	repo := &customerOwnerAssignmentRepoStub{
 		roles: map[int64]string{

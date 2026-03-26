@@ -97,6 +97,13 @@ func main() {
 		salesDailyScoreService,
 		time.Minute,
 		scheduleLocation,
+		func() bool {
+			setting, err := systemSettingRepo.GetSetting("holiday_mode_enabled")
+			if err != nil || setting == nil {
+				return false
+			}
+			return setting.Value == "true" || setting.Value == "1"
+		},
 	)
 	customerAutoDropService := service.NewCustomerAutoDropService(db, systemSettingRepo, activityLogRepo)
 	customerAutoDropRuntime := service.NewCustomerAutoDropRuntime(customerAutoDropService, time.Minute)

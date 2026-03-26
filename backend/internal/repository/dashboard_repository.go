@@ -85,6 +85,7 @@ func (r *gormDashboardRepository) GetOverview(ctx context.Context, now time.Time
 	}
 	followUpDropDays := r.getPositiveIntSetting(ctx, "follow_up_drop_days", 30)
 	dealDropDays := r.getPositiveIntSetting(ctx, "deal_drop_days", 90)
+	salesAssignDealDropDays := r.getPositiveIntSetting(ctx, "sales_assign_deal_drop_days", 30)
 
 	currentRevenue, err := r.sumContractAmountBetween(ctx, currentMonthStart, nextMonthStart, scopedUserIDs, showAll)
 	if err != nil {
@@ -146,7 +147,7 @@ func (r *gormDashboardRepository) GetOverview(ctx context.Context, now time.Time
 	if err != nil {
 		return model.DashboardOverview{}, err
 	}
-	dealDueSoonCount, err := r.countDealDueSoonCustomers(ctx, now, dealDropDays, scopedUserIDs, showAll)
+	dealDueSoonCount, err := r.countDealDueSoonCustomers(ctx, now, dealDropDays, salesAssignDealDropDays, scopedUserIDs, showAll)
 	if err != nil {
 		return model.DashboardOverview{}, err
 	}
@@ -783,14 +784,19 @@ func (r *gormDashboardRepository) countFollowUpDueSoonCustomers(ctx context.Cont
 	return total, nil
 }
 
-func (r *gormDashboardRepository) countDealDueSoonCustomers(ctx context.Context, now time.Time, dealDropDays int, scopedUserIDs []int64, showAll bool) (int64, error) {
-	if dealDropDays <= 0 {
+func (r *gormDashboardRepository) countDealDueSoonCustomers(ctx context.Context, now time.Time, dealDropDays int, salesAssignDealDropDays int, scopedUserIDs []int64, showAll bool) (int64, error) {
+	if dealDropDays <= 0 && salesAssignDealDropDays <= 0 {
 		return 0, nil
 	}
 
 	nowUnix := now.Unix()
 	warningDeadline := now.Add(10 * 24 * time.Hour).Unix()
-	referenceExpr := fmt.Sprintf("NULLIF(c.collect_time, 0) + %d", dealDropDays*24*60*60)
+	referenceExpr := fmt.Sprintf(`
+		CASE
+			WHEN NULLIF(c.assign_time, 0) IS NOT NULL THEN NULLIF(c.assign_time, 0) + %d
+			ELSE NULLIF(c.collect_time, 0) + %d
+		END
+	`, salesAssignDealDropDays*24*60*60, dealDropDays*24*60*60)
 
 	query := r.db.WithContext(ctx).
 		Table("customers AS c").
@@ -799,7 +805,7 @@ func (r *gormDashboardRepository) countDealDueSoonCustomers(ctx context.Context,
 		Where("c.status <> ?", model.CustomerStatusPool).
 		Where("NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.customer_id = c.id)").
 		Where("c.deal_status = ?", model.CustomerDealStatusUndone).
-		Where("NULLIF(c.collect_time, 0) IS NOT NULL").
+		Where("(NULLIF(c.assign_time, 0) IS NOT NULL OR NULLIF(c.collect_time, 0) IS NOT NULL)").
 		Where(referenceExpr+" > ?", nowUnix).
 		Where(referenceExpr+" <= ?", warningDeadline)
 	if !showAll {

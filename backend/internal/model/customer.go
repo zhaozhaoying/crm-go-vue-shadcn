@@ -77,6 +77,7 @@ type Customer struct {
 	DealTime                   *time.Time      `json:"dealTime,omitempty" gorm:"-"`
 	CustomerStatus             int             `json:"customerStatus,omitempty" gorm:"column:customer_status;not null;default:0"`
 	CollectTime                *time.Time      `json:"collectTime,omitempty" gorm:"-"`
+	AssignTime                 *time.Time      `json:"assignTime,omitempty" gorm:"-"`
 	DropTime                   *time.Time      `json:"dropTime,omitempty" gorm:"-"`
 	DropUserID                 *int64          `json:"dropUserId,omitempty" gorm:"column:drop_user_id"`
 	DropUserName               string          `json:"dropUserName,omitempty" gorm:"-"`
@@ -103,6 +104,7 @@ type Customer struct {
 	FollowTimeUnix  *int64 `json:"-" gorm:"column:follow_time"`
 	DealTimeUnix    *int64 `json:"-" gorm:"column:deal_time"`
 	CollectTimeUnix *int64 `json:"-" gorm:"column:collect_time"`
+	AssignTimeUnix  *int64 `json:"-" gorm:"column:assign_time"`
 	DropTimeUnix    *int64 `json:"-" gorm:"column:drop_time"`
 	DeleteTimeUnix  *int64 `json:"-" gorm:"column:delete_time"`
 
