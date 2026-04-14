@@ -5,6 +5,7 @@ export interface CustomerVisit {
   operatorUserId: number
   operatorUserName?: string
   customerName: string
+  inviter: string
   checkInLat: number
   checkInLng: number
   province: string
@@ -28,6 +29,7 @@ export interface CustomerVisitListResponse {
 
 export interface CreateCustomerVisitRequest {
   customerName: string
+  inviter?: string
   checkInLat: number
   checkInLng: number
   province?: string
@@ -43,6 +45,8 @@ export const getCustomerVisits = (params: {
   page?: number
   pageSize?: number
   keyword?: string
+  startTime?: string
+  endTime?: string
 }) => {
   return request<CustomerVisitListResponse>({
     method: 'GET',

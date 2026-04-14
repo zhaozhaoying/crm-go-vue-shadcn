@@ -20,6 +20,7 @@ func (r *CustomerVisitRepository) Create(input model.CustomerVisitCreateInput) (
 	visit := model.CustomerVisit{
 		OperatorUserID: input.OperatorUserID,
 		CustomerName:   input.CustomerName,
+		Inviter:        input.Inviter,
 		CheckInIP:      input.CheckInIP,
 		CheckInLat:     input.CheckInLat,
 		CheckInLng:     input.CheckInLng,
@@ -67,8 +68,8 @@ func (r *CustomerVisitRepository) List(filter model.CustomerVisitListFilter) (mo
 
 	query := r.db.Model(&model.CustomerVisit{})
 
-	// 非管理员只能看自己的记录
-	if !filter.IsAdmin {
+	// 没有全量查看权限时只能看自己的记录
+	if !filter.CanViewAll {
 		query = query.Where("operator_user_id = ?", filter.OperatorUserID)
 	}
 
@@ -77,6 +78,13 @@ func (r *CustomerVisitRepository) List(filter model.CustomerVisitListFilter) (mo
 		keyword := "%" + filter.Keyword + "%"
 		query = query.Where("customer_name LIKE ? OR detail_address LIKE ? OR visit_purpose LIKE ? OR remark LIKE ?",
 			keyword, keyword, keyword, keyword)
+	}
+
+	if filter.StartTime != nil {
+		query = query.Where("created_at >= ?", *filter.StartTime)
+	}
+	if filter.EndTime != nil {
+		query = query.Where("created_at <= ?", *filter.EndTime)
 	}
 
 	// 获取总数

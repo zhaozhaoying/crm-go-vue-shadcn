@@ -23,6 +23,7 @@ func NewCustomerVisitHandler(service *service.CustomerVisitService) *CustomerVis
 
 type CreateCustomerVisitRequest struct {
 	CustomerName  string  `json:"customerName"`
+	Inviter       string  `json:"inviter"`
 	CheckInLat    float64 `json:"checkInLat"`
 	CheckInLng    float64 `json:"checkInLng"`
 	Province      any     `json:"province"`
@@ -66,6 +67,7 @@ func (h *CustomerVisitHandler) Create(c *gin.Context) {
 	input := model.CustomerVisitCreateInput{
 		OperatorUserID: userID,
 		CustomerName:   strings.TrimSpace(req.CustomerName),
+		Inviter:        strings.TrimSpace(req.Inviter),
 		CheckInIP:      strings.TrimSpace(c.ClientIP()),
 		CheckInLat:     req.CheckInLat,
 		CheckInLng:     req.CheckInLng,
@@ -112,14 +114,21 @@ func (h *CustomerVisitHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	keyword := strings.TrimSpace(c.Query("keyword"))
-
-	role := currentUserRole(c)
-	isAdmin := strings.EqualFold(role, "admin") || strings.EqualFold(role, "管理员")
+	startTime, endTime, err := parseCustomerVisitListTimeRange(
+		c.Query("startTime"),
+		c.Query("endTime"),
+	)
+	if err != nil {
+		Error(c, http.StatusBadRequest, 12003, err.Error())
+		return
+	}
 
 	filter := model.CustomerVisitListFilter{
 		OperatorUserID: userID,
-		IsAdmin:        isAdmin,
+		CanViewAll:     canViewAllCustomerVisits(currentUserRole(c)),
 		Keyword:        keyword,
+		StartTime:      startTime,
+		EndTime:        endTime,
 		Page:           page,
 		PageSize:       pageSize,
 	}
@@ -175,4 +184,60 @@ func normalizeVisitRegionField(value any) string {
 		}
 		return raw
 	}
+}
+
+func canViewAllCustomerVisits(role string) bool {
+	switch strings.TrimSpace(strings.ToLower(role)) {
+	case "admin", "管理员", "finance", "finance_manager", "财务", "财务经理":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseCustomerVisitListTimeRange(
+	startRaw, endRaw string,
+) (*time.Time, *time.Time, error) {
+	startTime, err := parseCustomerVisitFilterTime(startRaw, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("开始时间格式错误")
+	}
+	endTime, err := parseCustomerVisitFilterTime(endRaw, true)
+	if err != nil {
+		return nil, nil, fmt.Errorf("结束时间格式错误")
+	}
+	if startTime != nil && endTime != nil && startTime.After(*endTime) {
+		return nil, nil, fmt.Errorf("开始时间不能晚于结束时间")
+	}
+	return startTime, endTime, nil
+}
+
+func parseCustomerVisitFilterTime(raw string, isEnd bool) (*time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	layouts := []struct {
+		layout   string
+		dateOnly bool
+	}{
+		{layout: time.RFC3339, dateOnly: false},
+		{layout: "2006-01-02T15:04:05", dateOnly: false},
+		{layout: "2006-01-02 15:04:05", dateOnly: false},
+		{layout: "2006-01-02", dateOnly: true},
+	}
+
+	for _, item := range layouts {
+		parsed, err := time.ParseInLocation(item.layout, trimmed, time.Local)
+		if err != nil {
+			continue
+		}
+		if item.dateOnly && isEnd {
+			parsed = parsed.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		}
+		return &parsed, nil
+	}
+
+	return nil, fmt.Errorf("invalid time")
 }

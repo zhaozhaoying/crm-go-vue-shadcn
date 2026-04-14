@@ -33,7 +33,10 @@ var (
 	ErrInvalidPhoneFormat                   = errors.New("invalid phone format")
 )
 
-var phoneRegex = regexp.MustCompile(`^1[3-9]\d{9}$`)
+var (
+	customerMobilePhoneRegex   = regexp.MustCompile(`^1[3-9]\d{9}$`)
+	customerLandlinePhoneRegex = regexp.MustCompile(`^(?:0\d{2,3}\d{7,8}|400\d{7}|800\d{7})$`)
+)
 
 const (
 	customerLimitSettingKey     = "customer_limit"
@@ -522,11 +525,11 @@ func (s *customerService) CheckUnique(ctx context.Context, input model.CustomerU
 		Phones:            make([]string, 0, len(input.Phones)),
 	}
 	for _, phone := range input.Phones {
-		trimmed := strings.TrimSpace(phone)
-		if trimmed == "" {
+		normalizedPhone := normalizeCustomerPhone(phone)
+		if normalizedPhone == "" {
 			continue
 		}
-		normalized.Phones = append(normalized.Phones, trimmed)
+		normalized.Phones = append(normalized.Phones, normalizedPhone)
 	}
 	return s.repo.CheckUnique(ctx, normalized)
 }
@@ -706,9 +709,9 @@ func (s *customerService) ReassignCustomersByYesterdayRanking(
 	}
 
 	type customerPlan struct {
-		customer  *model.Customer
-		targetID  int64
-		message   string
+		customer *model.Customer
+		targetID int64
+		message  string
 	}
 
 	referenceDate := previousAutoAssignScoreDate()
@@ -939,8 +942,10 @@ func (s *customerService) ConvertCustomer(ctx context.Context, customerID, opera
 }
 
 func (s *customerService) AddPhone(ctx context.Context, phone *model.CustomerPhone) error {
-	// Validate phone format (Chinese mobile number)
-	if !phoneRegex.MatchString(phone.Phone) {
+	phone.Phone = normalizeCustomerPhone(phone.Phone)
+	phone.PhoneLabel = strings.TrimSpace(phone.PhoneLabel)
+
+	if !isValidCustomerPhone(phone.Phone) {
 		return ErrInvalidPhoneFormat
 	}
 
@@ -959,8 +964,10 @@ func (s *customerService) ListPhones(ctx context.Context, customerID int64) ([]m
 }
 
 func (s *customerService) UpdatePhone(ctx context.Context, phone *model.CustomerPhone) error {
-	// Validate phone format
-	if !phoneRegex.MatchString(phone.Phone) {
+	phone.Phone = normalizeCustomerPhone(phone.Phone)
+	phone.PhoneLabel = strings.TrimSpace(phone.PhoneLabel)
+
+	if !isValidCustomerPhone(phone.Phone) {
 		return ErrInvalidPhoneFormat
 	}
 
@@ -1245,11 +1252,11 @@ func normalizePhones(phones []model.CustomerPhoneInput) ([]model.CustomerPhoneIn
 	seen := make(map[string]struct{})
 	primaryIndex := -1
 	for _, item := range phones {
-		phone := strings.TrimSpace(item.Phone)
+		phone := normalizeCustomerPhone(item.Phone)
 		if phone == "" {
 			continue
 		}
-		if !phoneRegex.MatchString(phone) {
+		if !isValidCustomerPhone(phone) {
 			return nil, ErrInvalidPhoneFormat
 		}
 		if _, exists := seen[phone]; exists {
@@ -1278,6 +1285,23 @@ func normalizePhones(phones []model.CustomerPhoneInput) ([]model.CustomerPhoneIn
 	}
 
 	return normalized, nil
+}
+
+func normalizeCustomerPhone(phone string) string {
+	normalized := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, strings.TrimSpace(phone))
+	if len(normalized) == 13 && strings.HasPrefix(normalized, "86") && customerMobilePhoneRegex.MatchString(normalized[2:]) {
+		return normalized[2:]
+	}
+	return normalized
+}
+
+func isValidCustomerPhone(phone string) bool {
+	return customerMobilePhoneRegex.MatchString(phone) || customerLandlinePhoneRegex.MatchString(phone)
 }
 
 func (s *customerService) logActivity(ctx context.Context, userID int64, action, targetType string, targetID int64, targetName, content string) {

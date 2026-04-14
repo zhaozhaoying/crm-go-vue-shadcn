@@ -116,6 +116,7 @@ func TestCustomerVisitServiceCreateSkipsResolveWhenFrontendAddressProvided(t *te
 	_, err := svc.Create(context.Background(), model.CustomerVisitCreateInput{
 		OperatorUserID: 1,
 		CustomerName:   "测试公司",
+		Inviter:        "  张三  ",
 		CheckInIP:      "127.0.0.1",
 		CheckInLat:     39.15698464685517,
 		CheckInLng:     117.23585571431285,
@@ -131,6 +132,9 @@ func TestCustomerVisitServiceCreateSkipsResolveWhenFrontendAddressProvided(t *te
 
 	if repo.lastCreateInput.Province != "天津市" || repo.lastCreateInput.City != "天津市" || repo.lastCreateInput.Area != "河北区" || repo.lastCreateInput.DetailAddress != "江都路街道增产道" {
 		t.Fatalf("expected frontend provided address to be preserved, got %#v", repo.lastCreateInput)
+	}
+	if repo.lastCreateInput.Inviter != "张三" {
+		t.Fatalf("expected inviter to be trimmed, got %#v", repo.lastCreateInput.Inviter)
 	}
 }
 

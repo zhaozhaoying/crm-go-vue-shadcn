@@ -3,6 +3,7 @@ import { ref, watch, onBeforeUnmount, computed } from "vue"
 import { toTypedSchema } from "@vee-validate/zod"
 import { useForm, useField } from "vee-validate"
 import * as z from "zod"
+import { toast } from "vue-sonner"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import {
@@ -18,6 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Loader2, Upload, Trash2, Camera, X } from "lucide-vue-next"
 import { createUser, updateUser, uploadUserAvatar } from "@/api/modules/users"
 import { requiredString } from "@/lib/form-validation"
+import { getRequestErrorMessage } from "@/lib/http-error"
 import { DEFAULT_USER_AVATAR, resolveUserAvatar } from "@/lib/user-avatar"
 import type { Role, UserWithRole } from "@/types/user"
 
@@ -142,11 +144,13 @@ const onFileSelected = (event: Event) => {
   if (!target.files?.length) return
   const file = target.files[0]
   if (!file.type.startsWith("image/")) {
-    // TODO: show error
+    toast.error("请上传图片格式文件")
+    target.value = ""
     return
   }
   if (file.size > 20 * 1024 * 1024) {
-    // TODO: show error
+    toast.error("图片大小不能超过 20MB")
+    target.value = ""
     return
   }
 
@@ -165,39 +169,49 @@ const removeAvatar = () => {
   avatar.value = DEFAULT_USER_AVATAR
 }
 
-const onSubmit = handleSubmit(async (values) => {
-  formSubmitting.value = true
-  try {
-    const roleIdValue = Number(values.roleId)
-    const parentIdValue = values.parentId && values.parentId !== "none" ? Number(values.parentId) : null
-    let avatarUrl = resolveUserAvatar(values.avatar)
+const onSubmit = handleSubmit(
+  async (values) => {
+    formSubmitting.value = true
+    try {
+      const roleIdValue = Number(values.roleId)
+      const parentIdValue = values.parentId && values.parentId !== "none" ? Number(values.parentId) : null
+      let avatarUrl = resolveUserAvatar(values.avatar)
 
-    if (selectedAvatarFile.value) {
-      const uploadResult = await uploadUserAvatar(selectedAvatarFile.value)
-      avatarUrl = uploadResult.url
-    }
+      if (selectedAvatarFile.value) {
+        const uploadResult = await uploadUserAvatar(selectedAvatarFile.value)
+        avatarUrl = uploadResult.url
+      }
 
-    const payload = {
-      ...values,
-      hanghangCrmMobile: values.hanghangCrmMobile,
-      roleId: roleIdValue,
-      parentId: parentIdValue,
-      avatar: avatarUrl,
-    }
+      const payload = {
+        ...values,
+        hanghangCrmMobile: values.hanghangCrmMobile?.trim() || "",
+        roleId: roleIdValue,
+        parentId: parentIdValue,
+        avatar: avatarUrl,
+      }
 
-    if (props.mode === "create") {
-      await createUser(payload as any)
-    } else if (props.userData) {
-      await updateUser(props.userData.id, payload as any)
+      if (props.mode === "create") {
+        await createUser(payload as any)
+        toast.success("用户添加成功")
+      } else if (props.userData) {
+        await updateUser(props.userData.id, payload as any)
+        toast.success("用户更新成功")
+      }
+      emit("success")
+      close()
+    } catch (error) {
+      toast.error(getRequestErrorMessage(error, props.mode === "create" ? "创建用户失败" : "更新用户失败"))
+    } finally {
+      formSubmitting.value = false
     }
-    emit("success")
-    close()
-  } catch (e) {
-    // TODO: show error
-  } finally {
-    formSubmitting.value = false
+  },
+  ({ errors }) => {
+    const firstError = Object.values(errors)[0]
+    if (firstError) {
+      toast.error(String(firstError))
+    }
   }
-})
+)
 
 onBeforeUnmount(() => {
   clearLocalPreviewObjectUrl()

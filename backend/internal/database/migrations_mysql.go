@@ -144,6 +144,11 @@ func getMySQLMigrations() []Migration {
 			Name:    "add_customer_assign_time_and_sales_assign_drop_setting",
 			Up:      upAddCustomerAssignTimeAndSalesAssignDropSettingMySQL,
 		},
+		{
+			Version: 2026040301,
+			Name:    "add_customer_visits_inviter",
+			Up:      upAddCustomerVisitsInviterMySQL,
+		},
 	}
 }
 
@@ -1112,6 +1117,14 @@ func upAddCustomerVisitsCheckInIPMySQL(tx *gorm.DB) error {
 		"operator_user_id, visit_date, check_in_ip, customer_name",
 		false,
 	)
+}
+
+func upAddCustomerVisitsInviterMySQL(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("customer_visits") {
+		return nil
+	}
+
+	return addColumnIfNotExists(tx, "customer_visits", "inviter", "VARCHAR(255) NOT NULL DEFAULT ''")
 }
 
 func upAddCustomerAssignTimeAndSalesAssignDropSettingMySQL(tx *gorm.DB) error {

@@ -139,6 +139,11 @@ func getSQLiteMigrations() []Migration {
 			Name:    "add_customer_assign_time_and_sales_assign_drop_setting",
 			Up:      upAddCustomerAssignTimeAndSalesAssignDropSetting,
 		},
+		{
+			Version: 2026040301,
+			Name:    "add_customer_visits_inviter",
+			Up:      upAddCustomerVisitsInviter,
+		},
 	}
 }
 
@@ -257,6 +262,14 @@ func upAddCustomerVisitsCheckInIP(tx *gorm.DB) error {
 		"operator_user_id, visit_date, check_in_ip, customer_name",
 		false,
 	)
+}
+
+func upAddCustomerVisitsInviter(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("customer_visits") {
+		return nil
+	}
+
+	return addColumnIfNotExists(tx, "customer_visits", "inviter", "TEXT NOT NULL DEFAULT ''")
 }
 
 func upAddCustomerAssignTimeAndSalesAssignDropSetting(tx *gorm.DB) error {

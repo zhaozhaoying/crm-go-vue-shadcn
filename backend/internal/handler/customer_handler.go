@@ -406,13 +406,13 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 		case errors.Is(err, service.ErrCustomerContactNameTooShort):
 			Error(c, http.StatusBadRequest, 10051, "联系人至少需要2个字")
 		case errors.Is(err, service.ErrInvalidPhoneFormat):
-			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
+			Error(c, http.StatusBadRequest, 10021, "联系电话格式不正确，请输入手机号或座机号")
 		case errors.Is(err, service.ErrCustomerNameExists):
 			Error(c, http.StatusConflict, 10033, "客户名称已存在")
 		case errors.Is(err, service.ErrCustomerWeixinExists):
 			Error(c, http.StatusConflict, 10035, "微信号已存在")
 		case errors.Is(err, service.ErrCustomerPhoneExists):
-			Error(c, http.StatusConflict, 10022, "手机号已存在")
+			Error(c, http.StatusConflict, 10022, "联系电话已存在")
 		case errors.Is(err, service.ErrCustomerNoOutsideSalesAvailable):
 			Error(c, http.StatusConflict, 10039, "当前团队下暂无可分配的销售负责人")
 		case errors.Is(err, service.ErrCustomerLimitExceeded):
@@ -490,13 +490,13 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 		case errors.Is(err, service.ErrCustomerContactNameTooShort):
 			Error(c, http.StatusBadRequest, 10051, "联系人至少需要2个字")
 		case errors.Is(err, service.ErrInvalidPhoneFormat):
-			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
+			Error(c, http.StatusBadRequest, 10021, "联系电话格式不正确，请输入手机号或座机号")
 		case errors.Is(err, service.ErrCustomerNameExists):
 			Error(c, http.StatusConflict, 10033, "客户名称已存在")
 		case errors.Is(err, service.ErrCustomerWeixinExists):
 			Error(c, http.StatusConflict, 10035, "微信号已存在")
 		case errors.Is(err, service.ErrCustomerPhoneExists):
-			Error(c, http.StatusConflict, 10022, "手机号已存在")
+			Error(c, http.StatusConflict, 10022, "联系电话已存在")
 		default:
 			ErrorWithDetail(c, http.StatusInternalServerError, 10037, "更新客户失败", err)
 		}
@@ -818,11 +818,11 @@ func (h *CustomerHandler) AddPhone(c *gin.Context) {
 
 	if err := h.service.AddPhone(c.Request.Context(), phone); err != nil {
 		if errors.Is(err, service.ErrInvalidPhoneFormat) {
-			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
+			Error(c, http.StatusBadRequest, 10021, "联系电话格式不正确，请输入手机号或座机号")
 			return
 		}
 		if errors.Is(err, service.ErrPhoneAlreadyExists) {
-			Error(c, http.StatusConflict, 10022, "手机号已存在")
+			Error(c, http.StatusConflict, 10022, "联系电话已存在")
 			return
 		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 10023, "新增客户电话失败", err)
@@ -899,11 +899,11 @@ func (h *CustomerHandler) UpdatePhone(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, service.ErrInvalidPhoneFormat) {
-			Error(c, http.StatusBadRequest, 10021, "手机号格式不正确")
+			Error(c, http.StatusBadRequest, 10021, "联系电话格式不正确，请输入手机号或座机号")
 			return
 		}
 		if errors.Is(err, service.ErrPhoneAlreadyExists) {
-			Error(c, http.StatusConflict, 10022, "手机号已存在")
+			Error(c, http.StatusConflict, 10022, "联系电话已存在")
 			return
 		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 10027, "更新客户电话失败", err)

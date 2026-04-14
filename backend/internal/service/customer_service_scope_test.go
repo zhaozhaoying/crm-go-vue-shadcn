@@ -33,6 +33,7 @@ type customerScopeRepoStub struct {
 	displayNames                         map[int64]string
 	subordinates                         map[int64][]int64
 	parents                              map[int64]int64
+	departmentAnchorUserIDs              map[int64]int64
 	rankedUserIDs                        []int64
 	recentContractExemptUserIDs          []int64
 	enabledUserIDsByNickname             map[string]int64
@@ -132,6 +133,34 @@ func (s *customerScopeRepoStub) GetParentUserID(ctx context.Context, userID int6
 }
 
 func (s *customerScopeRepoStub) ResolveDepartmentAnchorUserID(ctx context.Context, userID int64) (int64, error) {
+	if userID <= 0 {
+		return 0, nil
+	}
+	if s.departmentAnchorUserIDs != nil {
+		if anchorUserID, ok := s.departmentAnchorUserIDs[userID]; ok {
+			return anchorUserID, nil
+		}
+	}
+
+	visited := map[int64]struct{}{}
+	currentID := userID
+	for currentID > 0 {
+		if _, seen := visited[currentID]; seen {
+			return currentID, nil
+		}
+		visited[currentID] = struct{}{}
+
+		if len(uniquePositiveInt64(s.subordinates[currentID])) > 0 {
+			return currentID, nil
+		}
+
+		parentUserID := s.parents[currentID]
+		if parentUserID <= 0 {
+			return currentID, nil
+		}
+		currentID = parentUserID
+	}
+
 	return 0, nil
 }
 
@@ -644,20 +673,68 @@ func TestClaimCustomerReturnsHistoricalDepartmentForbidden(t *testing.T) {
 	}
 }
 
+func TestClaimCustomerReturnsDepartmentForbiddenAcrossManagerTeams(t *testing.T) {
+	blockedUntil := time.Now().UTC().Add(24 * time.Hour)
+	repoStub := &customerScopeRepoStub{
+		userRoles: map[int64]string{
+			100: "sales_director",
+			110: "sales_manager",
+			111: "sales_staff",
+			120: "sales_manager",
+			121: "sales_staff",
+		},
+		parents: map[int64]int64{
+			110: 100,
+			111: 110,
+			120: 100,
+			121: 120,
+		},
+		activeBlockedUntilByDepartmentAnchor: map[int64]time.Time{100: blockedUntil},
+		findByID: &model.Customer{
+			ID:         1004,
+			Name:       "测试客户4",
+			IsInPool:   true,
+			DropUserID: int64Ptr(121),
+		},
+	}
+
+	svc := &customerService{repo: repoStub}
+
+	_, err := svc.ClaimCustomer(context.Background(), 1004, 111)
+	var freezeErr *CustomerClaimFreezeError
+	if !errors.As(err, &freezeErr) {
+		t.Fatalf("expected CustomerClaimFreezeError, got %v", err)
+	}
+	if freezeErr.BlockType != customerClaimFreezeBlockTypeDepartment {
+		t.Fatalf("expected department freeze error, got %q", freezeErr.BlockType)
+	}
+	if repoStub.claimCalled {
+		t.Fatalf("claim repository should not be called when same-director department is forbidden")
+	}
+}
+
 func TestIsSameDepartmentUsesSalesDirectorScope(t *testing.T) {
 	repoStub := &customerScopeRepoStub{
 		userRoles: map[int64]string{
 			100: "sales_director",
-			101: "sales_staff",
-			102: "sales_staff",
+			110: "sales_manager",
+			111: "sales_staff",
+			112: "sales_staff",
+			130: "sales_manager",
+			122: "sales_staff",
 			200: "sales_director",
-			201: "sales_staff",
+			120: "sales_manager",
+			121: "sales_staff",
 			300: "admin",
 		},
 		parents: map[int64]int64{
-			101: 100,
-			102: 100,
-			201: 200,
+			110: 100,
+			111: 110,
+			112: 110,
+			130: 100,
+			122: 130,
+			120: 200,
+			121: 120,
 		},
 	}
 
@@ -671,26 +748,26 @@ func TestIsSameDepartmentUsesSalesDirectorScope(t *testing.T) {
 		want    bool
 	}{
 		{
-			name:    "same sales director subordinates are blocked",
-			leftID:  101,
-			rightID: 102,
+			name:    "same manager subordinates are blocked",
+			leftID:  111,
+			rightID: 112,
 			want:    true,
 		},
 		{
-			name:    "sales director and subordinate are blocked",
-			leftID:  100,
-			rightID: 101,
+			name:    "different manager teams under same director are blocked",
+			leftID:  111,
+			rightID: 122,
 			want:    true,
 		},
 		{
 			name:    "different sales director teams are allowed",
-			leftID:  101,
-			rightID: 201,
+			leftID:  111,
+			rightID: 121,
 			want:    false,
 		},
 		{
-			name:    "non sales director role does not trigger team block",
-			leftID:  101,
+			name:    "non department peer does not trigger block",
+			leftID:  111,
 			rightID: 300,
 			want:    false,
 		},

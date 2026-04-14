@@ -2,6 +2,7 @@ package service
 
 import (
 	"backend/internal/model"
+	"errors"
 	"testing"
 )
 
@@ -67,5 +68,53 @@ func TestNormalizeUpdateInputSkipsLegalAndContactInUniqueCheck(t *testing.T) {
 	}
 	if uniqueInput.ExcludeCustomerID == nil || *uniqueInput.ExcludeCustomerID != 42 {
 		t.Fatalf("expected update unique check to keep exclude customer id 42, got %#v", uniqueInput.ExcludeCustomerID)
+	}
+}
+
+func TestNormalizeCreateInputAllowsLandlinePhone(t *testing.T) {
+	t.Parallel()
+
+	normalized, uniqueInput, err := normalizeCreateInput(model.CustomerCreateInput{
+		Name:        "测试客户",
+		LegalName:   "张三",
+		ContactName: "李四",
+		Phones: []model.CustomerPhoneInput{
+			{
+				Phone:     "010-88886666",
+				IsPrimary: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("normalizeCreateInput returned error: %v", err)
+	}
+
+	if len(normalized.Phones) != 1 {
+		t.Fatalf("expected 1 normalized phone, got %d", len(normalized.Phones))
+	}
+	if normalized.Phones[0].Phone != "01088886666" {
+		t.Fatalf("expected landline to normalize as digits, got %q", normalized.Phones[0].Phone)
+	}
+	if len(uniqueInput.Phones) != 1 || uniqueInput.Phones[0] != "01088886666" {
+		t.Fatalf("expected unique check to include normalized landline, got %#v", uniqueInput.Phones)
+	}
+}
+
+func TestNormalizeCreateInputRejectsInvalidPhone(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := normalizeCreateInput(model.CustomerCreateInput{
+		Name:        "测试客户",
+		LegalName:   "张三",
+		ContactName: "李四",
+		Phones: []model.CustomerPhoneInput{
+			{
+				Phone:     "12345",
+				IsPrimary: true,
+			},
+		},
+	})
+	if !errors.Is(err, ErrInvalidPhoneFormat) {
+		t.Fatalf("expected ErrInvalidPhoneFormat, got %v", err)
 	}
 }

@@ -33,6 +33,10 @@
               <text class="label">公司名称：</text>
               <text class="value">{{ item.customerName }}</text>
             </view>
+            <view class="row" v-if="item.inviter">
+              <text class="label">邀约人：</text>
+              <text class="value">{{ item.inviter }}</text>
+            </view>
             <view class="row" v-if="item.remark">
               <text class="label">备注信息：</text>
               <text class="value">{{ item.remark }}</text>

@@ -86,11 +86,17 @@
 							</view>
 
 							<!-- Customer Name -->
-							<view class="field name-field">
+						<view class="field name-field">
 								<text class="lbl-txt"><text class="req-star">*</text>公司名称</text>
 								<input v-model="customerName" type="text" class="ipt" placeholder="必填公司名称"
 									placeholder-class="placeholder-color" />
 							</view>
+						</view>
+
+						<view class="field">
+							<text class="lbl-txt">邀约人</text>
+							<input v-model="inviter" type="text" class="ipt" placeholder="填写邀约人"
+								placeholder-class="placeholder-color" />
 						</view>
 
 						<!-- Remark -->
@@ -226,6 +232,7 @@
 
 	// === Form State ===
 	const customerName = ref("");
+	const inviter = ref("");
 	const visitPurpose = ref("");
 	const remark = ref("");
 	const images = ref([]);
@@ -523,6 +530,7 @@
 		try {
 			await createCustomerVisit({
 				customerName: customerName.value.trim(),
+				inviter: inviter.value.trim(),
 				checkInLat: currentLat.value,
 				checkInLng: currentLng.value,
 				province: currentProvince.value,
@@ -569,6 +577,7 @@
 		checkedInTime.value = "";
 		submitted.value = false;
 		customerName.value = "";
+		inviter.value = "";
 		visitPurpose.value = "";
 		purposeIndex.value = -1;
 		remark.value = "";

@@ -8,6 +8,7 @@ type CustomerVisit struct {
 	OperatorUserID   int64     `json:"operatorUserId" gorm:"column:operator_user_id;not null;index"`
 	OperatorUserName string    `json:"operatorUserName,omitempty" gorm:"-"`
 	CustomerName     string    `json:"customerName" gorm:"column:customer_name;not null"`
+	Inviter          string    `json:"inviter" gorm:"column:inviter;not null;default:''"`
 	CheckInIP        string    `json:"-" gorm:"column:check_in_ip;size:64;not null;default:''"`
 	CheckInLat       float64   `json:"checkInLat" gorm:"column:check_in_lat;not null;default:0"`
 	CheckInLng       float64   `json:"checkInLng" gorm:"column:check_in_lng;not null;default:0"`
@@ -31,6 +32,7 @@ func (CustomerVisit) TableName() string { return "customer_visits" }
 type CustomerVisitCreateInput struct {
 	OperatorUserID int64   `gorm:"-"`
 	CustomerName   string  `gorm:"-"`
+	Inviter        string  `gorm:"-"`
 	CheckInIP      string  `gorm:"-"`
 	CheckInLat     float64 `gorm:"-"`
 	CheckInLng     float64 `gorm:"-"`
@@ -46,11 +48,13 @@ type CustomerVisitCreateInput struct {
 
 // CustomerVisitListFilter 上门拜访列表过滤
 type CustomerVisitListFilter struct {
-	OperatorUserID int64  `gorm:"-"`
-	IsAdmin        bool   `gorm:"-"`
-	Keyword        string `gorm:"-"`
-	Page           int    `gorm:"-"`
-	PageSize       int    `gorm:"-"`
+	OperatorUserID int64      `gorm:"-"`
+	CanViewAll     bool       `gorm:"-"`
+	Keyword        string     `gorm:"-"`
+	StartTime      *time.Time `gorm:"-"`
+	EndTime        *time.Time `gorm:"-"`
+	Page           int        `gorm:"-"`
+	PageSize       int        `gorm:"-"`
 }
 
 // CustomerVisitListResult 上门拜访列表结果

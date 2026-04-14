@@ -913,30 +913,53 @@ func (r *gormCustomerRepository) GetActiveBlockedUntilByDepartmentAnchor(ctx con
 	}
 
 	type blockedUntilRow struct {
-		BlockedUntil sql.NullTime `gorm:"column:blocked_until"`
+		BlockedDepartmentAnchorUserID sql.NullInt64 `gorm:"column:blocked_department_anchor_user_id"`
+		BlockedUntil                  sql.NullTime  `gorm:"column:blocked_until"`
+		OperatorUserID                sql.NullInt64 `gorm:"column:operator_user_id"`
 	}
 
-	var row blockedUntilRow
+	rows := make([]blockedUntilRow, 0, 4)
 	err := r.db.WithContext(ctx).
 		Table("customer_owner_logs").
-		Select("blocked_until").
+		Select("blocked_department_anchor_user_id", "blocked_until", "operator_user_id").
 		Where("customer_id = ?", customerID).
 		Where("action = ?", "release").
 		Where("reason = ?", model.CustomerOwnerLogReasonManualRelease).
-		Where("blocked_department_anchor_user_id = ?", departmentAnchorUserID).
 		Where("blocked_until IS NOT NULL").
 		Where("blocked_until > ?", now).
 		Order("blocked_until ASC").
-		Limit(1).
-		Scan(&row).Error
+		Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	if !row.BlockedUntil.Valid {
-		return nil, nil
+
+	resolvedOperatorAnchors := make(map[int64]int64)
+	for _, row := range rows {
+		if !row.BlockedUntil.Valid {
+			continue
+		}
+		if row.BlockedDepartmentAnchorUserID.Valid && row.BlockedDepartmentAnchorUserID.Int64 == departmentAnchorUserID {
+			blockedUntil := row.BlockedUntil.Time
+			return &blockedUntil, nil
+		}
+		if !row.OperatorUserID.Valid || row.OperatorUserID.Int64 <= 0 {
+			continue
+		}
+
+		operatorAnchorUserID, ok := resolvedOperatorAnchors[row.OperatorUserID.Int64]
+		if !ok {
+			operatorAnchorUserID, err = r.resolveSalesDirectorAnchorUserID(ctx, row.OperatorUserID.Int64)
+			if err != nil {
+				return nil, err
+			}
+			resolvedOperatorAnchors[row.OperatorUserID.Int64] = operatorAnchorUserID
+		}
+		if operatorAnchorUserID == departmentAnchorUserID {
+			blockedUntil := row.BlockedUntil.Time
+			return &blockedUntil, nil
+		}
 	}
-	blockedUntil := row.BlockedUntil.Time
-	return &blockedUntil, nil
+	return nil, nil
 }
 
 func (r *gormCustomerRepository) resolveClaimBlockInfo(ctx context.Context, ownerUserID int64, now time.Time) (*int64, *time.Time, error) {
@@ -944,7 +967,7 @@ func (r *gormCustomerRepository) resolveClaimBlockInfo(ctx context.Context, owne
 		return nil, nil, nil
 	}
 
-	anchorUserID, err := r.ResolveDepartmentAnchorUserID(ctx, ownerUserID)
+	anchorUserID, err := r.resolveSalesDirectorAnchorUserID(ctx, ownerUserID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -974,6 +997,43 @@ func (r *gormCustomerRepository) resolveClaimBlockInfo(ctx context.Context, owne
 
 	blockedUntil := now.Add(time.Duration(freezeDays) * 24 * time.Hour)
 	return &anchorUserID, &blockedUntil, nil
+}
+
+func (r *gormCustomerRepository) resolveSalesDirectorAnchorUserID(ctx context.Context, userID int64) (int64, error) {
+	if userID <= 0 {
+		return 0, nil
+	}
+
+	visited := map[int64]struct{}{}
+	currentID := userID
+
+	for currentID > 0 {
+		if _, seen := visited[currentID]; seen {
+			return 0, nil
+		}
+		visited[currentID] = struct{}{}
+
+		roleName, err := r.GetUserRoleName(ctx, currentID)
+		if err != nil {
+			return 0, err
+		}
+		if isSalesDirectorRoleName(roleName) {
+			return currentID, nil
+		}
+
+		parentID, err := r.GetParentUserID(ctx, currentID)
+		if err != nil {
+			return 0, err
+		}
+		currentID = parentID
+	}
+
+	return 0, nil
+}
+
+func isSalesDirectorRoleName(roleName string) bool {
+	normalized := strings.TrimSpace(roleName)
+	return strings.EqualFold(normalized, "sales_director") || normalized == "销售总监"
 }
 
 func (r *gormCustomerRepository) CountOwnedActiveByOwner(ctx context.Context, ownerUserID int64) (int64, error) {

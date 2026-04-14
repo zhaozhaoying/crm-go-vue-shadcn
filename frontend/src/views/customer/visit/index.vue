@@ -5,13 +5,14 @@ import {
   RefreshCw,
   Search,
   MapPin,
-  Camera,
   Eye,
   X,
   Image as ImageIcon,
   Navigation,
   Upload,
+  Download,
 } from "lucide-vue-next";
+import { toast } from "vue-sonner";
 
 import {
   getCustomerVisits,
@@ -23,6 +24,8 @@ import { getSystemSettings } from "@/api/modules/systemSettings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DatetimePicker } from "@/components/ui/datetime-picker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -74,9 +77,30 @@ const pageIndex = ref(0);
 const pageSize = ref(10);
 const searchKeyword = ref("");
 const activeKeyword = ref("");
+const startTime = ref<string | undefined>(undefined);
+const endTime = ref<string | undefined>(undefined);
+const activeStartTime = ref<string | undefined>(undefined);
+const activeEndTime = ref<string | undefined>(undefined);
+const selectedIds = ref<number[]>([]);
+const selectedRecordMap = ref<Record<number, CustomerVisit>>({});
 
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(totalCount.value / pageSize.value))
+);
+const allPageSelected = computed(
+  () =>
+    records.value.length > 0 &&
+    records.value.every((record) => selectedIds.value.includes(record.id))
+);
+const somePageSelected = computed(
+  () =>
+    records.value.some((record) => selectedIds.value.includes(record.id)) &&
+    !allPageSelected.value
+);
+const selectedRecords = computed(() =>
+  selectedIds.value
+    .map((id) => selectedRecordMap.value[id])
+    .filter((record): record is CustomerVisit => Boolean(record))
 );
 
 // === Create Dialog State ===
@@ -87,6 +111,7 @@ const visitPurposeOptions = ref<string[]>(getVisitPurposeOptions());
 
 const createForm = ref({
   customerName: "",
+  inviter: "",
   checkInLat: 0,
   checkInLng: 0,
   province: "",
@@ -108,7 +133,9 @@ const previewIndex = ref(0);
 // === Format Helpers ===
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return "-";
-  return new Date(dateStr).toLocaleString("zh-CN", {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return date.toLocaleString("zh-CN", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -135,6 +162,132 @@ const formatRegion = (record: CustomerVisit) => {
 
 const getPreviewImages = (record: CustomerVisit) => parseImages(record.images);
 
+const parseFilterDateTime = (value?: string) => {
+  if (!value) return undefined;
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date;
+};
+
+const getExportTimestamp = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${year}${month}${day}-${hours}${minutes}`;
+};
+
+const buildCsv = (items: CustomerVisit[]) => {
+  const rows = [
+    [
+      "编号",
+      "客户公司名称",
+      "邀约人",
+      "省市区",
+      "详细地址",
+      "拜访目的",
+      "签到图片",
+      "备注",
+      "签到人",
+      "签到日期",
+      "创建时间",
+    ],
+    ...items.map((record) => [
+      String(record.id),
+      record.customerName || "",
+      record.inviter || "",
+      formatRegion(record),
+      record.detailAddress || "",
+      record.visitPurpose || "",
+      getPreviewImages(record).join(" | "),
+      record.remark || "",
+      record.operatorUserName || "未知",
+      record.visitDate || "",
+      formatDate(record.createdAt),
+    ]),
+  ];
+
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`)
+        .join(",")
+    )
+    .join("\n");
+};
+
+const exportVisits = (items: CustomerVisit[]) => {
+  if (items.length === 0) {
+    toast.error("请先选择要导出的记录");
+    return;
+  }
+
+  const csv = buildCsv(items);
+  const blob = new Blob(["\uFEFF" + csv], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `上门拜访-${getExportTimestamp()}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(url);
+  toast.success(`已导出 ${items.length} 条上门拜访记录`);
+};
+
+const exportSelectedVisits = () => {
+  exportVisits(selectedRecords.value);
+};
+
+const clearSelection = () => {
+  selectedIds.value = [];
+  selectedRecordMap.value = {};
+};
+
+const toggleAllPage = (checked: boolean | "indeterminate") => {
+  const pageIds = records.value.map((record) => record.id);
+  if (checked === true) {
+    const nextSelectedIds = new Set(selectedIds.value);
+    const nextSelectedRecordMap = { ...selectedRecordMap.value };
+    records.value.forEach((record) => {
+      nextSelectedIds.add(record.id);
+      nextSelectedRecordMap[record.id] = record;
+    });
+    selectedIds.value = Array.from(nextSelectedIds);
+    selectedRecordMap.value = nextSelectedRecordMap;
+    return;
+  }
+  const pageIdSet = new Set(pageIds);
+  const nextSelectedRecordMap = { ...selectedRecordMap.value };
+  pageIds.forEach((id) => {
+    delete nextSelectedRecordMap[id];
+  });
+  selectedIds.value = selectedIds.value.filter((selectedId) => !pageIdSet.has(selectedId));
+  selectedRecordMap.value = nextSelectedRecordMap;
+};
+
+const toggleRow = (record: CustomerVisit, checked: boolean | "indeterminate") => {
+  if (checked === true) {
+    if (!selectedIds.value.includes(record.id)) {
+      selectedIds.value = [...selectedIds.value, record.id];
+    }
+    selectedRecordMap.value = {
+      ...selectedRecordMap.value,
+      [record.id]: record,
+    };
+    return;
+  }
+  const nextSelectedRecordMap = { ...selectedRecordMap.value };
+  delete nextSelectedRecordMap[record.id];
+  selectedIds.value = selectedIds.value.filter((selectedId) => selectedId !== record.id);
+  selectedRecordMap.value = nextSelectedRecordMap;
+};
+
 // === List Operations ===
 const fetchRecords = async () => {
   loading.value = true;
@@ -144,9 +297,20 @@ const fetchRecords = async () => {
       page: pageIndex.value + 1,
       pageSize: pageSize.value,
       keyword: activeKeyword.value || undefined,
+      startTime: activeStartTime.value,
+      endTime: activeEndTime.value,
     });
     records.value = result.items || [];
     totalCount.value = result.total;
+    if (records.value.length > 0 && selectedIds.value.length > 0) {
+      const nextSelectedRecordMap = { ...selectedRecordMap.value };
+      records.value.forEach((record) => {
+        if (selectedIds.value.includes(record.id)) {
+          nextSelectedRecordMap[record.id] = record;
+        }
+      });
+      selectedRecordMap.value = nextSelectedRecordMap;
+    }
   } catch (err) {
     records.value = [];
     totalCount.value = 0;
@@ -165,7 +329,28 @@ const handleSearchClick = () => {
 };
 
 const handleSearch = () => {
+  const nextStartTime = startTime.value;
+  const nextEndTime = endTime.value;
+  const parsedStartTime = parseFilterDateTime(nextStartTime);
+  const parsedEndTime = parseFilterDateTime(nextEndTime);
+
+  if (nextStartTime && !parsedStartTime) {
+    toast.error("开始时间格式错误");
+    return;
+  }
+  if (nextEndTime && !parsedEndTime) {
+    toast.error("结束时间格式错误");
+    return;
+  }
+  if (parsedStartTime && parsedEndTime && parsedStartTime > parsedEndTime) {
+    toast.error("开始时间不能晚于结束时间");
+    return;
+  }
+
   activeKeyword.value = searchKeyword.value;
+  activeStartTime.value = nextStartTime;
+  activeEndTime.value = nextEndTime;
+  clearSelection();
   pageIndex.value = 0;
   fetchRecords();
 };
@@ -173,6 +358,11 @@ const handleSearch = () => {
 const clearSearch = () => {
   searchKeyword.value = "";
   activeKeyword.value = "";
+  startTime.value = undefined;
+  endTime.value = undefined;
+  activeStartTime.value = undefined;
+  activeEndTime.value = undefined;
+  clearSelection();
   pageIndex.value = 0;
   fetchRecords();
 };
@@ -194,6 +384,7 @@ const handlePageSizeChange = (nextPageSize: number) => {
 const resetCreateForm = () => {
   createForm.value = {
     customerName: "",
+    inviter: "",
     checkInLat: 0,
     checkInLng: 0,
     province: "",
@@ -261,6 +452,7 @@ const handleCreate = async () => {
   try {
     await createCustomerVisit({
       customerName: createForm.value.customerName.trim(),
+      inviter: createForm.value.inviter.trim(),
       checkInLat: createForm.value.checkInLat,
       checkInLng: createForm.value.checkInLng,
       province: createForm.value.province,
@@ -310,6 +502,30 @@ onMounted(() => {
               @keyup.enter="handleSearch"
             />
           </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-muted-foreground whitespace-nowrap">
+              开始时间
+            </label>
+            <div class="w-[220px]">
+              <DatetimePicker
+                id="customer-visit-start-time"
+                v-model="startTime"
+                placeholder="请选择开始时间"
+              />
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-muted-foreground whitespace-nowrap">
+              结束时间
+            </label>
+            <div class="w-[220px]">
+              <DatetimePicker
+                id="customer-visit-end-time"
+                v-model="endTime"
+                placeholder="请选择结束时间"
+              />
+            </div>
+          </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <div class="flex items-center gap-2 ml-auto">
@@ -328,12 +544,29 @@ onMounted(() => {
       <CardContent class="pt-4">
         <div class="mb-4 flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
-             <Button size="sm" variant="outline" @click="refreshList">
+            <Button size="sm" variant="outline" @click="refreshList">
               <RefreshCw class="h-4 w-4" />
             </Button>
             <Button size="sm" @click="goCheckIn">
               <Navigation class="h-4 w-4" />
               <span>去签到</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="loading || selectedRecords.length === 0"
+              @click="exportSelectedVisits"
+            >
+              <Download class="h-4 w-4" />
+              <span>导出选中{{ selectedRecords.length ? `(${selectedRecords.length})` : "" }}</span>
+            </Button>
+            <Button
+              v-if="selectedRecords.length > 0"
+              size="sm"
+              variant="ghost"
+              @click="clearSelection"
+            >
+              <span>清空选择</span>
             </Button>
           </div>
           <div class="flex items-center gap-2">
@@ -363,10 +596,22 @@ onMounted(() => {
             <Table class="w-max min-w-full">
               <TableHeader class="sticky top-0 z-20 bg-muted/40">
                 <TableRow>
+                  <TableHead class="w-12">
+                    <div class="flex items-center justify-center">
+                      <Checkbox
+                        :checked="allPageSelected || (somePageSelected && 'indeterminate')"
+                        class="border-black/70 data-[state=checked]:border-black data-[state=checked]:bg-black data-[state=checked]:text-white data-[state=indeterminate]:border-black data-[state=indeterminate]:bg-black data-[state=indeterminate]:text-white focus-visible:ring-black/30"
+                        aria-label="全选上门拜访记录"
+                        :disabled="loading || records.length === 0"
+                        @update:checked="toggleAllPage"
+                      />
+                    </div>
+                  </TableHead>
                   <TableHead class="w-16 whitespace-nowrap">编号</TableHead>
                   <TableHead class="w-40 whitespace-nowrap"
                     >客户公司名称</TableHead
                   >
+                  <TableHead class="w-28 whitespace-nowrap">邀约人</TableHead>
                   <TableHead class="w-40 whitespace-nowrap">省市区</TableHead>
                   <TableHead class="w-40 whitespace-nowrap"
                     >详细地址</TableHead
@@ -392,7 +637,18 @@ onMounted(() => {
                   v-for="record in records"
                   :key="record.id"
                   class="group hover:bg-muted/30 transition-colors"
+                  :data-state="selectedIds.includes(record.id) ? 'selected' : undefined"
                 >
+                  <TableCell>
+                    <div class="flex items-center justify-center">
+                      <Checkbox
+                        :checked="selectedIds.includes(record.id)"
+                        class="border-black/70 data-[state=checked]:border-black data-[state=checked]:bg-black data-[state=checked]:text-white data-[state=indeterminate]:border-black data-[state=indeterminate]:bg-black data-[state=indeterminate]:text-white focus-visible:ring-black/30"
+                        aria-label="选择上门拜访记录"
+                        @update:checked="(value) => toggleRow(record, value)"
+                      />
+                    </div>
+                  </TableCell>
                   <TableCell class="text-muted-foreground">{{
                     record.id
                   }}</TableCell>
@@ -409,6 +665,25 @@ onMounted(() => {
                             class="max-w-sm whitespace-pre-wrap break-words text-left"
                           >
                             <p>{{ record.customerName }}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </template>
+                    <span v-else>-</span>
+                  </TableCell>
+                  <TableCell class="max-w-[120px] text-sm text-muted-foreground">
+                    <template v-if="record.inviter">
+                      <TooltipProvider :delayDuration="200">
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <div class="cursor-help truncate">
+                              {{ record.inviter }}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            class="max-w-sm whitespace-pre-wrap break-words text-left"
+                          >
+                            <p>{{ record.inviter }}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -516,7 +791,7 @@ onMounted(() => {
                 </TableRow>
                 <EmptyTablePlaceholder
                   v-if="records.length === 0"
-                  :colspan="10"
+                  :colspan="12"
                   text="暂无上门拜访记录"
                 />
               </TableBody>
@@ -559,6 +834,14 @@ onMounted(() => {
             <Input
               v-model="createForm.customerName"
               placeholder="请输入客户公司名称"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <Label class="text-sm font-medium">邀约人</Label>
+            <Input
+              v-model="createForm.inviter"
+              placeholder="请输入邀约人"
             />
           </div>
 

@@ -30,6 +30,7 @@ func NewCustomerVisitService(repo customerVisitRepository, resolver CustomerVisi
 // Create 创建上门拜访记录
 func (s *CustomerVisitService) Create(ctx context.Context, input model.CustomerVisitCreateInput) (int64, error) {
 	input.CustomerName = strings.TrimSpace(input.CustomerName)
+	input.Inviter = strings.TrimSpace(input.Inviter)
 	input.CheckInIP = strings.TrimSpace(input.CheckInIP)
 	input.DetailAddress = strings.TrimSpace(input.DetailAddress)
 	input.VisitPurpose = strings.TrimSpace(input.VisitPurpose)

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { Loader2, Plus, Star, Trash2 } from "lucide-vue-next"
+import { toast } from "vue-sonner"
 
 import { validateCustomerUnique } from "@/api/modules/customers"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { chinaPcaCode, type ChinaPcaNode } from "@/data/china-pca-code"
+import {
+  getCustomerPhoneValidationMessage,
+  isValidCustomerPhone,
+  normalizeCustomerPhoneInput,
+} from "@/lib/form-validation"
 import type { Customer, CustomerFormPayload, CustomerFormPhone } from "@/types/customer"
 
 interface Props {
@@ -92,25 +98,12 @@ const checkingUnique = ref(false)
 let uniqueCheckTimer: ReturnType<typeof setTimeout> | null = null
 let uniqueCheckSeq = 0
 
-const CN_MOBILE_PHONE_REGEX = /^1[3-9]\d{9}$/
-
-const normalizePhoneInput = (value: string): string => {
-  let digits = String(value ?? "").replace(/\D/g, "")
-  if (digits.length === 13 && digits.startsWith("86")) {
-    digits = digits.slice(2)
-  }
-  return digits.slice(0, 11)
-}
-
-const isValidCnMobile = (phone: string): boolean => {
-  return CN_MOBILE_PHONE_REGEX.test(phone)
-}
+const normalizePhoneInput = (value: string): string => normalizeCustomerPhoneInput(value)
 
 const duplicatePhoneSet = computed(() => new Set(duplicatePhones.value))
 const localDuplicatePhones = computed(() => getLocalDuplicatePhones())
 const localDuplicatePhoneSet = computed(() => new Set(localDuplicatePhones.value))
 const phoneFieldErrors = computed(() => form.value.phones.map((item) => getPhoneFieldError(item.phone)))
-const hasPhoneFieldError = computed(() => phoneFieldErrors.value.some((item) => Boolean(item)))
 const isEditMode = computed(() => props.mode === "edit")
 const requiredLegalNameError = ref("")
 const requiredContactNameError = ref("")
@@ -156,7 +149,7 @@ const normalizePhonesForCheck = (phones: CustomerFormPhone[] = form.value.phones
 
   phones.forEach((item) => {
     const phone = normalizePhoneInput(item.phone)
-    if (!isValidCnMobile(phone) || seen.has(phone)) {
+    if (!isValidCustomerPhone(phone) || seen.has(phone)) {
       return
     }
     seen.add(phone)
@@ -175,7 +168,7 @@ const getLocalDuplicatePhones = (phones: CustomerFormPhone[] = form.value.phones
 
   phones.forEach((item) => {
     const phone = normalizePhoneInput(item.phone)
-    if (!isValidCnMobile(phone)) return
+    if (!isValidCustomerPhone(phone)) return
     counts.set(phone, (counts.get(phone) ?? 0) + 1)
   })
 
@@ -192,11 +185,28 @@ const syncBackendDuplicatePhones = () => {
 const getPhoneFieldError = (value: string): string => {
   const phone = normalizePhoneInput(value)
   if (!phone) return ""
-  if (phone.length !== 11) return "手机号必须为11位数字"
-  if (!isValidCnMobile(phone)) return "请输入有效的中国大陆手机号"
-  if (localDuplicatePhoneSet.value.has(phone)) return "手机号在当前表单中重复"
-  if (duplicatePhoneSet.value.has(phone)) return "系统中已存在该手机号"
+  const formatError = getCustomerPhoneValidationMessage(phone)
+  if (formatError) return formatError
+  if (localDuplicatePhoneSet.value.has(phone)) return "联系电话在当前表单中重复"
+  if (duplicatePhoneSet.value.has(phone)) return "系统中已存在该联系电话"
   return ""
+}
+
+const showFormError = (message: string) => {
+  formError.value = message
+  toast.error(message)
+}
+
+const getUniqueConflictMessage = () => {
+  if (uniqueNameError.value) return uniqueNameError.value
+  if (uniqueWeixinError.value) return uniqueWeixinError.value
+  if (localDuplicatePhones.value.length > 0) {
+    return `联系电话重复：${localDuplicatePhones.value.join("、")}`
+  }
+  if (duplicatePhones.value.length > 0) {
+    return `系统中已存在联系电话：${duplicatePhones.value.join("、")}`
+  }
+  return "客户信息存在重复，请修改后再保存"
 }
 
 const runUniqueCheck = async (phonesForCheck?: string[]) => {
@@ -344,7 +354,7 @@ watch(
     syncBackendDuplicatePhones()
     const hasPartialPhone = form.value.phones.some((item) => {
       const phone = normalizePhoneInput(item.phone)
-      return phone.length > 0 && !isValidCnMobile(phone)
+      return phone.length > 0 && !isValidCustomerPhone(phone)
     })
     scheduleUniqueCheck(hasPartialPhone ? 420 : 280)
   }
@@ -371,7 +381,7 @@ const handlePhoneInput = (index: number, value: string | number) => {
   if (!form.value.phones[index]) return
   form.value.phones[index].phone = phone
   syncBackendDuplicatePhones()
-  if (phone.length === 11) {
+  if (isValidCustomerPhone(phone)) {
     scheduleUniqueCheck(120)
   }
 }
@@ -421,18 +431,18 @@ const handleSubmit = async () => {
   const contactName = form.value.contactName.trim()
 
   if (phones.length === 0) {
-    formError.value = "请至少填写一个联系电话"
+    showFormError("请至少填写一个联系电话")
     return
   }
 
-  if (phones.some((item) => !isValidCnMobile(item.phone))) {
-    formError.value = "请填写有效的中国大陆手机号"
+  if (phones.some((item) => !isValidCustomerPhone(item.phone))) {
+    showFormError("请填写有效的手机号或座机号")
     return
   }
 
   const duplicatedInForm = getLocalDuplicatePhones(phones)
   if (duplicatedInForm.length > 0) {
-    formError.value = `手机号重复：${duplicatedInForm.join("、")}`
+    showFormError(`联系电话重复：${duplicatedInForm.join("、")}`)
     return
   }
 
@@ -447,7 +457,7 @@ const handleSubmit = async () => {
       ? "联系人至少需要2个字"
       : ""
   if (requiredLegalNameError.value || requiredContactNameError.value) {
-    formError.value = ""
+    showFormError(requiredLegalNameError.value || requiredContactNameError.value)
     return
   }
 
@@ -457,7 +467,7 @@ const handleSubmit = async () => {
   }
   const hasConflict = await runUniqueCheck(phones.map((item) => item.phone))
   if (hasConflict) {
-    formError.value = "公司名称、法人、联系人、手机号或微信存在重复，请修改后再保存"
+    showFormError(getUniqueConflictMessage())
     return
   }
 
@@ -476,7 +486,7 @@ const handleSubmit = async () => {
   }
 
   if (!payload.name) {
-    formError.value = "客户名称必填"
+    showFormError("客户名称必填")
     return
   }
 
@@ -549,7 +559,7 @@ const handleSubmit = async () => {
                 <Label><span class="mr-1 text-destructive">*</span>联系电话</Label>
                 <Button type="button" variant="outline" size="sm" :disabled="submitting" @click="addPhone">
                   <Plus class="h-4 w-4" />
-                  <span>新增手机号</span>
+                  <span>新增电话</span>
                 </Button>
               </div>
 
@@ -562,7 +572,7 @@ const handleSubmit = async () => {
                   <div class="grid gap-2 sm:grid-cols-[1fr_120px_auto_auto]">
                     <Input
                       :model-value="phone.phone"
-                      placeholder="请输入手机号"
+                      placeholder="请输入手机号或座机号"
                       :disabled="submitting"
                       :class="isDuplicatePhone(phone.phone) || phoneFieldErrors[idx] ? 'border-destructive focus-visible:ring-destructive' : ''"
                       @update:model-value="(value) => handlePhoneInput(idx, value)"
@@ -599,11 +609,14 @@ const handleSubmit = async () => {
                   </p>
                 </div>
               </div>
+              <p class="text-xs text-muted-foreground">
+                支持手机号或座机号，座机示例：01088886666
+              </p>
               <p v-if="localDuplicatePhones.length > 0" class="text-xs text-destructive">
-                当前表单手机号重复：{{ localDuplicatePhones.join("、") }}
+                当前表单联系电话重复：{{ localDuplicatePhones.join("、") }}
               </p>
               <p v-if="duplicatePhones.length > 0" class="text-xs text-destructive">
-                系统中已存在手机号：{{ duplicatePhones.join("、") }}
+                系统中已存在联系电话：{{ duplicatePhones.join("、") }}
               </p>
             </div>
 
@@ -721,7 +734,7 @@ const handleSubmit = async () => {
         <Button type="button" variant="outline" :disabled="submitting" @click="close">
           取消
         </Button>
-        <Button type="button" :disabled="submitting || checkingUnique || hasPhoneFieldError" @click="handleSubmit">
+        <Button type="button" :disabled="submitting || checkingUnique" @click="handleSubmit">
           <Loader2 v-if="submitting" class="mr-2 h-4 w-4 animate-spin" />
           {{ submitText }}
         </Button>

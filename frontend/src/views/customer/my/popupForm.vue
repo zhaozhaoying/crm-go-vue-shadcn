@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Loader2, Plus, Trash2 } from "lucide-vue-next";
 import { toTypedSchema } from "@vee-validate/zod";
 import { useForm, useFieldArray, useField } from "vee-validate";
+import { toast } from "vue-sonner";
 import * as z from "zod";
 
 import { validateCustomerUnique } from "@/api/modules/customers";
@@ -26,7 +27,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { chinaPcaCode, type ChinaPcaNode } from "@/data/china-pca-code";
-import { requiredString } from "@/lib/form-validation";
+import {
+  isValidCustomerPhone,
+  normalizeCustomerPhoneInput,
+  requiredString,
+  requiredStringish,
+} from "@/lib/form-validation";
 import type {
   Customer,
   CustomerFormPayload,
@@ -50,11 +56,13 @@ const emit = defineEmits<{
   (e: "submit", payload: CustomerFormPayload): void;
 }>();
 
-const CN_MOBILE_PHONE_REGEX = /^1[3-9]\d{9}$/;
-
 const phoneSchema = z.object({
   id: z.number().optional(),
-  phone: requiredString("手机号").regex(CN_MOBILE_PHONE_REGEX, "请输入有效的中国大陆手机号"),
+  phone: requiredStringish("联系电话")
+    .transform((value) => normalizeCustomerPhoneInput(value))
+    .refine((value) => isValidCustomerPhone(value), {
+      message: "请输入有效的手机号或座机号，例如 13800138000 或 01088886666",
+    }),
   phoneLabel: z.string().default("手机"),
   isPrimary: z.boolean().default(false),
 });
@@ -185,7 +193,7 @@ const clearUniqueState = () => {
 
 const getFirstSubmitErrorMessage = () => {
   if (backendDuplicatePhones.value.length > 0) {
-    return `系统中已存在手机号：${backendDuplicatePhones.value.join("、")}`;
+    return `系统中已存在联系电话：${backendDuplicatePhones.value.join("、")}`;
   }
 
   const firstPhoneError = phoneFields.value
@@ -209,8 +217,8 @@ const runUniqueCheck = async () => {
   checkingUnique.value = true;
 
   const phonesToCheck = phoneFields.value
-    ?.map((p) => p.value.phone)
-    .filter((p): p is string => !!p && CN_MOBILE_PHONE_REGEX.test(p));
+    ?.map((p) => normalizeCustomerPhoneInput(p.value.phone))
+    .filter((p): p is string => !!p && isValidCustomerPhone(p));
 
   try {
     const result = await validateCustomerUnique({
@@ -229,11 +237,12 @@ const runUniqueCheck = async () => {
     backendDuplicatePhones.value = result.duplicatePhones ?? [];
 
     const phoneMap = new Map(
-      phoneFields.value.map((field, index) => [field.value.phone, index])
+      phoneFields.value.map((field, index) => [normalizeCustomerPhoneInput(field.value.phone), index])
     );
     phoneFields.value.forEach((field, index) => {
-      if (!backendDuplicatePhones.value.includes(field.value.phone)) {
-        if (errors.value[`phones.${index}.phone`] === "系统中已存在该手机号") {
+      const normalizedPhone = normalizeCustomerPhoneInput(field.value.phone);
+      if (!backendDuplicatePhones.value.includes(normalizedPhone)) {
+        if (errors.value[`phones.${index}.phone`] === "系统中已存在该联系电话") {
           setFieldError(`phones.${index}.phone`, undefined);
         }
       }
@@ -241,7 +250,7 @@ const runUniqueCheck = async () => {
     result.duplicatePhones?.forEach((dupPhone) => {
       const index = phoneMap.get(dupPhone);
       if (index !== undefined) {
-        setFieldError(`phones.${index}.phone`, "系统中已存在该手机号");
+        setFieldError(`phones.${index}.phone`, "系统中已存在该联系电话");
       }
     });
   } catch {
@@ -377,6 +386,7 @@ const onSubmit = handleSubmit(async (formValues) => {
   await runUniqueCheck();
   if (Object.keys(errors.value).length > 0) {
     formError.value = getFirstSubmitErrorMessage();
+    toast.error(formError.value);
     return;
   }
 
@@ -403,6 +413,12 @@ const onSubmit = handleSubmit(async (formValues) => {
 
       <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="onSubmit">
         <div class="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+          <div
+            v-if="formError"
+            class="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {{ formError }}
+          </div>
           <div class="grid gap-4 sm:grid-cols-2">
             <div class="space-y-1.5 sm:col-span-2">
               <Label for="customer-name">
@@ -461,7 +477,7 @@ const onSubmit = handleSubmit(async (formValues) => {
                   @click="handleAddPhone"
                 >
                   <Plus class="h-4 w-4" />
-                  <span>新增手机号</span>
+                  <span>新增电话</span>
                 </Button>
               </div>
 
@@ -474,7 +490,7 @@ const onSubmit = handleSubmit(async (formValues) => {
                   <div class="flex gap-2 items-center">
                     <Input
                       v-model="field.value.phone"
-                      placeholder="请输入手机号"
+                      placeholder="请输入手机号或座机号"
                       :disabled="submitting"
                       class="flex-1"
                     />
@@ -500,11 +516,14 @@ const onSubmit = handleSubmit(async (formValues) => {
               <p v-if="errors.phones" class="text-xs text-destructive">
                 {{ errors.phones }}
               </p>
+              <p class="text-xs text-muted-foreground">
+                支持手机号或座机号，座机示例：01088886666
+              </p>
               <p
                 v-if="backendDuplicatePhones.length > 0"
                 class="text-xs text-destructive"
               >
-                系统中已存在手机号：{{ backendDuplicatePhones.join("、") }}
+                系统中已存在联系电话：{{ backendDuplicatePhones.join("、") }}
               </p>
             </div>
 
@@ -634,9 +653,6 @@ const onSubmit = handleSubmit(async (formValues) => {
       </form>
 
       <DialogFooter class="shrink-0 border-t px-6 py-4">
-        <p v-if="formError" class="mr-auto text-sm text-destructive">
-          {{ formError }}
-        </p>
         <Button
           type="button"
           variant="outline"

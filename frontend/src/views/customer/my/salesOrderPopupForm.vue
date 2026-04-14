@@ -2,6 +2,7 @@
 import axios from "axios";
 import { computed, ref, watch } from "vue";
 import { Loader2 } from "lucide-vue-next";
+import { toast } from "vue-sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -100,6 +101,28 @@ const dialogTitle = computed(() => {
   if (formReadonly.value) return "查看销售提单";
   return props.mode === "create" ? "新增销售提单" : "编辑销售提单";
 });
+
+const readonlyHint = computed(() => {
+  if (!formReadonly.value || props.mode !== "edit") return "";
+  const auditStatus = String(props.contract?.auditStatus ?? "").trim();
+  if (auditStatus === "success") {
+    return "该提单已审核通过，当前窗口仅支持查看。如需修改，请前往合同管理按权限处理。";
+  }
+  if (auditStatus === "failed") {
+    return "该提单已审核驳回，当前窗口仅支持查看。如需继续处理，请前往合同管理查看驳回原因。";
+  }
+  return "当前提单暂不可在这里修改，已切换为只读查看。";
+});
+
+const showFormError = (message: string) => {
+  formError.value = message;
+  toast.error(message);
+};
+
+const showContractNumberError = (message: string) => {
+  contractNumberError.value = message;
+  toast.error(message);
+};
 
 const extractSuffix = (prefix: string, fullNumber?: string) => {
   const normalizedPrefix = prefix.trim();
@@ -205,6 +228,8 @@ const validateContractNumberUniqueness = async (showMessage: boolean) => {
   const suffix = normalizeText(form.value.contractNumberSuffix);
   if (!suffix) {
     if (showMessage) {
+      showContractNumberError("合同编号后缀必填");
+    } else {
       contractNumberError.value = "合同编号后缀必填";
     }
     return false;
@@ -217,7 +242,11 @@ const validateContractNumberUniqueness = async (showMessage: boolean) => {
     const result = await checkContractNumberAvailable(contractNumber, props.contract?.id);
     if (seq !== contractNumberCheckSeq) return false;
     if (!result.available) {
-      contractNumberError.value = "合同编号已存在，请更换";
+      if (showMessage) {
+        showContractNumberError("合同编号已存在，请更换");
+      } else {
+        contractNumberError.value = "合同编号已存在，请更换";
+      }
       return false;
     }
     contractNumberError.value = "";
@@ -230,6 +259,8 @@ const validateContractNumberUniqueness = async (showMessage: boolean) => {
     }
     if (seq !== contractNumberCheckSeq) return false;
     if (showMessage) {
+      showContractNumberError("合同编号校验失败，请重试");
+    } else {
       contractNumberError.value = "合同编号校验失败，请重试";
     }
     return false;
@@ -254,17 +285,28 @@ const submit = async () => {
 
   const suffix = normalizeText(form.value.contractNumberSuffix);
   if (!suffix) {
-    contractNumberError.value = "合同编号后缀必填";
+    showContractNumberError("合同编号后缀必填");
     return;
   }
   if (!normalizeText(form.value.contractName)) {
-    formError.value = "合同名称必填";
+    showFormError("合同名称必填");
     return;
   }
 
   const resolvedCustomerId = Number(props.customerId || props.contract?.customerId || 0);
   if (resolvedCustomerId <= 0) {
-    formError.value = "缺少客户ID";
+    showFormError("缺少客户ID，请刷新后重试");
+    return;
+  }
+
+  const contractAmount = Number(form.value.contractAmount);
+  const paymentAmount = Number(form.value.paymentAmount);
+  if (!Number.isFinite(contractAmount) || contractAmount < 0 || !Number.isFinite(paymentAmount) || paymentAmount < 0) {
+    showFormError("合同金额和回款金额必须是大于等于 0 的数字");
+    return;
+  }
+  if (paymentAmount > contractAmount) {
+    showFormError("回款金额不能大于合同金额");
     return;
   }
 
@@ -286,8 +328,8 @@ const submit = async () => {
     contractNumber: `${prefix}${suffix}`,
     contractNumberSuffix: suffix,
     contractName: normalizeText(form.value.contractName),
-    contractAmount: parseNumber(form.value.contractAmount, 0),
-    paymentAmount: parseNumber(form.value.paymentAmount, 0),
+    contractAmount,
+    paymentAmount,
     cooperationYears: parseNumber(form.value.cooperationYears, 0),
     nodeCount: parseNumber(form.value.nodeCount, 0),
     serviceUserId: props.contract?.serviceUserId ?? null,
@@ -314,6 +356,18 @@ const submit = async () => {
 
       <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="submit">
         <div class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          <div
+            v-if="readonlyHint"
+            class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700"
+          >
+            {{ readonlyHint }}
+          </div>
+          <div
+            v-if="formError"
+            class="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {{ formError }}
+          </div>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div class="space-y-2 md:col-span-2">
               <Label>合同编号</Label>
@@ -451,7 +505,6 @@ const submit = async () => {
               />
             </div>
           </div>
-          <p v-if="formError" class="mt-4 text-sm text-destructive">{{ formError }}</p>
         </div>
 
         <DialogFooter class="border-t px-6 py-4">
