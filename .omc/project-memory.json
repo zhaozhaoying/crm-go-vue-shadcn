@@ -180,8 +180,8 @@
     },
     {
       "path": "backend/internal/service/sales_daily_score_service.go",
-      "accessCount": 5,
-      "lastAccessed": 1776679154702,
+      "accessCount": 6,
+      "lastAccessed": 1776680291029,
       "type": "file"
     },
     {
@@ -272,6 +272,12 @@
       "path": "backend/internal/service/telemarketing_daily_score_runtime.go",
       "accessCount": 1,
       "lastAccessed": 1776679280468,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/config/config.go",
+      "accessCount": 1,
+      "lastAccessed": 1776680291083,
       "type": "file"
     }
   ],

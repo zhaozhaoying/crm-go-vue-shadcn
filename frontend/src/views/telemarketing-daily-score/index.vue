@@ -279,7 +279,6 @@ onBeforeUnmount(() => {
                   <TableHead class="w-20 whitespace-nowrap">排名</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">工号</TableHead>
                   <TableHead class="w-28 whitespace-nowrap">姓名</TableHead>
-                  <TableHead class="w-24 whitespace-nowrap">所属组</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">总积分</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">电话积分</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">邀约积分</TableHead>
@@ -316,7 +315,6 @@ onBeforeUnmount(() => {
                   </TableCell>
                   <TableCell class="font-medium">{{ item.seatWorkNumber || "-" }}</TableCell>
                   <TableCell>{{ getTelemarketingDisplayName(item) }}</TableCell>
-                  <TableCell class="text-muted-foreground">{{ item.groupName || "-" }}</TableCell>
                   <TableCell>
                     <span class="text-base font-semibold text-primary">{{ item.totalScore }}</span>
                   </TableCell>
