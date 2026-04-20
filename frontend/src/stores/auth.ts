@@ -19,6 +19,7 @@ export interface AuthUser {
   email: string
   mobile: string
   hanghangCrmMobile: string
+  mihuaWorkNumber: string
   avatar: string
   role: string
   roleId: number
@@ -51,6 +52,7 @@ const userFromToken = (token: string): AuthUser | null => {
     email: (p.email as string) || "",
     mobile: "",
     hanghangCrmMobile: "",
+    mihuaWorkNumber: "",
     avatar: "",
     role: (p.role as string) || "",
     roleId: Number(p.role_id ?? 0),
@@ -77,6 +79,7 @@ const readCachedUser = (): AuthUser | null => {
       email: parsed.email || "",
       mobile: parsed.mobile || "",
       hanghangCrmMobile: parsed.hanghangCrmMobile || "",
+      mihuaWorkNumber: parsed.mihuaWorkNumber || "",
       avatar: parsed.avatar || "",
       role: parsed.role || parsed.roleName || "",
       roleId: Number(parsed.roleId || 0),
@@ -109,6 +112,7 @@ const mapCurrentUser = (user: UserWithRole): AuthUser => {
     email: user.email || "",
     mobile: user.mobile || "",
     hanghangCrmMobile: user.hanghangCrmMobile || "",
+    mihuaWorkNumber: user.mihuaWorkNumber || "",
     avatar: user.avatar || "",
     role: user.roleName || "",
     roleId: Number(user.roleId || 0),

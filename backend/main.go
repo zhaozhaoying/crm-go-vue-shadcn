@@ -89,11 +89,30 @@ func main() {
 	contractService := service.NewContractService(contractRepo, systemSettingRepo, activityLogRepo)
 	dashboardService := service.NewDashboardService(dashboardRepo, scheduleLocation)
 	hanghangCRMDailyUserCallStatService := service.NewHanghangCRMDailyUserCallStatService(hanghangCRMDailyUserCallStatRepo, cfg.HanghangCRMCloudToken)
-	salesDailyScoreService := service.NewSalesDailyScoreService(salesDailyScoreRepo)
+	salesDailyScoreService := service.NewSalesDailyScoreService(
+		salesDailyScoreRepo,
+		service.WithMiHuaTelemarketingConfig(
+			cfg.MiHuaCallRecordListURL,
+			cfg.MiHuaCallRecordToken,
+			cfg.MiHuaCallRecordOrigin,
+		),
+	)
 	callRecordingService := service.NewCallRecordingService(callRecordingRepo)
 	callRecordingSyncService := service.NewCallRecordingSyncService(callRecordingService, cfg.FeigeCallRecordingCookie)
 	hanghangCRMDailyScoreRuntime := service.NewHanghangCRMDailyScoreRuntime(
 		hanghangCRMDailyUserCallStatService,
+		salesDailyScoreService,
+		time.Minute,
+		scheduleLocation,
+		func() bool {
+			setting, err := systemSettingRepo.GetSetting("holiday_mode_enabled")
+			if err != nil || setting == nil {
+				return false
+			}
+			return setting.Value == "true" || setting.Value == "1"
+		},
+	)
+	telemarketingDailyScoreRuntime := service.NewTelemarketingDailyScoreRuntime(
 		salesDailyScoreService,
 		time.Minute,
 		scheduleLocation,
@@ -177,6 +196,8 @@ func main() {
 	notificationHandler := handler.NewNotificationHandler(activityLogRepo, notificationRepo)
 	customerVisitHandler := handler.NewCustomerVisitHandler(customerVisitService)
 	salesDailyScoreHandler := handler.NewSalesDailyScoreHandler(salesDailyScoreService)
+	telemarketingDailyScoreHandler := handler.NewTelemarketingDailyScoreHandler(salesDailyScoreService)
+	rankingLeaderboardHandler := handler.NewRankingLeaderboardHandler(salesDailyScoreService)
 	callRecordingHandler := handler.NewCallRecordingHandler(callRecordingService, callRecordingSyncService, authContextProvider)
 	externalCompanySearchHandler := handler.NewExternalCompanySearchHandler(
 		externalCompanySearchService,
@@ -188,6 +209,7 @@ func main() {
 	appCtx := context.Background()
 	customerAutoDropRuntime.Start(appCtx)
 	hanghangCRMDailyScoreRuntime.Start(appCtx)
+	telemarketingDailyScoreRuntime.Start(appCtx)
 	externalCompanySearchRuntime.Start(appCtx)
 
 	engine := router.New(
@@ -208,6 +230,8 @@ func main() {
 		notificationHandler,
 		customerVisitHandler,
 		salesDailyScoreHandler,
+		telemarketingDailyScoreHandler,
+		rankingLeaderboardHandler,
 		callRecordingHandler,
 		authTokenRepo,
 	)

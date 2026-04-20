@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CONTRACT_PENDING_COUNT_REFRESH_EVENT, getPendingContractCount } from '@/api/modules/contracts'
 import NavMain from '@/components/custom/NavMain.vue'
 import NavUser from '@/components/custom/NavUser.vue'
 import { Button } from '@/components/ui/button'
@@ -14,22 +15,31 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar'
-import { Globe2, LayoutDashboard, Users, UserCog, Shield, Settings, ClipboardList, Headphones, FileText, MapPinned, Bell, Trophy, PhoneCall } from 'lucide-vue-next'
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { Globe2, LayoutDashboard, Users, UserCog, Settings, ClipboardList, FileText, Bell, Trophy } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 interface MainNavigationItem {
   title: string
   url: string
   icon: any
+  badge?: string
   allowedRoles?: string[]
   items?: { title: string; url: string; allowedRoles?: string[] }[]
 }
 
 const navMain: MainNavigationItem[] = [
   { title: '仪表盘', url: '/dashboard', icon: LayoutDashboard },
-  { title: '角色管理', url: '/roles', icon: Shield, allowedRoles: ['admin'] },
-  { title: '用户管理', url: '/users', icon: UserCog, allowedRoles: ['admin', 'finance_manager', 'finance', '财务经理', '财务'] },
+  {
+    title: '用户管理',
+    url: '/users',
+    icon: UserCog,
+    allowedRoles: ['admin', 'finance_manager', 'finance', '财务经理', '财务'],
+    items: [
+      { title: '用户列表', url: '/users' },
+      { title: '角色管理', url: '/users/roles', allowedRoles: ['admin'] },
+    ],
+  },
   {
     title: '客户管理',
     url: '/customers',
@@ -48,57 +58,131 @@ const navMain: MainNavigationItem[] = [
       { title: '上门拜访', url: '/custom/visits' },
     ],
   },
-  { title: '销售跟进', url: '/follow-records/sales', icon: ClipboardList, allowedRoles: ['admin'] },
-  { title: '运营跟进', url: '/follow-records/operation', icon: Headphones, allowedRoles: ['admin'] },
   {
-    title: '每日排名',
-    url: '/sales-daily-scores',
-    icon: Trophy,
+    title: '跟进管理',
+    url: '/follow-records/sales',
+    icon: ClipboardList,
+    items: [
+      { title: '销售跟进', url: '/follow-records/sales', allowedRoles: ['admin'] },
+      { title: '运营跟进', url: '/follow-records/operation', allowedRoles: ['admin'] },
+    ],
   },
   {
-    title: '通话录音',
-    url: '/call-recordings',
-    icon: PhoneCall,
-    allowedRoles: [
-      'admin',
-      'finance_manager',
-      'finance',
-      '财务经理',
-      '财务',
-      'sales_director',
-      '销售总监',
-      'sales_manager',
-      '销售经理',
-      'sales_staff',
-      '销售员工',
-      'sales_inside',
-      'sale_inside',
-      'inside销售',
-      '电销员工',
-      'sales_outside',
-      'sale_outside',
-      'outside销售',
+    title: '销售排名',
+    url: '/sales-daily-scores',
+    icon: Trophy,
+    items: [
+      { title: '每日排名', url: '/sales-daily-scores' },
+      {
+        title: '通话录音',
+        url: '/call-recordings',
+        allowedRoles: [
+          'admin',
+          'finance_manager',
+          'finance',
+          '财务经理',
+          '财务',
+          'sales_director',
+          '销售总监',
+          'sales_manager',
+          '销售经理',
+          'sales_staff',
+          '销售员工',
+          'sales_inside',
+          'sale_inside',
+          'inside销售',
+          '电销员工',
+          'sales_outside',
+          'sale_outside',
+          'outside销售',
+        ],
+      },
+    ],
+  },
+  {
+    title: '电销排名',
+    url: '/telemarketing-daily-scores',
+    icon: Trophy,
+    items: [
+      { title: '每日排名', url: '/telemarketing-daily-scores' },
+      { title: '排名榜单', url: '/ranking-leaderboard' },
     ],
   },
   { title: '合同管理', url: '/contracts', icon: FileText },
-  { title: '地图资源', url: '/resource-pool', icon: MapPinned },
-  { title: '资源获取', url: '/resource-acquisition', icon: Globe2 },
+  {
+    title: '资源获取',
+    url: '/resource-acquisition',
+    icon: Globe2,
+    items: [
+      { title: '地图资源', url: '/resource-pool' },
+      { title: '资源获取', url: '/resource-acquisition' },
+    ],
+  },
 ]
 
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
+const route = useRoute()
 const router = useRouter()
+const pendingContractCount = ref(0)
+const pendingContractCountLoaded = ref(false)
+let pendingContractCountRequestId = 0
+
+const fetchPendingContractCount = async () => {
+  const requestId = ++pendingContractCountRequestId
+  try {
+    const total = await getPendingContractCount()
+    if (requestId !== pendingContractCountRequestId) return
+    pendingContractCount.value = Number.isFinite(total) ? total : 0
+  } catch {
+    if (requestId !== pendingContractCountRequestId) return
+    pendingContractCount.value = 0
+  } finally {
+    if (requestId === pendingContractCountRequestId) {
+      pendingContractCountLoaded.value = true
+    }
+  }
+}
+
+const pendingContractBadge = computed(() => {
+  if (!pendingContractCountLoaded.value || pendingContractCount.value <= 0) return ''
+  return pendingContractCount.value > 99 ? '99+' : String(pendingContractCount.value)
+})
+
+const handlePendingContractCountRefresh = () => {
+  void fetchPendingContractCount()
+}
+
 const isAdmin = computed(() => isAdminUser(authStore.user))
 const visibleNavMain = computed(() =>
   navMain
     .filter((item) => !item.allowedRoles?.length || hasAnyRole(authStore.user, item.allowedRoles))
     .map((item) => ({
       ...item,
+      badge: item.url === '/contracts' ? pendingContractBadge.value : undefined,
       items: item.items?.filter(
         (subItem) => !subItem.allowedRoles?.length || hasAnyRole(authStore.user, subItem.allowedRoles),
       ),
     })),
 )
+
+watch(
+  () => route.path,
+  () => {
+    void fetchPendingContractCount()
+  },
+)
+
+onMounted(() => {
+  void fetchPendingContractCount()
+  window.addEventListener('focus', handlePendingContractCountRefresh)
+  window.addEventListener(CONTRACT_PENDING_COUNT_REFRESH_EVENT, handlePendingContractCountRefresh)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', handlePendingContractCountRefresh)
+  window.removeEventListener(CONTRACT_PENDING_COUNT_REFRESH_EVENT, handlePendingContractCountRefresh)
+})
 </script>
 
 <template>

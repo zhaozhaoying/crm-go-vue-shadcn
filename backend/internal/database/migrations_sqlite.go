@@ -144,7 +144,94 @@ func getSQLiteMigrations() []Migration {
 			Name:    "add_customer_visits_inviter",
 			Up:      upAddCustomerVisitsInviter,
 		},
+		{
+			Version: 2026042001,
+			Name:    "add_user_mihua_work_number",
+			Up:      upAddUserMihuaWorkNumber,
+		},
+		{
+			Version: 2026042002,
+			Name:    "create_spxxjj_telemarketing_tables",
+			Up:      upCreateSpxxjjTelemarketingTables,
+		},
 	}
+}
+
+func upAddUserMihuaWorkNumber(tx *gorm.DB) error {
+	return addColumnIfNotExists(tx, "users", "mihua_work_number", "TEXT NOT NULL DEFAULT ''")
+}
+
+func upCreateSpxxjjTelemarketingTables(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS spxxjj_mihua_seat_statistics (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			score_date TEXT NOT NULL,
+			seat_id INTEGER NOT NULL DEFAULT 0,
+			seat_name TEXT NOT NULL DEFAULT '',
+			work_number TEXT NOT NULL DEFAULT '',
+			service_number TEXT NOT NULL DEFAULT '',
+			is_mobile_seat TEXT NOT NULL DEFAULT '',
+			seat_type INTEGER NOT NULL DEFAULT 0,
+			ccgeid INTEGER NOT NULL DEFAULT 0,
+			success_call_count INTEGER NOT NULL DEFAULT 0,
+			out_total_success INTEGER NOT NULL DEFAULT 0,
+			out_total_call_count INTEGER NOT NULL DEFAULT 0,
+			call_total_time_second INTEGER NOT NULL DEFAULT 0,
+			call_valid_time_second INTEGER NOT NULL DEFAULT 0,
+			out_call_total_time_second INTEGER NOT NULL DEFAULT 0,
+			out_call_valid_time_second INTEGER NOT NULL DEFAULT 0,
+			latest_state_time DATETIME NULL,
+			latest_state_id INTEGER NOT NULL DEFAULT 0,
+			stat_timestamp DATETIME NULL,
+			enterprise_name TEXT NOT NULL DEFAULT '',
+			department_name TEXT NOT NULL DEFAULT '',
+			group_name TEXT NOT NULL DEFAULT '',
+			seat_real_time_state_json TEXT NOT NULL DEFAULT '{}',
+			groups_json TEXT NOT NULL DEFAULT '[]',
+			raw_payload TEXT NOT NULL DEFAULT '{}',
+			matched_user_id INTEGER NULL,
+			matched_user_name TEXT NOT NULL DEFAULT '',
+			role_name TEXT NOT NULL DEFAULT '',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_spxxjj_mihua_seat_statistics_date_work_number ON spxxjj_mihua_seat_statistics(score_date, work_number)`,
+		`CREATE INDEX IF NOT EXISTS idx_spxxjj_mihua_seat_statistics_user_id ON spxxjj_mihua_seat_statistics(matched_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_spxxjj_mihua_seat_statistics_score_date ON spxxjj_mihua_seat_statistics(score_date)`,
+		`CREATE TABLE IF NOT EXISTS spxxjj_telemarketing_daily_scores (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			score_date TEXT NOT NULL,
+			seat_work_number TEXT NOT NULL DEFAULT '',
+			seat_name TEXT NOT NULL DEFAULT '',
+			matched_user_id INTEGER NULL,
+			matched_user_name TEXT NOT NULL DEFAULT '',
+			service_number TEXT NOT NULL DEFAULT '',
+			group_name TEXT NOT NULL DEFAULT '',
+			role_name TEXT NOT NULL DEFAULT '',
+			call_num INTEGER NOT NULL DEFAULT 0,
+			answered_call_count INTEGER NOT NULL DEFAULT 0,
+			missed_call_count INTEGER NOT NULL DEFAULT 0,
+			answer_rate REAL NOT NULL DEFAULT 0,
+			call_duration_second INTEGER NOT NULL DEFAULT 0,
+			new_customer_count INTEGER NOT NULL DEFAULT 0,
+			invitation_count INTEGER NOT NULL DEFAULT 0,
+			call_score_by_count INTEGER NOT NULL DEFAULT 0,
+			call_score_by_duration INTEGER NOT NULL DEFAULT 0,
+			call_score_type TEXT NOT NULL DEFAULT 'none',
+			call_score INTEGER NOT NULL DEFAULT 0,
+			invitation_score INTEGER NOT NULL DEFAULT 0,
+			new_customer_score INTEGER NOT NULL DEFAULT 0,
+			total_score INTEGER NOT NULL DEFAULT 0,
+			score_reached_at DATETIME NULL,
+			data_updated_at DATETIME NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_spxxjj_telemarketing_daily_scores_date_work_number ON spxxjj_telemarketing_daily_scores(score_date, seat_work_number)`,
+		`CREATE INDEX IF NOT EXISTS idx_spxxjj_telemarketing_daily_scores_user_id ON spxxjj_telemarketing_daily_scores(matched_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_spxxjj_telemarketing_daily_scores_rank ON spxxjj_telemarketing_daily_scores(score_date, total_score, answered_call_count, call_duration_second, seat_work_number)`,
+	}
+	return execStatements(tx, stmts)
 }
 
 func upCreateCustomerVisitsTable(tx *gorm.DB) error {

@@ -9,12 +9,25 @@ import (
 	"gorm.io/gorm"
 )
 
+var telemarketingRoleNames = []string{
+	"sales_inside",
+	"sale_inside",
+}
+
+var telemarketingRoleLabels = []string{
+	"Inside销售",
+	"inside销售",
+	"电销员工",
+	"电销",
+}
+
 type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	FindByID(ctx context.Context, id int64) (*model.User, error)
 	FindByUsername(ctx context.Context, username string) (*model.User, error)
 	ListWithRole(ctx context.Context) ([]model.UserWithRole, error)
 	SearchWithRole(ctx context.Context, keyword string) ([]model.UserWithRole, error)
+	ListEnabledTelemarketingUsers(ctx context.Context) ([]model.UserWithRole, error)
 	Update(ctx context.Context, user *model.User) error
 	BatchUpdateStatus(ctx context.Context, ids []int64, status string) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -157,6 +170,7 @@ func (r *gormUserRepository) Create(ctx context.Context, user *model.User) error
 		Email             string    `gorm:"column:email"`
 		Mobile            string    `gorm:"column:mobile"`
 		HanghangCRMMobile string    `gorm:"column:hanghang_crm_mobile"`
+		MihuaWorkNumber   string    `gorm:"column:mihua_work_number"`
 		Avatar            string    `gorm:"column:avatar"`
 		RoleID            int64     `gorm:"column:role_id"`
 		ParentID          *int64    `gorm:"column:parent_id"`
@@ -174,6 +188,7 @@ func (r *gormUserRepository) Create(ctx context.Context, user *model.User) error
 		Email:             user.Email,
 		Mobile:            user.Mobile,
 		HanghangCRMMobile: strings.TrimSpace(user.HanghangCRMMobile),
+		MihuaWorkNumber:   strings.TrimSpace(user.MihuaWorkNumber),
 		Avatar:            user.Avatar,
 		RoleID:            user.RoleID,
 		ParentID:          user.ParentID,
@@ -195,7 +210,7 @@ func (r *gormUserRepository) FindByID(ctx context.Context, id int64) (*model.Use
 	u := &model.User{}
 	err := r.db.WithContext(ctx).
 		Table("users").
-		Select("id", "username", "password", "salt", "nickname", "email", "mobile", "hanghang_crm_mobile", "avatar", "role_id", "parent_id", "status", "created_at", "updated_at").
+		Select("id", "username", "password", "salt", "nickname", "email", "mobile", "hanghang_crm_mobile", "mihua_work_number", "avatar", "role_id", "parent_id", "status", "created_at", "updated_at").
 		Where("id = ?", id).
 		Take(u).Error
 	if err != nil {
@@ -222,7 +237,7 @@ func (r *gormUserRepository) ListWithRole(ctx context.Context) ([]model.UserWith
 	err := r.db.WithContext(ctx).
 		Table("users AS u").
 		Select(
-			"u.id", "u.username", "u.nickname", "u.email", "u.mobile", "u.hanghang_crm_mobile", "u.avatar",
+			"u.id", "u.username", "u.nickname", "u.email", "u.mobile", "u.hanghang_crm_mobile", "u.mihua_work_number", "u.avatar",
 			"u.role_id", "u.parent_id", "u.status", "u.created_at", "u.updated_at",
 			"COALESCE(r.name, '') AS role_name", "COALESCE(r.label, '') AS role_label",
 		).
@@ -244,7 +259,7 @@ func (r *gormUserRepository) SearchWithRole(ctx context.Context, keyword string)
 	err := r.db.WithContext(ctx).
 		Table("users AS u").
 		Select(
-			"u.id", "u.username", "u.nickname", "u.email", "u.mobile", "u.hanghang_crm_mobile", "u.avatar",
+			"u.id", "u.username", "u.nickname", "u.email", "u.mobile", "u.hanghang_crm_mobile", "u.mihua_work_number", "u.avatar",
 			"u.role_id", "u.parent_id", "u.status", "u.created_at", "u.updated_at",
 			"COALESCE(r.name, '') AS role_name", "COALESCE(r.label, '') AS role_label",
 		).
@@ -253,6 +268,29 @@ func (r *gormUserRepository) SearchWithRole(ctx context.Context, keyword string)
 			`u.username LIKE ? OR u.nickname LIKE ? OR u.email LIKE ? OR u.mobile LIKE ? OR u.hanghang_crm_mobile LIKE ?`,
 			searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
 		).
+		Order("u.id").
+		Scan(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		list = []model.UserWithRole{}
+	}
+	return list, nil
+}
+
+func (r *gormUserRepository) ListEnabledTelemarketingUsers(ctx context.Context) ([]model.UserWithRole, error) {
+	var list []model.UserWithRole
+	err := r.db.WithContext(ctx).
+		Table("users AS u").
+		Select(
+			"u.id", "u.username", "u.nickname", "u.email", "u.mobile", "u.hanghang_crm_mobile", "u.mihua_work_number", "u.avatar",
+			"u.role_id", "u.parent_id", "u.status", "u.created_at", "u.updated_at",
+			"COALESCE(r.name, '') AS role_name", "COALESCE(r.label, '') AS role_label",
+		).
+		Joins("LEFT JOIN roles r ON u.role_id = r.id").
+		Where("u.status = ?", model.UserStatusEnabled).
+		Where("(r.name IN ? OR r.label IN ?)", telemarketingRoleNames, telemarketingRoleLabels).
 		Order("u.id").
 		Scan(&list).Error
 	if err != nil {
@@ -277,6 +315,7 @@ func (r *gormUserRepository) Update(ctx context.Context, user *model.User) error
 			"email":               user.Email,
 			"mobile":              user.Mobile,
 			"hanghang_crm_mobile": user.HanghangCRMMobile,
+			"mihua_work_number":   strings.TrimSpace(user.MihuaWorkNumber),
 			"avatar":              user.Avatar,
 			"role_id":             user.RoleID,
 			"parent_id":           user.ParentID,

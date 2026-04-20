@@ -27,6 +27,7 @@ var (
 	ErrCustomerContactNameTooShort          = errors.New("customer contact name is too short")
 	ErrCustomerLimitExceeded                = errors.New("customer limit exceeded")
 	ErrCustomerSameDepartmentClaimForbidden = errors.New("same department customer cannot be claimed")
+	ErrCustomerOperationClaimForbidden      = errors.New("operation role cannot claim customer from pool")
 	ErrCustomerNoOutsideSalesAvailable      = errors.New("no outside sales available")
 	ErrPhoneNotFound                        = errors.New("phone not found")
 	ErrPhoneAlreadyExists                   = errors.New("phone already exists for this customer")
@@ -353,6 +354,10 @@ func isInsideSalesRole(role string) bool {
 	return isRole(role, roleSalesInside, "sale_inside", "Inside销售", "inside销售", "电销员工")
 }
 
+func isCustomerOperationRole(role string) bool {
+	return isRole(role, partnerOperationRoleNames...)
+}
+
 func isOutsideSalesRole(role string) bool {
 	return isRole(role, roleSalesOutside, "sale_outside", "Outside销售", "outside销售")
 }
@@ -535,6 +540,14 @@ func (s *customerService) CheckUnique(ctx context.Context, input model.CustomerU
 }
 
 func (s *customerService) ClaimCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error) {
+	operatorRole, err := s.repo.GetUserRoleName(ctx, operatorUserID)
+	if err != nil {
+		return nil, err
+	}
+	if isCustomerOperationRole(operatorRole) {
+		return nil, ErrCustomerOperationClaimForbidden
+	}
+
 	customer, err := s.repo.FindByID(ctx, customerID)
 	if err != nil {
 		if errors.Is(err, repository.ErrCustomerNotFound) {
@@ -562,11 +575,6 @@ func (s *customerService) ClaimCustomer(ctx context.Context, customerID, operato
 	}
 	if departmentFreezeErr != nil {
 		return nil, departmentFreezeErr
-	}
-
-	operatorRole, err := s.repo.GetUserRoleName(ctx, operatorUserID)
-	if err != nil {
-		return nil, err
 	}
 
 	claimOwnerUserID := operatorUserID

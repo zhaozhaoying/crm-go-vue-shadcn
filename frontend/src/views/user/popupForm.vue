@@ -50,6 +50,7 @@ const formSchema = computed(() => toTypedSchema(z.object({
   hanghangCrmMobile: z.string().optional().refine((value) => !value || /^1\d{10}$/.test(value), {
     message: "坐席手机号必须为11位数字",
   }),
+  mihuaWorkNumber: z.string().optional(),
   roleId: requiredString("系统角色"),
   parentId: z.string(),
   status: z.string(),
@@ -66,6 +67,7 @@ const { value: nickname } = useField<string>('nickname')
 const { value: email } = useField<string>('email')
 const { value: mobile } = useField<string>('mobile')
 const { value: hanghangCrmMobile } = useField<string>('hanghangCrmMobile')
+const { value: mihuaWorkNumber } = useField<string>('mihuaWorkNumber')
 const { value: roleId } = useField<string>('roleId')
 const { value: parentId } = useField<string>('parentId')
 const { value: status } = useField<string>('status')
@@ -96,6 +98,7 @@ const initialValues = computed(() => {
     return {
       username: "", password: "", nickname: "", email: "", mobile: "",
       hanghangCrmMobile: "",
+      mihuaWorkNumber: "",
       roleId: props.roles[0]?.id ? String(props.roles[0].id) : "",
       parentId: "none", status: "enabled", avatar: DEFAULT_USER_AVATAR
     }
@@ -106,6 +109,7 @@ const initialValues = computed(() => {
       email: props.userData.email || "",
       mobile: props.userData.mobile || "",
       hanghangCrmMobile: props.userData.hanghangCrmMobile || "",
+      mihuaWorkNumber: props.userData.mihuaWorkNumber || "",
       roleId: props.userData.roleId ? String(props.userData.roleId) : "",
       parentId: props.userData.parentId ? String(props.userData.parentId) : "none",
       status: props.userData.status || "enabled",
@@ -185,6 +189,7 @@ const onSubmit = handleSubmit(
       const payload = {
         ...values,
         hanghangCrmMobile: values.hanghangCrmMobile?.trim() || "",
+        mihuaWorkNumber: values.mihuaWorkNumber?.trim() || "",
         roleId: roleIdValue,
         parentId: parentIdValue,
         avatar: avatarUrl,
@@ -322,7 +327,7 @@ onBeforeUnmount(() => {
                   <Input v-model="mobile" id="mobile" placeholder="138xxxx8888" class="h-10" />
                   <p v-if="errors.mobile" class="text-sm text-red-600">{{ errors.mobile }}</p>
                 </div>
-                <div class="col-span-2 space-y-1.5">
+                <div class="space-y-1.5">
                   <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="hanghangCrmMobile">坐席手机号</Label>
                   <Input
                     v-model="hanghangCrmMobile"
@@ -331,6 +336,16 @@ onBeforeUnmount(() => {
                     class="h-10"
                   />
                   <p v-if="errors.hanghangCrmMobile" class="text-sm text-red-600">{{ errors.hanghangCrmMobile }}</p>
+                </div>
+                <div class="space-y-1.5">
+                  <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider" for="mihuaWorkNumber">米话工号</Label>
+                  <Input
+                    v-model="mihuaWorkNumber"
+                    id="mihuaWorkNumber"
+                    placeholder="请输入米话工号"
+                    class="h-10"
+                  />
+                  <p v-if="errors.mihuaWorkNumber" class="text-sm text-red-600">{{ errors.mihuaWorkNumber }}</p>
                 </div>
                 <div class="col-span-2 space-y-1.5 pt-4 border-t border-slate-100">
                   <Label class="text-slate-700 text-xs font-semibold uppercase tracking-wider">汇报上级 (可选)</Label>

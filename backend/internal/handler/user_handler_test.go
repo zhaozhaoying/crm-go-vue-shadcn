@@ -29,6 +29,10 @@ func (s *userServiceStub) Search(ctx context.Context, keyword string) ([]model.U
 	return nil, nil
 }
 
+func (s *userServiceStub) ListTelemarketingUsers(ctx context.Context) ([]model.UserWithRole, error) {
+	return nil, nil
+}
+
 func (s *userServiceStub) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	return nil, nil
 }

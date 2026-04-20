@@ -33,6 +33,7 @@ import { listUsers } from "@/api/modules/users";
 import {
   listContracts,
   createContract,
+  emitContractPendingCountRefresh,
   updateContract,
 } from "@/api/modules/contracts";
 import { getSystemSettings } from "@/api/modules/systemSettings";
@@ -561,6 +562,7 @@ const handleSalesOrderSubmit = async (payload: ContractFormPayload) => {
       await updateContract(contractId, payload);
       toast.success("销售提单更新成功");
     }
+    emitContractPendingCountRefresh();
     salesOrderDialogOpen.value = false;
     await fetchCustomers();
   } catch (err) {

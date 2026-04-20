@@ -95,8 +95,12 @@
 
 						<view class="field">
 							<text class="lbl-txt">邀约人</text>
-							<input v-model="inviter" type="text" class="ipt" placeholder="填写邀约人"
-								placeholder-class="placeholder-color" />
+							<picker @change="onInviterChange" :value="inviterIndex" :range="telemarketingUserNames">
+								<view class="picker-view" :class="{ 'placeholder-color': !inviterDisplayName }">
+									<text class="text-truncate">{{ inviterDisplayName || "选择邀约人" }}</text>
+									<u-icon name="arrow-down" color="#ccc" size="14"></u-icon>
+								</view>
+							</picker>
 						</view>
 
 						<!-- Remark -->
@@ -190,6 +194,7 @@
 		createCustomerVisit,
 		getCustomerVisits,
 		getSystemSettings,
+		getTelemarketingUsers,
 		reverseGeocodeByApihz,
 	} from "@/api/index.js";
 
@@ -198,6 +203,20 @@
 
 	const visitPurposeOptions = ref(["初次拜访"]);
 	const purposeIndex = ref(-1);
+
+	const telemarketingUsers = ref([]);
+	const inviterIndex = ref(-1);
+
+	const fetchTelemarketingUsers = async () => {
+		try {
+			const res = await getTelemarketingUsers();
+			if (res && Array.isArray(res)) {
+				telemarketingUsers.value = res;
+			}
+		} catch (err) {
+			console.error("加载电销用户列表失败", err);
+		}
+	};
 
 	const fetchSystemSettings = async () => {
 		try {
@@ -271,6 +290,18 @@
 		return currentDateStr.value;
 	});
 
+	const telemarketingUserNames = computed(() => {
+		return telemarketingUsers.value.map((u) => u.nickname || u.username || "");
+	});
+
+	const inviterDisplayName = computed(() => {
+		if (inviterIndex.value < 0 || inviterIndex.value >= telemarketingUsers.value.length) {
+			return "";
+		}
+		const u = telemarketingUsers.value[inviterIndex.value];
+		return u.nickname || u.username || "";
+	});
+
 	// === Lifecycle ===
 	onLoad(() => {
 		if (!ensureRouteAccess("/pages/index/index")) {
@@ -289,6 +320,7 @@
 		getLocation();
 		fetchHistory();
 		fetchSystemSettings();
+		fetchTelemarketingUsers();
 	});
 
 	onUnload(() => {
@@ -449,6 +481,12 @@
 		visitPurpose.value = visitPurposeOptions.value[purposeIndex.value];
 	};
 
+	const onInviterChange = (e) => {
+		inviterIndex.value = e.detail.value;
+		const u = telemarketingUsers.value[inviterIndex.value];
+		inviter.value = u ? (u.nickname || u.username || "") : "";
+	};
+
 	const handleImageUpload = () => {
 		if (!ensureRouteAccess("/pages/index/index")) {
 			return;
@@ -578,6 +616,7 @@
 		submitted.value = false;
 		customerName.value = "";
 		inviter.value = "";
+		inviterIndex.value = -1;
 		visitPurpose.value = "";
 		purposeIndex.value = -1;
 		remark.value = "";

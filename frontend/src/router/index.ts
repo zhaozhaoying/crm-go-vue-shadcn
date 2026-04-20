@@ -22,6 +22,8 @@ import ResourcePoolView from "@/views/resource-pool/index.vue";
 import ResourceAcquisitionView from "@/views/resource-acquisition/index.vue";
 import CustomerVisitView from "@/views/customer/visit/index.vue";
 import SalesDailyScoreView from "@/views/sales-daily-score/index.vue";
+import TelemarketingDailyScoreView from "@/views/telemarketing-daily-score/index.vue";
+import RankingLeaderboardView from "@/views/ranking-leaderboard/index.vue";
 import CallRecordingView from "@/views/call-recording/index.vue";
 
 import { setupRouterGuards } from "./guards";
@@ -61,7 +63,7 @@ const router = createRouter({
           name: "users",
           component: UsersView,
           meta: {
-            title: "用户管理",
+            title: "用户列表",
             requiresAuth: true,
             requiresRoles: [
               "admin",
@@ -123,8 +125,8 @@ const router = createRouter({
           },
         },
         {
-          path: "roles",
-          name: "roles",
+          path: "users/roles",
+          name: "users-roles",
           component: RolesView,
           meta: { title: "角色管理", requiresAuth: true, requiresAdmin: true },
         },
@@ -168,7 +170,19 @@ const router = createRouter({
           path: "sales-daily-scores",
           name: "sales-daily-scores",
           component: SalesDailyScoreView,
-          meta: { title: "每日排名", requiresAuth: true },
+          meta: { title: "销售每日排名", requiresAuth: true },
+        },
+        {
+          path: "telemarketing-daily-scores",
+          name: "telemarketing-daily-scores",
+          component: TelemarketingDailyScoreView,
+          meta: { title: "电销每日排名", requiresAuth: true },
+        },
+        {
+          path: "ranking-leaderboard",
+          name: "ranking-leaderboard",
+          component: RankingLeaderboardView,
+          meta: { title: "排名榜单", requiresAuth: true },
         },
         {
           path: "call-recordings",

@@ -30,6 +30,9 @@ type Config struct {
 	MySQLParseTime           string
 	MySQLLoc                 string
 	FeigeCallRecordingCookie string
+	MiHuaCallRecordListURL   string
+	MiHuaCallRecordToken     string
+	MiHuaCallRecordOrigin    string
 	JWTSecret                string
 	JWTExpiryHours           int
 	RefreshTokenExpiryHours  int
@@ -77,6 +80,9 @@ func Load() Config {
 		MySQLParseTime:           getEnv("MYSQL_PARSE_TIME", "true"),
 		MySQLLoc:                 getEnv("MYSQL_LOC", "Local"),
 		FeigeCallRecordingCookie: strings.TrimSpace(getEnv("FEIGE_CALL_RECORDING_COOKIE", "")),
+		MiHuaCallRecordListURL:   strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_LIST_URL", "")),
+		MiHuaCallRecordToken:     strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_TOKEN", "")),
+		MiHuaCallRecordOrigin:    strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_SOURCE_ORIGIN", "")),
 		JWTSecret:                getEnv("JWT_SECRET", "change-me-in-production"),
 		JWTExpiryHours:           getEnvInt("JWT_EXPIRY_HOURS", 24),
 		RefreshTokenExpiryHours:  getEnvInt("REFRESH_TOKEN_EXPIRY_HOURS", 168),

@@ -34,7 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatSevenDayCountdown } from "@/lib/customer-display";
-import { isInsideSalesUser } from "@/lib/auth-role";
+import { isInsideSalesUser, isOperationUser } from "@/lib/auth-role";
 import { getRequestErrorMessage } from "@/lib/http-error";
 import { chinaPcaCode } from "@/data/china-pca-code";
 import { useAuthStore } from "@/stores/auth";
@@ -115,6 +115,7 @@ const totalPages = computed(() =>
   Math.max(1, Math.ceil(totalCount.value / pageSize.value)),
 );
 const isInsideSales = computed(() => isInsideSalesUser(authStore.user));
+const isOperation = computed(() => isOperationUser(authStore.user));
 
 const isPoolCustomer = (customer: Customer) => {
   if (customer.isInPool === true) return true;
@@ -699,6 +700,7 @@ onActivated(async () => {
                         <span>运营跟进</span>
                       </Button>
                       <Button
+                        v-if="!isOperation"
                         variant="ghost"
                         size="sm"
                         class="w-full justify-start gap-2"

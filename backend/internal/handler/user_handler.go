@@ -24,6 +24,7 @@ type CreateUserRequest struct {
 	Email             string `json:"email" example:"zhangsan@example.com"`
 	Mobile            string `json:"mobile" binding:"required" example:"13800138000"`
 	HanghangCRMMobile string `json:"hanghangCrmMobile" example:"13800138001"`
+	MihuaWorkNumber   string `json:"mihuaWorkNumber" example:"1001"`
 	Avatar            string `json:"avatar"`
 	RoleID            int64  `json:"roleId" binding:"required" example:"1"`
 	ParentID          *int64 `json:"parentId"`
@@ -36,6 +37,7 @@ type UpdateUserRequest struct {
 	Email             string `json:"email"`
 	Mobile            string `json:"mobile" binding:"required"`
 	HanghangCRMMobile string `json:"hanghangCrmMobile"`
+	MihuaWorkNumber   string `json:"mihuaWorkNumber"`
 	Avatar            string `json:"avatar"`
 	RoleID            int64  `json:"roleId" binding:"required"`
 	ParentID          *int64 `json:"parentId"`
@@ -98,6 +100,22 @@ func (h *UserHandler) Search(c *gin.Context) {
 	Success(c, users)
 }
 
+// ListTelemarketingUsers godoc
+// @Summary     获取电销用户列表
+// @Tags        users
+// @Produce     json
+// @Security    BearerAuth
+// @Success     200 {object} APIResponse{data=[]model.UserWithRole}
+// @Router      /api/v1/users/telemarketing [get]
+func (h *UserHandler) ListTelemarketingUsers(c *gin.Context) {
+	users, err := h.service.ListTelemarketingUsers(c.Request.Context())
+	if err != nil {
+		ErrorWithDetail(c, http.StatusInternalServerError, 40015, "获取电销用户列表失败", err)
+		return
+	}
+	Success(c, users)
+}
+
 // GetByID godoc
 // @Summary     获取用户详情
 // @Tags        users
@@ -151,6 +169,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Email:             req.Email,
 		Mobile:            req.Mobile,
 		HanghangCRMMobile: crmMobile,
+		MihuaWorkNumber:   strings.TrimSpace(req.MihuaWorkNumber),
 		Avatar:            req.Avatar,
 		RoleID:            req.RoleID,
 		ParentID:          req.ParentID,
@@ -207,6 +226,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		Email:             req.Email,
 		Mobile:            req.Mobile,
 		HanghangCRMMobile: crmMobile,
+		MihuaWorkNumber:   strings.TrimSpace(req.MihuaWorkNumber),
 		Avatar:            req.Avatar,
 		RoleID:            req.RoleID,
 		ParentID:          req.ParentID,

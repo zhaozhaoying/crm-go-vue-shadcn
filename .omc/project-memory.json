@@ -1,0 +1,279 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1776677317191,
+  "projectRoot": "/Users/zhangyang/dev/zhaozhaoying/crm-go-vue-shadcn",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "scripts"
+    ],
+    "gitBranches": {
+      "defaultBranch": "master",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "backend": {
+      "path": "backend",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1776677317170,
+      "keyFiles": [
+        "README.md",
+        "data.db",
+        "go.mod",
+        "go.sum",
+        "main"
+      ]
+    },
+    "check-in": {
+      "path": "check-in",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1776677317170,
+      "keyFiles": [
+        "App.vue",
+        "index.html",
+        "main.js",
+        "manifest.json",
+        "package-lock.json"
+      ]
+    },
+    "frontend": {
+      "path": "frontend",
+      "purpose": null,
+      "fileCount": 15,
+      "lastAccessed": 1776677317178,
+      "keyFiles": [
+        "components.json",
+        "index.html",
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml"
+      ]
+    },
+    "release": {
+      "path": "release",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1776677317182,
+      "keyFiles": [
+        "overseas_linux"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 2,
+      "lastAccessed": 1776677317182,
+      "keyFiles": [
+        "deploy-overseas.sh",
+        "package-release.sh"
+      ]
+    },
+    "tmp": {
+      "path": "tmp",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1776677317183,
+      "keyFiles": []
+    },
+    "backend/docs": {
+      "path": "backend/docs",
+      "purpose": "Documentation",
+      "fileCount": 4,
+      "lastAccessed": 1776677317183,
+      "keyFiles": [
+        "docs.go",
+        "google-search-setup.md",
+        "swagger.json"
+      ]
+    },
+    "check-in/api": {
+      "path": "check-in/api",
+      "purpose": "API routes",
+      "fileCount": 1,
+      "lastAccessed": 1776677317184,
+      "keyFiles": [
+        "index.js"
+      ]
+    },
+    "check-in/node_modules": {
+      "path": "check-in/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1776677317184,
+      "keyFiles": []
+    },
+    "check-in/pages": {
+      "path": "check-in/pages",
+      "purpose": "Page components",
+      "fileCount": 0,
+      "lastAccessed": 1776677317184,
+      "keyFiles": []
+    },
+    "frontend/dist": {
+      "path": "frontend/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1776677317186,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "frontend/node_modules": {
+      "path": "frontend/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 3,
+      "lastAccessed": 1776677317189,
+      "keyFiles": []
+    },
+    "release/dist": {
+      "path": "release/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1776677317190,
+      "keyFiles": [
+        "index.html"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "backend/main.go",
+      "accessCount": 9,
+      "lastAccessed": 1776679422806,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/views/ranking-leaderboard/index.vue",
+      "accessCount": 6,
+      "lastAccessed": 1776678763914,
+      "type": "file"
+    },
+    {
+      "path": "backend",
+      "accessCount": 6,
+      "lastAccessed": 1776679340558,
+      "type": "directory"
+    },
+    {
+      "path": "backend/internal/service/sales_daily_score_service.go",
+      "accessCount": 5,
+      "lastAccessed": 1776679154702,
+      "type": "file"
+    },
+    {
+      "path": "frontend",
+      "accessCount": 1,
+      "lastAccessed": 1776678489622,
+      "type": "directory"
+    },
+    {
+      "path": "frontend/src/router/index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776678514394,
+      "type": "directory"
+    },
+    {
+      "path": "frontend/src/components/custom/AppBreadcrumb.vue",
+      "accessCount": 1,
+      "lastAccessed": 1776678514473,
+      "type": "directory"
+    },
+    {
+      "path": "frontend/src/components/custom/AppSidebar.vue",
+      "accessCount": 1,
+      "lastAccessed": 1776678514647,
+      "type": "directory"
+    },
+    {
+      "path": "frontend/src/components/custom/AppCommand.vue",
+      "accessCount": 1,
+      "lastAccessed": 1776678514682,
+      "type": "directory"
+    },
+    {
+      "path": "backend/internal/scoring/sales_daily_score.go",
+      "accessCount": 1,
+      "lastAccessed": 1776678909401,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/handler/telemarketing_daily_score_handler.go",
+      "accessCount": 1,
+      "lastAccessed": 1776678909434,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/handler/crontab_handler.go",
+      "accessCount": 1,
+      "lastAccessed": 1776678909475,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/router/router.go",
+      "accessCount": 1,
+      "lastAccessed": 1776678934818,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/service/hanghang_crm_daily_score_runtime.go",
+      "accessCount": 1,
+      "lastAccessed": 1776678947260,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/service",
+      "accessCount": 1,
+      "lastAccessed": 1776678947289,
+      "type": "directory"
+    },
+    {
+      "path": "backend/internal/service/customer_auto_drop_runtime.go",
+      "accessCount": 1,
+      "lastAccessed": 1776678970035,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/database/migrations_sqlite.go",
+      "accessCount": 1,
+      "lastAccessed": 1776678970303,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/database/migrations_mysql.go",
+      "accessCount": 1,
+      "lastAccessed": 1776678971639,
+      "type": "file"
+    },
+    {
+      "path": "backend/internal/service/telemarketing_daily_score_runtime.go",
+      "accessCount": 1,
+      "lastAccessed": 1776679280468,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

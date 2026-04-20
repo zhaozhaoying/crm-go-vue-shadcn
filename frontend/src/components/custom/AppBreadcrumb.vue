@@ -26,7 +26,9 @@ const titleMap: Record<string, string> = {
   profile: '个人资料',
   custom: '客户管理',
   visits: '上门拜访',
-  'sales-daily-scores': '每日排名',
+  'sales-daily-scores': '销售每日排名',
+  'telemarketing-daily-scores': '电销每日排名',
+  'ranking-leaderboard': '排名榜单',
   'call-recordings': '通话录音',
 }
 

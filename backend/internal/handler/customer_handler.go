@@ -639,6 +639,10 @@ func (h *CustomerHandler) Claim(c *gin.Context) {
 			Error(c, http.StatusConflict, 10038, "个人客户池已达上限，已成交客户不计入")
 			return
 		}
+		if errors.Is(err, service.ErrCustomerOperationClaimForbidden) {
+			Error(c, http.StatusForbidden, 10054, "运营不允许在公海领取客户")
+			return
+		}
 		if errors.Is(err, service.ErrCustomerSameDepartmentClaimForbidden) {
 			Error(c, http.StatusForbidden, 10044, "该客户历史上已被你所在销售团队放弃，禁止再次领取，冷冻期结束后可再领取")
 			return

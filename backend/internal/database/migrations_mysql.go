@@ -149,7 +149,94 @@ func getMySQLMigrations() []Migration {
 			Name:    "add_customer_visits_inviter",
 			Up:      upAddCustomerVisitsInviterMySQL,
 		},
+		{
+			Version: 2026042001,
+			Name:    "add_user_mihua_work_number",
+			Up:      upAddUserMihuaWorkNumberMySQL,
+		},
+		{
+			Version: 2026042002,
+			Name:    "create_spxxjj_telemarketing_tables",
+			Up:      upCreateSpxxjjTelemarketingTablesMySQL,
+		},
 	}
+}
+
+func upAddUserMihuaWorkNumberMySQL(tx *gorm.DB) error {
+	return addColumnIfNotExists(tx, "users", "mihua_work_number", "VARCHAR(64) NOT NULL DEFAULT ''")
+}
+
+func upCreateSpxxjjTelemarketingTablesMySQL(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS spxxjj_mihua_seat_statistics (
+			id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			score_date DATE NOT NULL COMMENT '统计日期',
+			seat_id BIGINT NOT NULL DEFAULT 0 COMMENT '米话坐席ID',
+			seat_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '坐席展示名',
+			work_number VARCHAR(64) NOT NULL DEFAULT '' COMMENT '米话工号',
+			service_number VARCHAR(64) NOT NULL DEFAULT '' COMMENT '坐席分机号',
+			is_mobile_seat VARCHAR(8) NOT NULL DEFAULT '' COMMENT '是否手机坐席',
+			seat_type INT NOT NULL DEFAULT 0 COMMENT '坐席类型',
+			ccgeid BIGINT NOT NULL DEFAULT 0 COMMENT '企业组ID',
+			success_call_count INT NOT NULL DEFAULT 0 COMMENT '接通数',
+			out_total_success INT NOT NULL DEFAULT 0 COMMENT '外呼接通数',
+			out_total_call_count INT NOT NULL DEFAULT 0 COMMENT '外呼总通次',
+			call_total_time_second INT NOT NULL DEFAULT 0 COMMENT '总通话秒数',
+			call_valid_time_second INT NOT NULL DEFAULT 0 COMMENT '总有效通话秒数',
+			out_call_total_time_second INT NOT NULL DEFAULT 0 COMMENT '外呼总通话秒数',
+			out_call_valid_time_second INT NOT NULL DEFAULT 0 COMMENT '外呼有效通话秒数',
+			latest_state_time DATETIME NULL COMMENT '最新状态时间',
+			latest_state_id INT NOT NULL DEFAULT 0 COMMENT '最新状态ID',
+			stat_timestamp DATETIME NULL COMMENT '统计时间戳',
+			enterprise_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '企业名称',
+			department_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '部门名称',
+			group_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '分组名称',
+			seat_real_time_state_json JSON NULL COMMENT '坐席实时状态JSON',
+			groups_json JSON NULL COMMENT '分组JSON',
+			raw_payload JSON NULL COMMENT '米话原始记录JSON',
+			matched_user_id BIGINT NULL COMMENT '匹配到的本地用户ID',
+			matched_user_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '匹配到的本地用户名',
+			role_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '角色名',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+			UNIQUE KEY uk_spxxjj_mihua_seat_statistics_date_work_number (score_date, work_number),
+			KEY idx_spxxjj_mihua_seat_statistics_user_id (matched_user_id),
+			KEY idx_spxxjj_mihua_seat_statistics_score_date (score_date)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='spxxjj 米话电销原始统计表'`,
+		`CREATE TABLE IF NOT EXISTS spxxjj_telemarketing_daily_scores (
+			id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			score_date DATE NOT NULL COMMENT '统计日期',
+			seat_work_number VARCHAR(64) NOT NULL DEFAULT '' COMMENT '米话工号',
+			seat_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '坐席展示名',
+			matched_user_id BIGINT NULL COMMENT '匹配到的本地用户ID',
+			matched_user_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '匹配到的本地用户名',
+			service_number VARCHAR(64) NOT NULL DEFAULT '' COMMENT '坐席分机号',
+			group_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '分组名称',
+			role_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '角色名',
+			call_num INT NOT NULL DEFAULT 0 COMMENT '拨打数',
+			answered_call_count INT NOT NULL DEFAULT 0 COMMENT '接通数',
+			missed_call_count INT NOT NULL DEFAULT 0 COMMENT '未接通数',
+			answer_rate DOUBLE NOT NULL DEFAULT 0 COMMENT '接通率',
+			call_duration_second INT NOT NULL DEFAULT 0 COMMENT '通话时长秒数',
+			new_customer_count INT NOT NULL DEFAULT 0 COMMENT '新增客户数',
+			invitation_count INT NOT NULL DEFAULT 0 COMMENT '邀约数',
+			call_score_by_count INT NOT NULL DEFAULT 0 COMMENT '按通话量积分',
+			call_score_by_duration INT NOT NULL DEFAULT 0 COMMENT '按通话时长积分',
+			call_score_type VARCHAR(32) NOT NULL DEFAULT 'none' COMMENT '电话积分口径',
+			call_score INT NOT NULL DEFAULT 0 COMMENT '电话积分',
+			invitation_score INT NOT NULL DEFAULT 0 COMMENT '邀约积分',
+			new_customer_score INT NOT NULL DEFAULT 0 COMMENT '新增客户积分',
+			total_score INT NOT NULL DEFAULT 0 COMMENT '总积分',
+			score_reached_at DATETIME NULL COMMENT '达到当前积分时间',
+			data_updated_at DATETIME NULL COMMENT '米话数据更新时间',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+			UNIQUE KEY uk_spxxjj_telemarketing_daily_scores_date_work_number (score_date, seat_work_number),
+			KEY idx_spxxjj_telemarketing_daily_scores_user_id (matched_user_id),
+			KEY idx_spxxjj_telemarketing_daily_scores_rank (score_date, total_score, answered_call_count, call_duration_second, seat_work_number)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='spxxjj 电销每日积分表'`,
+	}
+	return execStatements(tx, stmts)
 }
 
 func upCreateBaseSchemaMySQL(tx *gorm.DB) error {

@@ -4,7 +4,11 @@ import { Loader2, RefreshCw, Search } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 
 import { listPartnerCustomers } from "@/api/modules/customers";
-import { listContracts, updateContract } from "@/api/modules/contracts";
+import {
+  emitContractPendingCountRefresh,
+  listContracts,
+  updateContract,
+} from "@/api/modules/contracts";
 import { listUsers } from "@/api/modules/users";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -286,6 +290,7 @@ const handleSalesOrderSubmit = async (payload: ContractFormPayload) => {
       return;
     }
     await updateContract(contractId, payload);
+    emitContractPendingCountRefresh();
     salesOrderDialogOpen.value = false;
     await fetchCustomers();
     toast.success("销售提单备注更新成功");

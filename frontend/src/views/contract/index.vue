@@ -10,7 +10,13 @@ import {
 } from "lucide-vue-next"
 import { toast } from "vue-sonner"
 
-import { auditContract, createContract, listContracts, updateContract } from "@/api/modules/contracts"
+import {
+  auditContract,
+  createContract,
+  emitContractPendingCountRefresh,
+  listContracts,
+  updateContract,
+} from "@/api/modules/contracts"
 import EmptyTablePlaceholder from "@/components/custom/EmptyTablePlaceholder.vue"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -206,6 +212,7 @@ const handleAuditSubmit = async (payload: AuditContractRequest) => {
     toast.success(`${actionText}成功`)
     auditDialogOpen.value = false
     auditingContract.value = null
+    emitContractPendingCountRefresh()
     await fetchContracts()
   } catch (err) {
     const actionText =
@@ -227,6 +234,7 @@ const handleSubmit = async (payload: ContractFormPayload) => {
       toast.success("合同更新成功")
     }
     dialogOpen.value = false
+    emitContractPendingCountRefresh()
     await fetchContracts()
   } catch (err) {
     toast.error(getRequestErrorMessage(err, "保存失败"))

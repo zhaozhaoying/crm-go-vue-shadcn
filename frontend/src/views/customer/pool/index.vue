@@ -34,7 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatSevenDayCountdown } from "@/lib/customer-display";
-import { isInsideSalesUser } from "@/lib/auth-role";
+import { isInsideSalesUser, isOperationUser } from "@/lib/auth-role";
 import { getRequestErrorMessage } from "@/lib/http-error";
 import { chinaPcaCode } from "@/data/china-pca-code";
 import { useAuthStore } from "@/stores/auth";
@@ -60,6 +60,7 @@ const pageSize = ref(10);
 const allUsers = ref<UserWithRole[]>([]);
 const userDisplayNameMap = ref<Record<number, string>>({});
 const isInsideSales = computed(() => isInsideSalesUser(authStore.user));
+const isOperation = computed(() => isOperationUser(authStore.user));
 
 interface SearchForm {
   name: string;
@@ -740,6 +741,7 @@ onActivated(async () => {
                         <span>运营跟进</span>
                       </Button>
                       <Button
+                        v-if="!isOperation"
                         variant="ghost"
                         size="sm"
                         class="w-full justify-start gap-2"

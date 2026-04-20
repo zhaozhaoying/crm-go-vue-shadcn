@@ -8,6 +8,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -22,6 +23,7 @@ interface NavItem {
   title: string
   url: string
   icon: any
+  badge?: string
   isActive?: boolean
   items?: { title: string; url: string; allowedRoles?: string[] }[]
 }
@@ -46,6 +48,10 @@ const handleNavClick = (url: string) => {
   }
   if (url === "/sales-daily-scores" && currentPath.value === "/sales-daily-scores") {
     window.dispatchEvent(new Event("sales-daily-scores:refresh"))
+    return
+  }
+  if (url === "/telemarketing-daily-scores" && currentPath.value === "/telemarketing-daily-scores") {
+    window.dispatchEvent(new Event("telemarketing-daily-scores:refresh"))
   }
 }
 
@@ -97,6 +103,12 @@ const hasActiveChild = (items?: { title: string; url: string; allowedRoles?: str
                   <span>{{ mainItem.title }}</span>
                 </RouterLink>
               </SidebarMenuButton>
+              <SidebarMenuBadge
+                v-if="mainItem.badge"
+                class="rounded-full bg-red-100 text-red-700"
+              >
+                {{ mainItem.badge }}
+              </SidebarMenuBadge>
             </template>
           </SidebarMenuItem>
         </Collapsible>

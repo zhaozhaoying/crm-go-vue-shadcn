@@ -26,7 +26,36 @@ func CalculateDailySalesScoreReachedAt(
 	visitTimes []time.Time,
 	newCustomerTimes []time.Time,
 ) *time.Time {
-	if breakdown.TotalScore <= 0 {
+	return calculateDailyScoreReachedAt(breakdown.TotalScore, callEvents, visitTimes, newCustomerTimes, func(callNum, callDurationSecond, visitCount, newCustomerCount int) bool {
+		currentBreakdown := BuildDailySalesScoreBreakdown(callNum, callDurationSecond, visitCount, newCustomerCount)
+		return currentBreakdown.CallScore == breakdown.CallScore &&
+			currentBreakdown.VisitScore == breakdown.VisitScore &&
+			currentBreakdown.NewCustomerScore == breakdown.NewCustomerScore
+	})
+}
+
+func CalculateDailyTelemarketingScoreReachedAt(
+	breakdown DailyTelemarketingScoreBreakdown,
+	callEvents []model.DailySalesCallEvent,
+	invitationTimes []time.Time,
+	newCustomerTimes []time.Time,
+) *time.Time {
+	return calculateDailyScoreReachedAt(breakdown.TotalScore, callEvents, invitationTimes, newCustomerTimes, func(callNum, callDurationSecond, invitationCount, newCustomerCount int) bool {
+		currentBreakdown := BuildDailyTelemarketingScoreBreakdown(callNum, callDurationSecond, invitationCount, newCustomerCount)
+		return currentBreakdown.CallScore == breakdown.CallScore &&
+			currentBreakdown.InvitationScore == breakdown.InvitationScore &&
+			currentBreakdown.NewCustomerScore == breakdown.NewCustomerScore
+	})
+}
+
+func calculateDailyScoreReachedAt(
+	totalScore int,
+	callEvents []model.DailySalesCallEvent,
+	visitTimes []time.Time,
+	newCustomerTimes []time.Time,
+	matches func(callNum, callDurationSecond, visitCount, newCustomerCount int) bool,
+) *time.Time {
+	if totalScore <= 0 {
 		return nil
 	}
 
@@ -84,10 +113,7 @@ func CalculateDailySalesScoreReachedAt(
 			next++
 		}
 
-		currentBreakdown := BuildDailySalesScoreBreakdown(callNum, callDurationSecond, visitCount, newCustomerCount)
-		if currentBreakdown.CallScore == breakdown.CallScore &&
-			currentBreakdown.VisitScore == breakdown.VisitScore &&
-			currentBreakdown.NewCustomerScore == breakdown.NewCustomerScore {
+		if matches != nil && matches(callNum, callDurationSecond, visitCount, newCustomerCount) {
 			reachedAt := currentTime.UTC()
 			return &reachedAt
 		}

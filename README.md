@@ -516,3 +516,5 @@ bash ./scripts/deploy-overseas.sh
 - `Dockerfile` 和 `docker-compose.yml`
 - 生产环境备份脚本
 - CI/CD 自动构建和发布流程
+- 上传到海外服务器
+<!-- DEPLOY_SUDO_PASSWORD='1024.zy@022ie.com' bash ./scripts/deploy-overseas.sh --clean-build -->

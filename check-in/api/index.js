@@ -53,6 +53,11 @@ export function getSystemSettings() {
   return request({ url: '/settings', method: 'GET' });
 }
 
+// 获取电销用户列表
+export function getTelemarketingUsers() {
+  return request({ url: '/users/telemarketing', method: 'GET' });
+}
+
 export function reverseGeocodeByApihz({ lat, lon }) {
   return new Promise((resolve, reject) => {
     uni.request({

@@ -165,6 +165,7 @@ const toggleStatus = async (user: UserWithRole) => {
       email: user.email,
       mobile: user.mobile,
       hanghangCrmMobile: user.hanghangCrmMobile,
+      mihuaWorkNumber: user.mihuaWorkNumber,
       roleId: user.roleId,
       parentId: user.parentId,
       status: newStatus,
@@ -265,6 +266,7 @@ onMounted(fetchData)
               <TableHead>状态</TableHead>
               <TableHead>系统角色</TableHead>
               <TableHead>坐席电话</TableHead>
+              <TableHead>米话工号</TableHead>
               <TableHead
                 class="sticky right-0 z-30 w-[120px] min-w-[120px] bg-muted/95 text-center border-l border-border before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border">
                 操作
@@ -342,6 +344,13 @@ onMounted(fetchData)
                 </span>
                 <span v-else class="italic">—</span>
               </TableCell>
+              <!-- Mihua Work Number -->
+              <TableCell class="text-sm text-muted-foreground">
+                <span v-if="user.mihuaWorkNumber" class="inline-block max-w-[180px] truncate">
+                  {{ user.mihuaWorkNumber }}
+                </span>
+                <span v-else class="italic">—</span>
+              </TableCell>
 
               <!-- Actions -->
               <TableCell
@@ -368,7 +377,7 @@ onMounted(fetchData)
 
             <!-- Empty state -->
             <TableRow v-if="!loading && paginatedUsers.length === 0">
-              <TableCell :colspan="8" class="h-24 text-center text-muted-foreground">
+              <TableCell :colspan="9" class="h-24 text-center text-muted-foreground">
                 暂无数据
               </TableCell>
             </TableRow>

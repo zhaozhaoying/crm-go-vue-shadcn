@@ -21,6 +21,7 @@ type User struct {
 	RoleID             int64     `json:"roleId" gorm:"column:role_id;not null;default:0;index"`
 	ParentID           *int64    `json:"parentId" gorm:"column:parent_id"`
 	SalesType          string    `json:"salesType" gorm:"column:sales_type;size:32;not null;default:''"`
+	MihuaWorkNumber    string    `json:"mihuaWorkNumber" gorm:"column:mihua_work_number;size:64;not null;default:''"`
 	Status             string    `json:"status" gorm:"column:status;size:32;not null;default:'enabled';index"`
 	CreatedAt          time.Time `json:"createdAt" gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt          time.Time `json:"updatedAt" gorm:"column:updated_at;autoUpdateTime"`

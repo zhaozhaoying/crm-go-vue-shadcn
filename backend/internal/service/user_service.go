@@ -26,6 +26,7 @@ type CreateUserInput struct {
 	Email              string
 	Mobile             string
 	HanghangCRMMobile  string
+	MihuaWorkNumber    string
 	Avatar             string
 	RoleID             int64
 	ParentID           *int64
@@ -38,6 +39,7 @@ type UpdateUserInput struct {
 	Email              string
 	Mobile             string
 	HanghangCRMMobile  string
+	MihuaWorkNumber    string
 	Avatar             string
 	RoleID             int64
 	ParentID           *int64
@@ -47,6 +49,7 @@ type UpdateUserInput struct {
 type UserService interface {
 	List(ctx context.Context) ([]model.UserWithRole, error)
 	Search(ctx context.Context, keyword string) ([]model.UserWithRole, error)
+	ListTelemarketingUsers(ctx context.Context) ([]model.UserWithRole, error)
 	GetByID(ctx context.Context, id int64) (*model.User, error)
 	Create(ctx context.Context, input CreateUserInput) (*model.User, error)
 	Update(ctx context.Context, id int64, input UpdateUserInput) (*model.User, error)
@@ -81,6 +84,10 @@ func (s *userService) Search(ctx context.Context, keyword string) ([]model.UserW
 	return s.userRepo.SearchWithRole(ctx, keyword)
 }
 
+func (s *userService) ListTelemarketingUsers(ctx context.Context) ([]model.UserWithRole, error) {
+	return s.userRepo.ListEnabledTelemarketingUsers(ctx)
+}
+
 func (s *userService) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	return s.userRepo.FindByID(ctx, id)
 }
@@ -105,6 +112,7 @@ func (s *userService) Create(ctx context.Context, input CreateUserInput) (*model
 		Email:              input.Email,
 		Mobile:             input.Mobile,
 		HanghangCRMMobile:  strings.TrimSpace(input.HanghangCRMMobile),
+		MihuaWorkNumber:    strings.TrimSpace(input.MihuaWorkNumber),
 		Avatar:             normalizeUserAvatar(input.Avatar),
 		RoleID:             input.RoleID,
 		ParentID:           input.ParentID,
@@ -129,6 +137,7 @@ func (s *userService) Update(ctx context.Context, id int64, input UpdateUserInpu
 	user.Email = input.Email
 	user.Mobile = input.Mobile
 	user.HanghangCRMMobile = strings.TrimSpace(input.HanghangCRMMobile)
+	user.MihuaWorkNumber = strings.TrimSpace(input.MihuaWorkNumber)
 	user.Avatar = normalizeUserAvatar(input.Avatar)
 	user.RoleID = input.RoleID
 	user.ParentID = input.ParentID

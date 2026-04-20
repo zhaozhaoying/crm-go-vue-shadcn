@@ -30,6 +30,31 @@ func TestBuildDailySalesScoreBreakdownUsesProgressiveRules(t *testing.T) {
 	}
 }
 
+func TestBuildDailyTelemarketingScoreBreakdownUsesAnsweredCallCount(t *testing.T) {
+	t.Parallel()
+
+	breakdown := BuildDailyTelemarketingScoreBreakdown(120, 10*60, 2, 3)
+
+	if breakdown.CallScoreByCount != 40 {
+		t.Fatalf("expected answered-call score 40, got %d", breakdown.CallScoreByCount)
+	}
+	if breakdown.CallScoreByDuration != 10 {
+		t.Fatalf("expected duration score 10, got %d", breakdown.CallScoreByDuration)
+	}
+	if breakdown.CallScoreType != model.SalesDailyScoreCallScoreTypeCallNum || breakdown.CallScore != 40 {
+		t.Fatalf("unexpected chosen telemarketing call score: %+v", breakdown)
+	}
+	if breakdown.InvitationScore != 20 {
+		t.Fatalf("expected invitation score 20, got %d", breakdown.InvitationScore)
+	}
+	if breakdown.NewCustomerScore != 10 {
+		t.Fatalf("expected new customer score 10, got %d", breakdown.NewCustomerScore)
+	}
+	if breakdown.TotalScore != 70 {
+		t.Fatalf("expected total score 70, got %d", breakdown.TotalScore)
+	}
+}
+
 func TestChooseCallScorePrefersHigherScore(t *testing.T) {
 	t.Parallel()
 

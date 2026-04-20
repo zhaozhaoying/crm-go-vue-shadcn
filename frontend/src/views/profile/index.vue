@@ -30,6 +30,7 @@ const formSchema = toTypedSchema(
     hanghangCrmMobile: z.string().optional().refine((value) => !value || /^1\d{10}$/.test(value), {
       message: "坐席手机号必须为11位数字",
     }),
+    mihuaWorkNumber: z.string().optional(),
     password: z.string().min(6, { message: "密码至少需要6位" }).optional().or(z.literal("")),
     photo: z.any().optional(),
   }),
@@ -43,6 +44,7 @@ const { value: nickname } = useField<string>("nickname")
 const { value: email } = useField<string>("email")
 const { value: mobile } = useField<string>("mobile")
 const { value: hanghangCrmMobile } = useField<string>("hanghangCrmMobile")
+const { value: mihuaWorkNumber } = useField<string>("mihuaWorkNumber")
 const { value: password } = useField<string>("password")
 const { value: photo } = useField<File | null>("photo")
 
@@ -71,6 +73,7 @@ watch(
       email: nextUser.email || "",
       mobile: nextUser.mobile || "",
       hanghangCrmMobile: nextUser.hanghangCrmMobile || "",
+      mihuaWorkNumber: nextUser.mihuaWorkNumber || "",
       password: "",
       photo: null,
     })
@@ -158,6 +161,7 @@ const onSubmit = handleSubmit(async (values) => {
       email: values.email?.trim() || "",
       mobile: values.mobile?.trim() || "",
       hanghangCrmMobile: values.hanghangCrmMobile?.trim() || "",
+      mihuaWorkNumber: values.mihuaWorkNumber?.trim() || "",
       avatar: avatarUrl,
       roleId: currentUser.roleId,
       parentId: currentUser.parentId,
@@ -257,6 +261,19 @@ const onSubmit = handleSubmit(async (values) => {
               placeholder="请输入坐席手机号"
             />
             <p v-if="errors.hanghangCrmMobile" class="text-xs text-destructive">{{ errors.hanghangCrmMobile }}</p>
+          </div>
+        </div>
+
+        <div class="grid gap-2 md:grid-cols-[140px_minmax(0,1fr)] md:items-start">
+          <Label for="mihua-work-number" class="pt-2 text-sm text-gray-700">米话工号</Label>
+          <div class="space-y-1.5">
+            <Input
+              id="mihua-work-number"
+              class="max-w-lg"
+              v-model="mihuaWorkNumber"
+              placeholder="请输入米话工号"
+            />
+            <p v-if="errors.mihuaWorkNumber" class="text-xs text-destructive">{{ errors.mihuaWorkNumber }}</p>
           </div>
         </div>
 

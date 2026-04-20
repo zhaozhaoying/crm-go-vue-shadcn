@@ -30,6 +30,8 @@ func New(
 	notificationHandler *handler.NotificationHandler,
 	customerVisitHandler *handler.CustomerVisitHandler,
 	salesDailyScoreHandler *handler.SalesDailyScoreHandler,
+	telemarketingDailyScoreHandler *handler.TelemarketingDailyScoreHandler,
+	rankingLeaderboardHandler *handler.RankingLeaderboardHandler,
 	callRecordingHandler *handler.CallRecordingHandler,
 	tokenChecker middleware.TokenBlacklistChecker,
 ) *gin.Engine {
@@ -108,6 +110,7 @@ func New(
 			{
 				users.GET("", userHandler.List)
 				users.GET("/search", userHandler.Search)
+				users.GET("/telemarketing", userHandler.ListTelemarketingUsers)
 				users.GET("/:id", userHandler.GetByID)
 				users.POST("", userHandler.Create)
 				users.PUT("/batch/disable", userHandler.BatchDisable)
@@ -157,11 +160,22 @@ func New(
 			protected.GET("/sales-daily-scores", salesDailyScoreHandler.ListDailyRankings)
 			protected.GET("/sales-daily-scores/:userId", salesDailyScoreHandler.GetDailyScoreDetail)
 
+			// 电销每日排名（独立接口）
+			protected.GET("/telemarketing-rankings", telemarketingDailyScoreHandler.ListTelemarketingDailyRankings)
+			protected.GET("/telemarketing-rankings/:seatWorkNumber", telemarketingDailyScoreHandler.GetTelemarketingDailyScoreDetail)
+
+			// 兼容旧路径
+			protected.GET("/telemarketing-daily-scores", telemarketingDailyScoreHandler.ListTelemarketingDailyRankings)
+			protected.GET("/telemarketing-daily-scores/:seatWorkNumber", telemarketingDailyScoreHandler.GetTelemarketingDailyScoreDetail)
+
 			// 通话录音
 			protected.GET("/call-recordings", callRecordingHandler.List)
 			protected.GET("/call-recordings/:id/audio", callRecordingHandler.StreamAudio)
 			protected.POST("/call-recordings/sync", callRecordingHandler.Sync)
 			protected.POST("/call-recordings/import", callRecordingHandler.Import)
+
+			// 排名榜单
+			protected.GET("/ranking-leaderboard", rankingLeaderboardHandler.ListRankingLeaderboard)
 
 			// 销售跟进记录
 			protected.GET("/sales-follow-records", followRecordHandler.ListSalesFollowRecords)

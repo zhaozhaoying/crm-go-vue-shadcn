@@ -44,3 +44,16 @@ export const isInsideSalesUser = (
   user?: Pick<AuthUser, "role" | "roleName" | "roleId"> | null,
 ): boolean =>
   hasAnyRole(user || null, ["sales_inside", "sale_inside", "Inside销售", "inside销售", "电销员工"]);
+
+export const isOperationUser = (
+  user?: Pick<AuthUser, "role" | "roleName" | "roleId"> | null,
+): boolean =>
+  hasAnyRole(user || null, [
+    "ops_manager",
+    "operation_manager",
+    "ops_staff",
+    "operation_staff",
+    "运营经理",
+    "运营员工",
+    "运营",
+  ]);

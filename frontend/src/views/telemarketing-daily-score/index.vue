@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import { onBeforeUnmount, onMounted, ref } from "vue"
 import {
   Crown,
   Download,
@@ -10,10 +10,9 @@ import {
 import { toast } from "vue-sonner"
 
 import {
-  getSalesDailyScoreRankings,
-  refreshTodaySalesDailyScoreRankings,
-  type SalesDailyScoreRankingItem,
-} from "@/api/modules/salesDailyScore"
+  getTelemarketingDailyScoreRankings,
+  type TelemarketingDailyScoreRankingItem,
+} from "@/api/modules/telemarketingDailyScore"
 import EmptyTablePlaceholder from "@/components/custom/EmptyTablePlaceholder.vue"
 import { DatetimePicker } from "@/components/ui/datetime-picker"
 import { Badge } from "@/components/ui/badge"
@@ -28,23 +27,20 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { getRequestErrorMessage } from "@/lib/http-error"
-import { useAuthStore } from "@/stores/auth"
-import SalesDailyScoreDetail from "@/views/sales-daily-score/detail.vue"
+import TelemarketingDailyScoreDetail from "@/views/telemarketing-daily-score/detail.vue"
 
-const authStore = useAuthStore()
-const salesDailyScoresRefreshEvent = "sales-daily-scores:refresh"
+const telemarketingDailyScoresRefreshEvent = "telemarketing-daily-scores:refresh"
 
 const loading = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref("")
 const scoreDate = ref(getTodayDate())
 const activeScoreDate = ref(getTodayDate())
-const salesItems = ref<SalesDailyScoreRankingItem[]>([])
+const telemarketingItems = ref<TelemarketingDailyScoreRankingItem[]>([])
 const detailOpen = ref(false)
-const selectedSalesItem = ref<SalesDailyScoreRankingItem | null>(null)
+const selectedTelemarketingItem = ref<TelemarketingDailyScoreRankingItem | null>(null)
 
-const currentUserId = computed(() => Number(authStore.user?.id || 0))
-const displayEmptyText = "暂无销售每日排名数据"
+const displayEmptyText = "暂无电销每日排名数据"
 
 function getTodayDate() {
   const now = new Date()
@@ -83,6 +79,16 @@ const formatDateTime = (value?: string | null) => {
   }
 }
 
+const formatAnswerRate = (value?: number) => {
+  const safe = Number(value || 0)
+  if (!Number.isFinite(safe) || safe <= 0) return "0%"
+  return `${safe.toFixed(1)}%`
+}
+
+const getTelemarketingDisplayName = (item: TelemarketingDailyScoreRankingItem) => {
+  return item.matchedUserName || item.seatName || item.seatWorkNumber || "-"
+}
+
 const downloadCsv = (rows: string[][], filename: string) => {
   const csv = rows
     .map((row) =>
@@ -106,45 +112,51 @@ const downloadCsv = (rows: string[][], filename: string) => {
 }
 
 const exportRankings = () => {
-  if (salesItems.value.length === 0) {
+  if (telemarketingItems.value.length === 0) {
     toast.error("暂无可导出数据")
     return
   }
 
   const rows = [
     [
-      "积分日期",
+      "统计日期",
       "排名",
-      "销售",
-      "角色",
+      "工号",
+      "电销",
+      "所属组",
       "总积分",
       "电话积分",
-      "拜访积分",
+      "邀约积分",
       "新增客户积分",
       "拨打数",
+      "接通数",
+      "接通率",
       "通话时长",
-      "拜访数",
       "新增客户数",
+      "邀约数",
       "更新时间",
     ],
-    ...salesItems.value.map((item) => [
+    ...telemarketingItems.value.map((item) => [
       activeScoreDate.value,
       String(item.rank),
-      item.userName || "",
-      item.roleName || "",
+      item.seatWorkNumber || "",
+      getTelemarketingDisplayName(item),
+      item.groupName || "",
       String(item.totalScore),
       String(item.callScore),
-      String(item.visitScore),
+      String(item.invitationScore),
       String(item.newCustomerScore),
       String(item.callNum),
+      String(item.answeredCallCount),
+      formatAnswerRate(item.answerRate),
       formatDuration(item.callDurationSecond),
-      String(item.visitCount),
       String(item.newCustomerCount),
+      String(item.invitationCount),
       formatDateTime(item.updatedAt),
     ]),
   ]
 
-  downloadCsv(rows, `sales-daily-scores-${activeScoreDate.value || getTodayDate()}.csv`)
+  downloadCsv(rows, `telemarketing-daily-scores-${activeScoreDate.value || getTodayDate()}.csv`)
 }
 
 const normalizeScoreDate = (value?: string) => {
@@ -158,35 +170,18 @@ const fetchRankings = async (nextScoreDate?: string) => {
   const queryScoreDate = normalizeScoreDate(nextScoreDate ?? scoreDate.value) || getTodayDate()
   scoreDate.value = queryScoreDate
   try {
-    const result = await getSalesDailyScoreRankings({ scoreDate: queryScoreDate })
-    salesItems.value = result.items || []
+    const result = await getTelemarketingDailyScoreRankings({
+      scoreDate: queryScoreDate,
+    })
+    telemarketingItems.value = result.items || []
     activeScoreDate.value = result.scoreDate || queryScoreDate
     return true
   } catch (error) {
-    salesItems.value = []
-    errorMessage.value = getRequestErrorMessage(error, "加载销售每日排名失败")
+    telemarketingItems.value = []
+    errorMessage.value = getRequestErrorMessage(error, "加载电销每日排名失败")
     return false
   } finally {
     loading.value = false
-  }
-}
-
-const refreshTodayRankings = async () => {
-  refreshing.value = true
-  errorMessage.value = ""
-  try {
-    loading.value = true
-    await refreshTodaySalesDailyScoreRankings()
-    scoreDate.value = getTodayDate()
-    const success = await fetchRankings()
-    if (success) {
-      toast.success("今日销售排名已刷新")
-    }
-  } catch (error) {
-    loading.value = false
-    toast.error(getRequestErrorMessage(error, "刷新今日销售排名失败"))
-  } finally {
-    refreshing.value = false
   }
 }
 
@@ -199,29 +194,44 @@ const handleScoreDateChange = (value?: string) => {
   void fetchRankings(nextScoreDate)
 }
 
-const openDetail = (item: SalesDailyScoreRankingItem) => {
-  selectedSalesItem.value = item
+const refreshRankings = async () => {
+  refreshing.value = true
+  errorMessage.value = ""
+  try {
+    const success = await fetchRankings()
+    if (success) {
+      toast.success("电销排名已刷新")
+    }
+  } catch (error) {
+    toast.error(getRequestErrorMessage(error, "刷新电销排名失败"))
+  } finally {
+    refreshing.value = false
+  }
+}
+
+const openDetail = (item: TelemarketingDailyScoreRankingItem) => {
+  selectedTelemarketingItem.value = item
   detailOpen.value = true
 }
 
 const handleDetailOpenChange = (open: boolean) => {
   detailOpen.value = open
   if (!open) {
-    selectedSalesItem.value = null
+    selectedTelemarketingItem.value = null
   }
 }
 
-const handleSalesRefreshEvent = () => {
+const handleTelemarketingRefreshEvent = () => {
   void fetchRankings()
 }
 
 onMounted(() => {
-  void refreshTodayRankings()
-  window.addEventListener(salesDailyScoresRefreshEvent, handleSalesRefreshEvent)
+  void fetchRankings()
+  window.addEventListener(telemarketingDailyScoresRefreshEvent, handleTelemarketingRefreshEvent)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener(salesDailyScoresRefreshEvent, handleSalesRefreshEvent)
+  window.removeEventListener(telemarketingDailyScoresRefreshEvent, handleTelemarketingRefreshEvent)
 })
 </script>
 
@@ -231,12 +241,12 @@ onBeforeUnmount(() => {
       <CardHeader>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" class="bg-background" @click="refreshTodayRankings" :disabled="refreshing">
+            <Button size="sm" variant="outline" class="bg-background" @click="refreshRankings" :disabled="refreshing">
               <Loader2 v-if="refreshing" class="h-3.5 w-3.5 animate-spin" />
               <RefreshCw v-else class="h-3.5 w-3.5" />
               刷新排名
             </Button>
-            <Button size="sm" variant="outline" class="bg-background" @click="exportRankings" :disabled="loading || salesItems.length === 0">
+            <Button size="sm" variant="outline" class="bg-background" @click="exportRankings" :disabled="loading || telemarketingItems.length === 0">
               <Download class="h-3.5 w-3.5" />
               导出
             </Button>
@@ -267,16 +277,19 @@ onBeforeUnmount(() => {
               <TableHeader class="sticky top-0 z-20 bg-muted/40">
                 <TableRow>
                   <TableHead class="w-20 whitespace-nowrap">排名</TableHead>
-                  <TableHead class="w-32 whitespace-nowrap">销售</TableHead>
-                  <TableHead class="w-28 whitespace-nowrap">角色</TableHead>
+                  <TableHead class="w-24 whitespace-nowrap">工号</TableHead>
+                  <TableHead class="w-28 whitespace-nowrap">姓名</TableHead>
+                  <TableHead class="w-24 whitespace-nowrap">所属组</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">总积分</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">电话积分</TableHead>
-                  <TableHead class="w-24 whitespace-nowrap">拜访积分</TableHead>
+                  <TableHead class="w-24 whitespace-nowrap">邀约积分</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">新增客户积分</TableHead>
                   <TableHead class="w-20 whitespace-nowrap">拨打数</TableHead>
+                  <TableHead class="w-20 whitespace-nowrap">接通数</TableHead>
+                  <TableHead class="w-24 whitespace-nowrap">接通率</TableHead>
                   <TableHead class="w-32 whitespace-nowrap">通话时长</TableHead>
-                  <TableHead class="w-20 whitespace-nowrap">拜访数</TableHead>
                   <TableHead class="w-24 whitespace-nowrap">新增客户数</TableHead>
+                  <TableHead class="w-20 whitespace-nowrap">邀约数</TableHead>
                   <TableHead class="w-44 whitespace-nowrap">更新时间</TableHead>
                   <TableHead
                     class="sticky right-0 z-30 w-[80px] min-w-[80px] border-l border-border bg-muted/95 text-center before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border">
@@ -286,10 +299,9 @@ onBeforeUnmount(() => {
               </TableHeader>
               <TableBody>
                 <TableRow
-                  v-for="item in salesItems"
-                  :key="`${item.scoreDate}-${item.userId}`"
+                  v-for="item in telemarketingItems"
+                  :key="`${item.scoreDate}-${item.seatWorkNumber}`"
                   class="group transition-colors hover:bg-muted/20"
-                  :class="item.userId === currentUserId ? 'bg-primary/5 ring-1 ring-inset ring-primary/15' : ''"
                 >
                   <TableCell>
                     <Badge :variant="item.rank <= 3 ? 'default' : 'outline'" class="gap-1.5">
@@ -302,18 +314,21 @@ onBeforeUnmount(() => {
                       第{{ item.rank }}名
                     </Badge>
                   </TableCell>
-                  <TableCell class="font-medium">{{ item.userName || "-" }}</TableCell>
-                  <TableCell class="text-muted-foreground">{{ item.roleName || "-" }}</TableCell>
+                  <TableCell class="font-medium">{{ item.seatWorkNumber || "-" }}</TableCell>
+                  <TableCell>{{ getTelemarketingDisplayName(item) }}</TableCell>
+                  <TableCell class="text-muted-foreground">{{ item.groupName || "-" }}</TableCell>
                   <TableCell>
                     <span class="text-base font-semibold text-primary">{{ item.totalScore }}</span>
                   </TableCell>
                   <TableCell>{{ item.callScore }}</TableCell>
-                  <TableCell>{{ item.visitScore }}</TableCell>
+                  <TableCell>{{ item.invitationScore }}</TableCell>
                   <TableCell>{{ item.newCustomerScore }}</TableCell>
                   <TableCell>{{ item.callNum }}</TableCell>
+                  <TableCell>{{ item.answeredCallCount }}</TableCell>
+                  <TableCell>{{ formatAnswerRate(item.answerRate) }}</TableCell>
                   <TableCell>{{ formatDuration(item.callDurationSecond) }}</TableCell>
-                  <TableCell>{{ item.visitCount }}</TableCell>
                   <TableCell>{{ item.newCustomerCount }}</TableCell>
+                  <TableCell>{{ item.invitationCount }}</TableCell>
                   <TableCell class="tabular-nums whitespace-nowrap text-muted-foreground">
                     {{ formatDateTime(item.updatedAt) }}
                   </TableCell>
@@ -324,7 +339,7 @@ onBeforeUnmount(() => {
                     </div>
                   </TableCell>
                 </TableRow>
-                <EmptyTablePlaceholder v-if="salesItems.length === 0" :colspan="13" :text="displayEmptyText" />
+                <EmptyTablePlaceholder v-if="telemarketingItems.length === 0" :colspan="16" :text="displayEmptyText" />
               </TableBody>
             </Table>
           </div>
@@ -333,10 +348,11 @@ onBeforeUnmount(() => {
     </Card>
   </div>
 
-  <SalesDailyScoreDetail
+  <TelemarketingDailyScoreDetail
     :open="detailOpen"
-    :user-id="selectedSalesItem?.userId"
-    :user-name="selectedSalesItem?.userName"
+    :seat-work-number="selectedTelemarketingItem?.seatWorkNumber"
+    :seat-name="selectedTelemarketingItem?.seatName"
+    :matched-user-name="selectedTelemarketingItem?.matchedUserName"
     :score-date="activeScoreDate"
     @update:open="handleDetailOpenChange"
   />

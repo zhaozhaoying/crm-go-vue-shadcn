@@ -8,6 +8,8 @@ import type {
   UpdateContractRequest,
 } from "@/types/contract"
 
+export const CONTRACT_PENDING_COUNT_REFRESH_EVENT = "contracts:pending-count:refresh"
+
 const createEmptyListResult = (): ContractListResult => {
   return {
     items: [],
@@ -33,6 +35,19 @@ export const listContracts = (params?: ContractListParams) => {
     url: "/v1/contracts",
     params,
   }).then((data) => normalizeListResult(data))
+}
+
+export const getPendingContractCount = () => {
+  return listContracts({
+    auditStatus: "pending",
+    page: 1,
+    pageSize: 1,
+  }).then((result) => result.total)
+}
+
+export const emitContractPendingCountRefresh = () => {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(CONTRACT_PENDING_COUNT_REFRESH_EVENT))
 }
 
 export const getContract = (id: number) => {

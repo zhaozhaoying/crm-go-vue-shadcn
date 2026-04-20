@@ -22,6 +22,16 @@ type DailySalesScoreBreakdown struct {
 	TotalScore          int
 }
 
+type DailyTelemarketingScoreBreakdown struct {
+	CallScoreByCount    int
+	CallScoreByDuration int
+	CallScoreType       string
+	CallScore           int
+	InvitationScore     int
+	NewCustomerScore    int
+	TotalScore          int
+}
+
 var (
 	callCountAnchors = []scoreAnchor{
 		{threshold: 150, score: 50},
@@ -60,6 +70,29 @@ func BuildDailySalesScoreBreakdown(
 	}
 }
 
+func BuildDailyTelemarketingScoreBreakdown(
+	answeredCallCount int,
+	callDurationSecond int,
+	invitationCount int,
+	newCustomerCount int,
+) DailyTelemarketingScoreBreakdown {
+	callScoreByCount := CallCountScore(answeredCallCount)
+	callScoreByDuration := CallDurationScore(callDurationSecond)
+	callScoreType, callScore := ChooseCallScore(callScoreByCount, callScoreByDuration)
+	invitationScore := InvitationScore(invitationCount)
+	newCustomerScore := NewCustomerScore(newCustomerCount)
+
+	return DailyTelemarketingScoreBreakdown{
+		CallScoreByCount:    callScoreByCount,
+		CallScoreByDuration: callScoreByDuration,
+		CallScoreType:       callScoreType,
+		CallScore:           callScore,
+		InvitationScore:     invitationScore,
+		NewCustomerScore:    newCustomerScore,
+		TotalScore:          callScore + invitationScore + newCustomerScore,
+	}
+}
+
 func CallCountScore(callNum int) int {
 	return scoreByAnchors(int64(callNum), callCountAnchors)
 }
@@ -70,6 +103,10 @@ func CallDurationScore(callDurationSecond int) int {
 
 func VisitScore(visitCount int) int {
 	return scoreByAnchors(int64(visitCount), visitAnchors)
+}
+
+func InvitationScore(invitationCount int) int {
+	return VisitScore(invitationCount)
 }
 
 func NewCustomerScore(newCustomerCount int) int {

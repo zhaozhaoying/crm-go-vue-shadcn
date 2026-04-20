@@ -27,8 +27,18 @@ const navigationItems: NavigationItem[] = [
   { title: '客户管理', href: '/customers', icon: Users },
   { title: '用户管理', href: '/users', icon: UserCog, allowedRoles: ['admin', 'finance_manager', 'finance', '财务经理', '财务'] },
   {
-    title: '每日排名',
+    title: '销售每日排名',
     href: '/sales-daily-scores',
+    icon: Trophy,
+  },
+  {
+    title: '电销每日排名',
+    href: '/telemarketing-daily-scores',
+    icon: Trophy,
+  },
+  {
+    title: '排名榜单',
+    href: '/ranking-leaderboard',
     icon: Trophy,
   },
   {
@@ -91,6 +101,9 @@ const goTo = (href: string) => {
   }
   if (href === '/sales-daily-scores' && route.path === '/sales-daily-scores') {
     window.dispatchEvent(new Event('sales-daily-scores:refresh'))
+  }
+  if (href === '/telemarketing-daily-scores' && route.path === '/telemarketing-daily-scores') {
+    window.dispatchEvent(new Event('telemarketing-daily-scores:refresh'))
   }
   router.push(href)
 }
