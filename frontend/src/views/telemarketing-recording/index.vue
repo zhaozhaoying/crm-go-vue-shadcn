@@ -593,7 +593,7 @@ const handleRefreshEvent = () => {
 }
 
 onMounted(() => {
-  void syncList({ silentSuccess: true })
+  void fetchRecords()
   window.addEventListener(telemarketingRecordingsRefreshEvent, handleRefreshEvent)
 })
 
@@ -606,15 +606,15 @@ onBeforeUnmount(() => {
   <div class="w-full flex flex-col gap-3 lg:gap-4">
     <Card class="border-border/60 shadow-sm">
       <CardHeader class="space-y-2 border-b px-4 py-4 sm:px-5">
-        <div class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-          <div class="grid flex-1 gap-2 sm:grid-cols-2 xl:grid-cols-6">
-            <Button size="sm" variant="outline" class="h-9" :disabled="loading || syncing" @click="refreshList">
+        <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
+            <Button size="sm" variant="outline" class="h-9 shrink-0" :disabled="loading || syncing" @click="refreshList">
               <RefreshCw class="h-4 w-4" />
               <span>刷新列表</span>
             </Button>
             <Button
               size="sm"
-              class="h-9"
+              class="h-9 shrink-0"
               :disabled="syncing"
               @click="syncList"
             >
@@ -625,7 +625,7 @@ onBeforeUnmount(() => {
             <Input
               v-model="keyword"
               placeholder="工号 / 姓名 / 号码"
-              class="h-9 xl:col-span-2"
+              class="h-9 min-w-0 basis-full sm:basis-[260px] lg:w-[260px] lg:basis-auto"
               @keyup.enter="handleSearch"
             />
             <Input
@@ -634,7 +634,7 @@ onBeforeUnmount(() => {
               min="0"
               step="1"
               placeholder="最小时长(秒)"
-              class="h-9"
+              class="h-9 basis-[160px] lg:w-[140px] lg:basis-auto"
               @keyup.enter="handleSearch"
             />
             <Input
@@ -643,12 +643,21 @@ onBeforeUnmount(() => {
               min="0"
               step="1"
               placeholder="最大时长(秒)"
-              class="h-9"
+              class="h-9 basis-[160px] lg:w-[140px] lg:basis-auto"
               @keyup.enter="handleSearch"
             />
+            <div class="hidden items-center gap-2 lg:ml-auto lg:flex lg:shrink-0">
+              <Button size="sm" class="h-9 shrink-0" @click="handleSearch">
+                <Search class="h-4 w-4" />
+                <span>搜索</span>
+              </Button>
+              <Button size="sm" variant="outline" class="h-9 shrink-0" @click="clearSearch">
+                <RefreshCw class="h-4 w-4" />
+                <span>重置</span>
+              </Button>
+            </div>
           </div>
-
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-2 lg:hidden">
             <Button size="sm" class="h-9" @click="handleSearch">
               <Search class="h-4 w-4" />
               <span>搜索</span>
