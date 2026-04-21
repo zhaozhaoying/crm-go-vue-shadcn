@@ -25,6 +25,7 @@ func NewRankingLeaderboardHandler(service service.SalesDailyScoreService) *Ranki
 // @Param period query string false "周期类型: month=月排名, week=周排名, day=日排名"
 // @Param startDate query string false "开始日期，格式：YYYY-MM-DD"
 // @Param endDate query string false "结束日期，格式：YYYY-MM-DD"
+// @Param sync query boolean false "是否同步今日榜单数据，默认 true"
 // @Success 200 {object} APIResponse
 // @Router /api/v1/ranking-leaderboard [get]
 func (h *RankingLeaderboardHandler) ListRankingLeaderboard(c *gin.Context) {
@@ -38,11 +39,17 @@ func (h *RankingLeaderboardHandler) ListRankingLeaderboard(c *gin.Context) {
 		period = "day"
 	}
 
+	syncOnToday := true
+	if rawSync := strings.TrimSpace(c.Query("sync")); rawSync != "" {
+		syncOnToday = parseBoolQuery(rawSync)
+	}
+
 	result, err := h.service.ListRankingLeaderboard(
 		c.Request.Context(),
 		period,
 		strings.TrimSpace(c.Query("startDate")),
 		strings.TrimSpace(c.Query("endDate")),
+		syncOnToday,
 	)
 	if err != nil {
 		switch {
@@ -69,6 +76,7 @@ func (h *RankingLeaderboardHandler) ListRankingLeaderboard(c *gin.Context) {
 // @Param period query string false "周期类型: month=月排名, week=周排名, day=日排名"
 // @Param startDate query string false "开始日期，格式：YYYY-MM-DD"
 // @Param endDate query string false "结束日期，格式：YYYY-MM-DD"
+// @Param sync query boolean false "是否同步今日榜单数据，默认 true"
 // @Success 200 {object} APIResponse
 // @Router /api/v1/ranking-leaderboard/{identityKey} [get]
 func (h *RankingLeaderboardHandler) GetRankingLeaderboardDetail(c *gin.Context) {
@@ -88,12 +96,18 @@ func (h *RankingLeaderboardHandler) GetRankingLeaderboardDetail(c *gin.Context) 
 		period = "day"
 	}
 
+	syncOnToday := true
+	if rawSync := strings.TrimSpace(c.Query("sync")); rawSync != "" {
+		syncOnToday = parseBoolQuery(rawSync)
+	}
+
 	result, err := h.service.GetRankingLeaderboardDetail(
 		c.Request.Context(),
 		period,
 		strings.TrimSpace(c.Query("startDate")),
 		strings.TrimSpace(c.Query("endDate")),
 		identityKey,
+		syncOnToday,
 	)
 	if err != nil {
 		switch {

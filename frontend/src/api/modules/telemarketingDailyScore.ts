@@ -45,7 +45,7 @@ export interface TelemarketingDailyScoreDetail {
   score: TelemarketingDailyScore
 }
 
-export const getTelemarketingDailyScoreRankings = (params?: { scoreDate?: string }) => {
+export const getTelemarketingDailyScoreRankings = (params?: { scoreDate?: string; sync?: boolean }) => {
   return request<TelemarketingDailyScoreRankingListResult>({
     method: "GET",
     url: "/v1/telemarketing-rankings",
@@ -53,7 +53,7 @@ export const getTelemarketingDailyScoreRankings = (params?: { scoreDate?: string
   })
 }
 
-export const getTelemarketingDailyScoreDetail = (seatWorkNumber: string, params?: { scoreDate?: string }) => {
+export const getTelemarketingDailyScoreDetail = (seatWorkNumber: string, params?: { scoreDate?: string; sync?: boolean }) => {
   return request<TelemarketingDailyScoreDetail>({
     method: "GET",
     url: `/v1/telemarketing-rankings/${seatWorkNumber}`,

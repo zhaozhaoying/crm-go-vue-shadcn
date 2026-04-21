@@ -23,6 +23,7 @@ func NewTelemarketingDailyScoreHandler(service service.SalesDailyScoreService) *
 // @Produce json
 // @Security BearerAuth
 // @Param scoreDate query string false "积分日期，格式：YYYY-MM-DD"
+// @Param sync query boolean false "是否同步今日榜单数据，默认 true"
 // @Success 200 {object} APIResponse
 // @Router /api/v1/telemarketing-rankings [get]
 func (h *TelemarketingDailyScoreHandler) ListTelemarketingDailyRankings(c *gin.Context) {
@@ -31,9 +32,15 @@ func (h *TelemarketingDailyScoreHandler) ListTelemarketingDailyRankings(c *gin.C
 		return
 	}
 
+	syncOnToday := true
+	if rawSync := strings.TrimSpace(c.Query("sync")); rawSync != "" {
+		syncOnToday = parseBoolQuery(rawSync)
+	}
+
 	result, err := h.service.ListTelemarketingDailyRankings(
 		c.Request.Context(),
 		strings.TrimSpace(c.Query("scoreDate")),
+		syncOnToday,
 	)
 	if err != nil {
 		switch {
@@ -56,6 +63,7 @@ func (h *TelemarketingDailyScoreHandler) ListTelemarketingDailyRankings(c *gin.C
 // @Security BearerAuth
 // @Param seatWorkNumber path string true "坐席工号"
 // @Param scoreDate query string false "积分日期，格式：YYYY-MM-DD"
+// @Param sync query boolean false "是否同步今日榜单数据，默认 true"
 // @Success 200 {object} APIResponse
 // @Router /api/v1/telemarketing-rankings/{seatWorkNumber} [get]
 func (h *TelemarketingDailyScoreHandler) GetTelemarketingDailyScoreDetail(c *gin.Context) {
@@ -70,10 +78,16 @@ func (h *TelemarketingDailyScoreHandler) GetTelemarketingDailyScoreDetail(c *gin
 		return
 	}
 
+	syncOnToday := true
+	if rawSync := strings.TrimSpace(c.Query("sync")); rawSync != "" {
+		syncOnToday = parseBoolQuery(rawSync)
+	}
+
 	result, err := h.service.GetTelemarketingDailyScoreDetail(
 		c.Request.Context(),
 		strings.TrimSpace(c.Query("scoreDate")),
 		seatWorkNumber,
+		syncOnToday,
 	)
 	if err != nil {
 		switch {

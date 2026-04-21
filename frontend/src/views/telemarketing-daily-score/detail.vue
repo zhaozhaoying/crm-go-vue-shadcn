@@ -158,6 +158,7 @@ const fetchDetail = async () => {
     }
     detail.value = await getTelemarketingDailyScoreDetail(safeSeatWorkNumber.value, {
       scoreDate: safeScoreDate.value || undefined,
+      sync: false,
     })
   } catch (error) {
     detail.value = null

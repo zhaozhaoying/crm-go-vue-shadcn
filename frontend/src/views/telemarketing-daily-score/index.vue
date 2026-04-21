@@ -164,7 +164,12 @@ const normalizeScoreDate = (value?: string) => {
   return normalized.slice(0, 10)
 }
 
-const fetchRankings = async (nextScoreDate?: string) => {
+const fetchRankings = async (
+  nextScoreDate?: string,
+  options?: {
+    sync?: boolean
+  },
+) => {
   loading.value = true
   errorMessage.value = ""
   const queryScoreDate = normalizeScoreDate(nextScoreDate ?? scoreDate.value) || getTodayDate()
@@ -172,6 +177,7 @@ const fetchRankings = async (nextScoreDate?: string) => {
   try {
     const result = await getTelemarketingDailyScoreRankings({
       scoreDate: queryScoreDate,
+      sync: options?.sync,
     })
     telemarketingItems.value = result.items || []
     activeScoreDate.value = result.scoreDate || queryScoreDate
@@ -191,14 +197,14 @@ const handleScoreDateChange = (value?: string) => {
     return
   }
   scoreDate.value = nextScoreDate
-  void fetchRankings(nextScoreDate)
+  void fetchRankings(nextScoreDate, { sync: false })
 }
 
 const refreshRankings = async () => {
   refreshing.value = true
   errorMessage.value = ""
   try {
-    const success = await fetchRankings()
+    const success = await fetchRankings(undefined, { sync: true })
     if (success) {
       toast.success("电销排名已刷新")
     }
@@ -222,11 +228,11 @@ const handleDetailOpenChange = (open: boolean) => {
 }
 
 const handleTelemarketingRefreshEvent = () => {
-  void fetchRankings()
+  void fetchRankings(undefined, { sync: true })
 }
 
 onMounted(() => {
-  void fetchRankings()
+  void fetchRankings(undefined, { sync: false })
   window.addEventListener(telemarketingDailyScoresRefreshEvent, handleTelemarketingRefreshEvent)
 })
 

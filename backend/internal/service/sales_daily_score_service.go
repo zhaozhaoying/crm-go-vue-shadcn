@@ -46,10 +46,10 @@ type SalesDailyScoreService interface {
 	SyncDailyScores(ctx context.Context, scoreDate string) (SyncSalesDailyScoreResult, error)
 	ListDailyRankings(ctx context.Context, scoreDate string, actorUserID int64, actorRole string) (model.SalesDailyScoreRankingListResult, error)
 	GetDailyScoreDetail(ctx context.Context, scoreDate string, userID int64, actorUserID int64, actorRole string) (model.SalesDailyScoreDetail, error)
-	ListTelemarketingDailyRankings(ctx context.Context, scoreDate string) (model.TelemarketingDailyScoreRankingListResult, error)
-	GetTelemarketingDailyScoreDetail(ctx context.Context, scoreDate string, seatWorkNumber string) (model.TelemarketingDailyScoreDetail, error)
-	ListRankingLeaderboard(ctx context.Context, period, startDate, endDate string) (model.RankingLeaderboardResult, error)
-	GetRankingLeaderboardDetail(ctx context.Context, period, startDate, endDate, identityKey string) (model.RankingLeaderboardDetail, error)
+	ListTelemarketingDailyRankings(ctx context.Context, scoreDate string, syncOnToday bool) (model.TelemarketingDailyScoreRankingListResult, error)
+	GetTelemarketingDailyScoreDetail(ctx context.Context, scoreDate string, seatWorkNumber string, syncOnToday bool) (model.TelemarketingDailyScoreDetail, error)
+	ListRankingLeaderboard(ctx context.Context, period, startDate, endDate string, syncOnToday bool) (model.RankingLeaderboardResult, error)
+	GetRankingLeaderboardDetail(ctx context.Context, period, startDate, endDate, identityKey string, syncOnToday bool) (model.RankingLeaderboardDetail, error)
 	SyncTelemarketingDailyScores(ctx context.Context) (SyncTelemarketingDailyScoreResult, error)
 }
 
@@ -313,13 +313,14 @@ func (s *salesDailyScoreService) GetDailyScoreDetail(
 func (s *salesDailyScoreService) ListTelemarketingDailyRankings(
 	ctx context.Context,
 	scoreDate string,
+	syncOnToday bool,
 ) (model.TelemarketingDailyScoreRankingListResult, error) {
 	normalizedScoreDate, _, _, err := normalizeSalesScoreDate(scoreDate)
 	if err != nil {
 		return model.TelemarketingDailyScoreRankingListResult{}, err
 	}
 
-	if isTodayScoreDate(normalizedScoreDate) {
+	if syncOnToday && isTodayScoreDate(normalizedScoreDate) {
 		syncedScoreDate, syncErr := s.spxxjjSyncTelemarketingDailyScores(ctx)
 		if syncErr != nil {
 			return model.TelemarketingDailyScoreRankingListResult{}, syncErr
@@ -364,6 +365,7 @@ func (s *salesDailyScoreService) ListRankingLeaderboard(
 	period string,
 	startDate string,
 	endDate string,
+	syncOnToday bool,
 ) (model.RankingLeaderboardResult, error) {
 	normalizedPeriod, normalizedStartDate, normalizedEndDate, shouldSyncDaily, err := resolveRankingLeaderboardRange(
 		period,
@@ -375,7 +377,7 @@ func (s *salesDailyScoreService) ListRankingLeaderboard(
 		return model.RankingLeaderboardResult{}, err
 	}
 
-	if shouldSyncDaily {
+	if syncOnToday && shouldSyncDaily {
 		syncedScoreDate, syncErr := s.spxxjjSyncTelemarketingDailyScores(ctx)
 		if syncErr != nil {
 			return model.RankingLeaderboardResult{}, syncErr
@@ -412,8 +414,9 @@ func (s *salesDailyScoreService) GetRankingLeaderboardDetail(
 	startDate string,
 	endDate string,
 	identityKey string,
+	syncOnToday bool,
 ) (model.RankingLeaderboardDetail, error) {
-	result, err := s.ListRankingLeaderboard(ctx, period, startDate, endDate)
+	result, err := s.ListRankingLeaderboard(ctx, period, startDate, endDate, syncOnToday)
 	if err != nil {
 		return model.RankingLeaderboardDetail{}, err
 	}
@@ -441,8 +444,9 @@ func (s *salesDailyScoreService) GetTelemarketingDailyScoreDetail(
 	ctx context.Context,
 	scoreDate string,
 	seatWorkNumber string,
+	syncOnToday bool,
 ) (model.TelemarketingDailyScoreDetail, error) {
-	result, err := s.ListTelemarketingDailyRankings(ctx, scoreDate)
+	result, err := s.ListTelemarketingDailyRankings(ctx, scoreDate, syncOnToday)
 	if err != nil {
 		return model.TelemarketingDailyScoreDetail{}, err
 	}

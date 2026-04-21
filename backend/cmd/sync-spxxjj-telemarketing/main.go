@@ -74,7 +74,7 @@ func main() {
 	)
 
 	start := time.Now()
-	result, err := scoreService.ListTelemarketingDailyRankings(context.Background(), *scoreDate)
+	result, err := scoreService.ListTelemarketingDailyRankings(context.Background(), *scoreDate, true)
 	if err != nil {
 		log.Fatalf("sync telemarketing rankings failed: %v", err)
 	}

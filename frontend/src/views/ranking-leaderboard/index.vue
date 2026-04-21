@@ -500,6 +500,7 @@ const fetchRankings = async (
   filters: RankingFilters,
   options?: {
     fromRefresh?: boolean;
+    sync?: boolean;
   },
 ) => {
   if (options?.fromRefresh) {
@@ -513,6 +514,7 @@ const fetchRankings = async (
     if (filters.period === "day") {
       const result = await getTelemarketingDailyScoreRankings({
         scoreDate: filters.endDate,
+        sync: options?.sync,
       });
       const scoreDate = normalizeDateValue(result.scoreDate) || filters.endDate;
       items.value = (result.items || []).map(mapTelemarketingDailyRankingItem);
@@ -524,7 +526,10 @@ const fetchRankings = async (
       return true;
     }
 
-    const result = await getRankingLeaderboard(filters);
+    const result = await getRankingLeaderboard({
+      ...filters,
+      sync: options?.sync,
+    });
     items.value = (result.items || []).map(normalizeRankingLeaderboardItem);
     activePeriod.value = (
       validPeriods.includes(result.period as Period)
@@ -571,6 +576,7 @@ const fetchDetail = async () => {
       }
       const result = await getTelemarketingDailyScoreDetail(seatWorkNumber, {
         scoreDate: activeEndDate.value || endDate.value,
+        sync: false,
       });
       detail.value = mapTelemarketingDailyDetail(result);
       return;
@@ -585,6 +591,7 @@ const fetchDetail = async () => {
         period: activePeriod.value,
         startDate: activeStartDate.value || startDate.value,
         endDate: activeEndDate.value || endDate.value,
+        sync: false,
       },
     );
     detail.value = {
@@ -627,7 +634,7 @@ const refreshRankings = async () => {
       startDate: startDate.value,
       endDate: endDate.value,
     },
-    { fromRefresh: true },
+    { fromRefresh: true, sync: true },
   );
   if (success) {
     toast.success(
@@ -676,7 +683,7 @@ watch(
       return;
     }
 
-    void fetchRankings(filters);
+    void fetchRankings(filters, { sync: false });
   },
   { immediate: true },
 );

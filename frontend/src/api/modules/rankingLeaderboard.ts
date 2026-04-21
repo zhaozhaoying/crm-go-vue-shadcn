@@ -46,6 +46,7 @@ export const getRankingLeaderboard = (params?: {
   period?: RankingLeaderboardPeriod | string
   startDate?: string
   endDate?: string
+  sync?: boolean
 }) => {
   return request<RankingLeaderboardResult>({
     method: "GET",
@@ -60,6 +61,7 @@ export const getRankingLeaderboardDetail = (
     period?: RankingLeaderboardPeriod | string
     startDate?: string
     endDate?: string
+    sync?: boolean
   },
 ) => {
   return request<RankingLeaderboardDetail>({
