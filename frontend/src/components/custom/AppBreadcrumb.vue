@@ -29,8 +29,8 @@ const titleMap: Record<string, string> = {
   'sales-daily-scores': '销售每日排名',
   'telemarketing-daily-scores': '电销排名',
   'ranking-leaderboard': '排名榜单',
-  'telemarketing-recordings': '录音库',
-  'call-recordings': '通话录音',
+  'telemarketing-recordings': '电销录音库',
+  'call-recordings': '销售录音',
 }
 
 const breadcrumbSegments = computed(() => {

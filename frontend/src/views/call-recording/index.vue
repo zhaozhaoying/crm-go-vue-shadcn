@@ -23,11 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { hasAnyRole, isAdminUser } from "@/lib/auth-role"
 import { getRequestErrorMessage } from "@/lib/http-error"
-import { useAuthStore } from "@/stores/auth"
 
-const authStore = useAuthStore()
 const loading = ref(false)
 const syncing = ref(false)
 const error = ref("")
@@ -46,11 +43,6 @@ const audioUrls = ref<Record<string, string>>({})
 const audioLoadingId = ref("")
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
-const canSync = computed(
-  () =>
-    isAdminUser(authStore.user) ||
-    hasAnyRole(authStore.user, ["finance_manager", "finance", "财务经理", "财务"]),
-)
 
 const formatDateTime = (value?: number) => {
   const safe = Number(value || 0)
@@ -131,11 +123,6 @@ const fetchRecords = async () => {
 }
 
 const refreshList = async () => {
-  if (!canSync.value) {
-    void fetchRecords()
-    return
-  }
-
   syncing.value = true
   try {
     const result = await syncCallRecordings({
@@ -147,6 +134,7 @@ const refreshList = async () => {
     await fetchRecords()
   } catch (err) {
     toast.error(getRequestErrorMessage(err, "同步通话录音失败"))
+    await fetchRecords()
   } finally {
     syncing.value = false
   }
@@ -236,7 +224,7 @@ onBeforeUnmount(() => {
             <Button size="sm" variant="outline" :disabled="syncing" @click="refreshList">
               <Loader2 v-if="syncing" class="h-4 w-4 animate-spin" />
               <RefreshCw v-else class="h-4 w-4" />
-              <span>{{ syncing ? "同步中" : "刷新" }}</span>
+              <span>{{ syncing ? "同步中" : "同步最新" }}</span>
             </Button>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-3">

@@ -52,27 +52,14 @@ func (h *TelemarketingRecordingHandler) List(c *gin.Context) {
 		return
 	}
 
-	role := currentUserRole(c)
-	if !canViewCallRecordings(role) {
-		Error(c, http.StatusForbidden, 91230, "当前角色无权查看电销录音库")
-		return
-	}
-
-	showAll := canViewAllCallRecordings(role)
-	viewerMihuaWorkNumber, err := h.resolveViewerMihuaWorkNumber(c)
-	if err != nil {
-		ErrorWithDetail(c, http.StatusInternalServerError, 91231, "加载当前用户信息失败", err)
-		return
-	}
-
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	minDuration, _ := strconv.Atoi(strings.TrimSpace(c.Query("minDuration")))
 	maxDuration, _ := strconv.Atoi(strings.TrimSpace(c.Query("maxDuration")))
 
 	result, err := h.service.List(c.Request.Context(), model.TelemarketingRecordingListFilter{
-		ShowAll:           showAll,
-		ViewerMihuaWorkNo: viewerMihuaWorkNumber,
+		ShowAll:           true,
+		ViewerMihuaWorkNo: "",
 		Keyword:           strings.TrimSpace(c.Query("keyword")),
 		StartDate:         strings.TrimSpace(c.Query("startDate")),
 		EndDate:           strings.TrimSpace(c.Query("endDate")),
@@ -102,24 +89,11 @@ func (h *TelemarketingRecordingHandler) GetDetail(c *gin.Context) {
 		return
 	}
 
-	role := currentUserRole(c)
-	if !canViewCallRecordings(role) {
-		Error(c, http.StatusForbidden, 91233, "当前角色无权查看电销录音详情")
-		return
-	}
-
-	showAll := canViewAllCallRecordings(role)
-	viewerMihuaWorkNumber, err := h.resolveViewerMihuaWorkNumber(c)
-	if err != nil {
-		ErrorWithDetail(c, http.StatusInternalServerError, 91234, "加载当前用户信息失败", err)
-		return
-	}
-
 	result, err := h.service.GetDetail(
 		c.Request.Context(),
 		c.Param("id"),
-		showAll,
-		viewerMihuaWorkNumber,
+		true,
+		"",
 	)
 	if err != nil {
 		switch {
@@ -149,10 +123,6 @@ func (h *TelemarketingRecordingHandler) GetDetail(c *gin.Context) {
 func (h *TelemarketingRecordingHandler) Sync(c *gin.Context) {
 	if _, ok := currentUserID(c); !ok {
 		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
-		return
-	}
-	if !canImportCallRecordings(currentUserRole(c)) {
-		Error(c, http.StatusForbidden, 91239, "当前角色无权同步电销录音库")
 		return
 	}
 

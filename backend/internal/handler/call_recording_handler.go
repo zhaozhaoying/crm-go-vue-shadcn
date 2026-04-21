@@ -92,26 +92,13 @@ func (h *CallRecordingHandler) List(c *gin.Context) {
 		return
 	}
 
-	role := currentUserRole(c)
-	if !canViewCallRecordings(role) {
-		Error(c, http.StatusForbidden, 91201, "当前角色无权查看通话录音")
-		return
-	}
-
-	showAll := canViewAllCallRecordings(role)
-	viewerMobile, err := h.resolveViewerHanghangCRMMobile(c)
-	if err != nil {
-		ErrorWithDetail(c, http.StatusInternalServerError, 91202, "加载当前用户信息失败", err)
-		return
-	}
-
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	minDuration, _ := strconv.Atoi(strings.TrimSpace(c.Query("minDuration")))
 	maxDuration, _ := strconv.Atoi(strings.TrimSpace(c.Query("maxDuration")))
 	result, err := h.service.List(c.Request.Context(), model.CallRecordingListFilter{
-		ShowAll:                 showAll,
-		ViewerHanghangCRMMobile: viewerMobile,
+		ShowAll:                 true,
+		ViewerHanghangCRMMobile: "",
 		Keyword:                 strings.TrimSpace(c.Query("keyword")),
 		MinDuration:             minDuration,
 		MaxDuration:             maxDuration,
@@ -131,20 +118,7 @@ func (h *CallRecordingHandler) StreamAudio(c *gin.Context) {
 		return
 	}
 
-	role := currentUserRole(c)
-	if !canViewCallRecordings(role) {
-		Error(c, http.StatusForbidden, 91204, "当前角色无权播放通话录音")
-		return
-	}
-
-	showAll := canViewAllCallRecordings(role)
-	viewerMobile, err := h.resolveViewerHanghangCRMMobile(c)
-	if err != nil {
-		ErrorWithDetail(c, http.StatusInternalServerError, 91205, "加载当前用户信息失败", err)
-		return
-	}
-
-	recording, err := h.service.GetByID(c.Request.Context(), c.Param("id"), showAll, viewerMobile)
+	recording, err := h.service.GetByID(c.Request.Context(), c.Param("id"), true, "")
 	if err != nil {
 		if errors.Is(err, service.ErrCallRecordingNotFound) {
 			Error(c, http.StatusNotFound, 91206, "未找到通话录音")
@@ -274,10 +248,6 @@ func (h *CallRecordingHandler) Import(c *gin.Context) {
 func (h *CallRecordingHandler) Sync(c *gin.Context) {
 	if _, ok := currentUserID(c); !ok {
 		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
-		return
-	}
-	if !canImportCallRecordings(currentUserRole(c)) {
-		Error(c, http.StatusForbidden, 91218, "当前角色无权同步通话录音")
 		return
 	}
 	if h.syncService == nil {

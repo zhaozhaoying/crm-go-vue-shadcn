@@ -47,13 +47,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { hasAnyRole, isAdminUser } from "@/lib/auth-role"
 import { getRequestErrorMessage } from "@/lib/http-error"
-import { useAuthStore } from "@/stores/auth"
 
 const telemarketingRecordingsRefreshEvent = "telemarketing-recordings:refresh"
-
-const authStore = useAuthStore()
 
 const loading = ref(false)
 const syncing = ref(false)
@@ -96,11 +92,6 @@ let detailRequestId = 0
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
 const selectedRecordId = computed(() => String(selectedRecord.value?.id || "").trim())
 const selectedRecording = computed(() => detail.value?.recording || selectedRecord.value || null)
-const canSync = computed(
-  () =>
-    isAdminUser(authStore.user) ||
-    hasAnyRole(authStore.user, ["finance_manager", "finance", "财务经理", "财务"]),
-)
 const playbackDialogTitle = computed(() =>
   pickDisplayText(
     playbackDialogDetail.value?.playbackFilename,
@@ -334,23 +325,23 @@ const refreshList = async () => {
   await fetchRecords()
 }
 
-const syncList = async () => {
-  if (!canSync.value) {
-    await fetchRecords()
-    return
-  }
-
+const syncList = async (options?: { silentSuccess?: boolean; silentError?: boolean }) => {
   syncing.value = true
   try {
     const result = await syncTelemarketingRecordings({
       pageSize: 100,
       timePeriod: "30d",
     })
-    toast.success(`已同步 ${result.totalSaved} 条电销录音`)
+    if (!options?.silentSuccess) {
+      toast.success(`已同步 ${result.totalSaved} 条电销录音`)
+    }
     pageIndex.value = 0
     await fetchRecords()
   } catch (error) {
-    toast.error(getRequestErrorMessage(error, "同步电销录音失败"))
+    if (!options?.silentError) {
+      toast.error(getRequestErrorMessage(error, "同步电销录音失败"))
+    }
+    await fetchRecords()
   } finally {
     syncing.value = false
   }
@@ -598,11 +589,11 @@ const handlePlaybackDialogOpenChange = (open: boolean) => {
 }
 
 const handleRefreshEvent = () => {
-  void fetchRecords()
+  void syncList({ silentSuccess: true })
 }
 
 onMounted(() => {
-  void fetchRecords()
+  void syncList({ silentSuccess: true })
   window.addEventListener(telemarketingRecordingsRefreshEvent, handleRefreshEvent)
 })
 
@@ -622,7 +613,6 @@ onBeforeUnmount(() => {
               <span>刷新列表</span>
             </Button>
             <Button
-              v-if="canSync"
               size="sm"
               class="h-9"
               :disabled="syncing"
