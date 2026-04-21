@@ -61,6 +61,7 @@ func main() {
 	hanghangCRMDailyUserCallStatRepo := repository.NewGormHanghangCRMDailyUserCallStatRepository(db)
 	salesDailyScoreRepo := repository.NewGormSalesDailyScoreRepository(db)
 	callRecordingRepo := repository.NewCallRecordingRepository(db)
+	telemarketingRecordingRepo := repository.NewTelemarketingRecordingRepository(db)
 	activityLogRepo := repository.NewActivityLogRepository(db)
 	notificationRepo := repository.NewGormNotificationRepository(db)
 	customerVisitRepo := repository.NewCustomerVisitRepository(db)
@@ -99,6 +100,15 @@ func main() {
 	)
 	callRecordingService := service.NewCallRecordingService(callRecordingRepo)
 	callRecordingSyncService := service.NewCallRecordingSyncService(callRecordingService, cfg.FeigeCallRecordingCookie)
+	telemarketingRecordingService := service.NewTelemarketingRecordingService(
+		telemarketingRecordingRepo,
+		service.WithMiHuaTelemarketingRecordingConfig(
+			cfg.MiHuaTeleRecordingListURL,
+			cfg.MiHuaTeleRecordingDetailURL,
+			cfg.MiHuaCallRecordToken,
+			cfg.MiHuaCallRecordOrigin,
+		),
+	)
 	hanghangCRMDailyScoreRuntime := service.NewHanghangCRMDailyScoreRuntime(
 		hanghangCRMDailyUserCallStatService,
 		salesDailyScoreService,
@@ -199,6 +209,7 @@ func main() {
 	telemarketingDailyScoreHandler := handler.NewTelemarketingDailyScoreHandler(salesDailyScoreService)
 	rankingLeaderboardHandler := handler.NewRankingLeaderboardHandler(salesDailyScoreService)
 	callRecordingHandler := handler.NewCallRecordingHandler(callRecordingService, callRecordingSyncService, authContextProvider)
+	telemarketingRecordingHandler := handler.NewTelemarketingRecordingHandler(telemarketingRecordingService, authContextProvider)
 	externalCompanySearchHandler := handler.NewExternalCompanySearchHandler(
 		externalCompanySearchService,
 		externalCompanyEnrichService,
@@ -233,6 +244,7 @@ func main() {
 		telemarketingDailyScoreHandler,
 		rankingLeaderboardHandler,
 		callRecordingHandler,
+		telemarketingRecordingHandler,
 		authTokenRepo,
 	)
 	if err := engine.SetTrustedProxies(cfg.TrustedProxies); err != nil {

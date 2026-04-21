@@ -33,6 +33,7 @@ type CurrentUser struct {
 	Mobile             string    `json:"mobile"`
 	HanghangCRMMobile  string    `json:"hanghangCrmMobile"`
 	HanghangCRMMobiles []string  `json:"hanghangCrmMobiles"`
+	MihuaWorkNumber    string    `json:"mihuaWorkNumber"`
 	Avatar             string    `json:"avatar"`
 	RoleID             int64     `json:"roleId"`
 	RoleName           string    `json:"roleName"`
@@ -134,6 +135,7 @@ func mapUser(user *model.User, roleName, roleLabel string) *CurrentUser {
 		Mobile:             user.Mobile,
 		HanghangCRMMobile:  user.HanghangCRMMobile,
 		HanghangCRMMobiles: user.HanghangCRMMobiles,
+		MihuaWorkNumber:    user.MihuaWorkNumber,
 		Avatar:             user.Avatar,
 		RoleID:             user.RoleID,
 		RoleName:           roleName,

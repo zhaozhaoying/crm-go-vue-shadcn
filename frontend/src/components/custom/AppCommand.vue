@@ -7,7 +7,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from '@/components/ui/command'
 import { hasAnyRole } from '@/lib/auth-role'
 import { useAuthStore } from '@/stores/auth'
@@ -32,14 +31,34 @@ const navigationItems: NavigationItem[] = [
     icon: Trophy,
   },
   {
-    title: '电销每日排名',
-    href: '/telemarketing-daily-scores',
-    icon: Trophy,
-  },
-  {
     title: '排名榜单',
     href: '/ranking-leaderboard',
     icon: Trophy,
+  },
+  {
+    title: '录音库',
+    href: '/telemarketing-recordings',
+    icon: PhoneCall,
+    allowedRoles: [
+      'admin',
+      'finance_manager',
+      'finance',
+      '财务经理',
+      '财务',
+      'sales_director',
+      '销售总监',
+      'sales_manager',
+      '销售经理',
+      'sales_staff',
+      '销售员工',
+      'sales_inside',
+      'sale_inside',
+      'inside销售',
+      '电销员工',
+      'sales_outside',
+      'sale_outside',
+      'outside销售',
+    ],
   },
   {
     title: '通话录音',
@@ -102,8 +121,11 @@ const goTo = (href: string) => {
   if (href === '/sales-daily-scores' && route.path === '/sales-daily-scores') {
     window.dispatchEvent(new Event('sales-daily-scores:refresh'))
   }
-  if (href === '/telemarketing-daily-scores' && route.path === '/telemarketing-daily-scores') {
-    window.dispatchEvent(new Event('telemarketing-daily-scores:refresh'))
+  if (href === '/ranking-leaderboard' && route.path === '/ranking-leaderboard') {
+    window.dispatchEvent(new Event('ranking-leaderboard:refresh'))
+  }
+  if (href === '/telemarketing-recordings' && route.path === '/telemarketing-recordings') {
+    window.dispatchEvent(new Event('telemarketing-recordings:refresh'))
   }
   router.push(href)
 }

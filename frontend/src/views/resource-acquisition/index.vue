@@ -68,11 +68,11 @@ const supportedPlatforms = [
     label: "Made-in-China",
     description: "HTML 翻页获取，已接入",
   },
-  {
-    value: EXTERNAL_COMPANY_SEARCH_PLATFORM.GOOGLE,
-    label: "Google",
-    description: "全球搜索引擎，覆盖面广",
-  },
+  // {
+  //   value: EXTERNAL_COMPANY_SEARCH_PLATFORM.GOOGLE,
+  //   label: "Google",
+  //   description: "全球搜索引擎，覆盖面广",
+  // },
 ];
 
 const searchWorkspace = useExternalCompanySearchTask();

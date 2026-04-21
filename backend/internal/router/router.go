@@ -33,6 +33,7 @@ func New(
 	telemarketingDailyScoreHandler *handler.TelemarketingDailyScoreHandler,
 	rankingLeaderboardHandler *handler.RankingLeaderboardHandler,
 	callRecordingHandler *handler.CallRecordingHandler,
+	telemarketingRecordingHandler *handler.TelemarketingRecordingHandler,
 	tokenChecker middleware.TokenBlacklistChecker,
 ) *gin.Engine {
 	engine := gin.New()
@@ -174,8 +175,14 @@ func New(
 			protected.POST("/call-recordings/sync", callRecordingHandler.Sync)
 			protected.POST("/call-recordings/import", callRecordingHandler.Import)
 
+			// 电销录音库
+			protected.GET("/telemarketing-recordings", telemarketingRecordingHandler.List)
+			protected.GET("/telemarketing-recordings/:id", telemarketingRecordingHandler.GetDetail)
+			protected.POST("/telemarketing-recordings/sync", telemarketingRecordingHandler.Sync)
+
 			// 排名榜单
 			protected.GET("/ranking-leaderboard", rankingLeaderboardHandler.ListRankingLeaderboard)
+			protected.GET("/ranking-leaderboard/:identityKey", rankingLeaderboardHandler.GetRankingLeaderboardDetail)
 
 			// 销售跟进记录
 			protected.GET("/sales-follow-records", followRecordHandler.ListSalesFollowRecords)

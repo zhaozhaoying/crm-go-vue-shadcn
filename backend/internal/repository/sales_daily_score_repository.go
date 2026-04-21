@@ -910,7 +910,7 @@ func (r *gormSalesDailyScoreRepository) ListRankingLeaderboard(
 		Where("s.score_date >= ? AND s.score_date <= ?", strings.TrimSpace(startDate), strings.TrimSpace(endDate)).
 		Where(aggregateKeyExpr + " <> ''").
 		Group(aggregateKeyExpr).
-		Order("total_score DESC, score_days DESC, answered_call_count DESC, call_duration_second DESC, invitation_count DESC, new_customer_count DESC, call_num DESC, seat_work_number ASC").
+		Order("total_score DESC, answered_call_count DESC, call_duration_second DESC, invitation_count DESC, new_customer_count DESC, call_num DESC, score_days DESC, seat_work_number ASC").
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err
@@ -1188,6 +1188,7 @@ func mergeRankingLeaderboardItems(items []model.RankingLeaderboardItem) []model.
 	merged := make(map[string]model.RankingLeaderboardItem, len(items))
 	for _, item := range items {
 		key := rankingLeaderboardMergeKey(item)
+		item.IdentityKey = key
 		if _, exists := merged[key]; !exists {
 			order = append(order, key)
 			merged[key] = item
@@ -1195,6 +1196,7 @@ func mergeRankingLeaderboardItems(items []model.RankingLeaderboardItem) []model.
 		}
 
 		current := merged[key]
+		current.IdentityKey = key
 		current.SeatWorkNumber = firstNonEmptyTelemarketing(current.SeatWorkNumber, item.SeatWorkNumber)
 		if current.MatchedUserID == nil && item.MatchedUserID != nil && *item.MatchedUserID > 0 {
 			matchedUserID := *item.MatchedUserID
@@ -1232,8 +1234,6 @@ func mergeRankingLeaderboardItems(items []model.RankingLeaderboardItem) []model.
 		switch {
 		case left.TotalScore != right.TotalScore:
 			return left.TotalScore > right.TotalScore
-		case left.ScoreDays != right.ScoreDays:
-			return left.ScoreDays > right.ScoreDays
 		case left.AnsweredCallCount != right.AnsweredCallCount:
 			return left.AnsweredCallCount > right.AnsweredCallCount
 		case left.CallDurationSecond != right.CallDurationSecond:
@@ -1244,6 +1244,8 @@ func mergeRankingLeaderboardItems(items []model.RankingLeaderboardItem) []model.
 			return left.NewCustomerCount > right.NewCustomerCount
 		case left.CallNum != right.CallNum:
 			return left.CallNum > right.CallNum
+		case left.ScoreDays != right.ScoreDays:
+			return left.ScoreDays > right.ScoreDays
 		default:
 			return strings.Compare(strings.TrimSpace(left.SeatWorkNumber), strings.TrimSpace(right.SeatWorkNumber)) < 0
 		}
@@ -1257,6 +1259,9 @@ func rankingLeaderboardMergeKey(item model.RankingLeaderboardItem) string {
 	}
 	if item.MatchedUserID != nil && *item.MatchedUserID > 0 {
 		return fmt.Sprintf("u:%d", *item.MatchedUserID)
+	}
+	if identityKey := strings.TrimSpace(item.IdentityKey); identityKey != "" {
+		return identityKey
 	}
 	return "n:" + firstNonEmptyTelemarketing(item.MatchedUserName, item.SeatName, item.GroupName, fmt.Sprintf("%d", item.TotalScore))
 }
@@ -1482,7 +1487,7 @@ func spxxjjTelemarketingDailyScoreOrderClause(alias string) string {
 		prefix = trimmed + "."
 	}
 	return fmt.Sprintf(
-		"%stotal_score DESC, CASE WHEN %sscore_reached_at IS NULL THEN 1 ELSE 0 END ASC, %sscore_reached_at ASC, %sanswered_call_count DESC, %scall_duration_second DESC, %sinvitation_count DESC, %snew_customer_count DESC, %scall_num DESC, %sseat_work_number ASC",
+		"%stotal_score DESC, %sanswered_call_count DESC, %scall_duration_second DESC, %sinvitation_count DESC, %snew_customer_count DESC, %scall_num DESC, CASE WHEN %sscore_reached_at IS NULL THEN 1 ELSE 0 END ASC, %sscore_reached_at ASC, %sseat_work_number ASC",
 		prefix,
 		prefix,
 		prefix,

@@ -74,3 +74,51 @@ func TestFindExistingIDsByDedupeKeysEmptyInput(t *testing.T) {
 		t.Fatalf("expected empty map, got %#v", got)
 	}
 }
+
+func TestDedupeTelemarketingRecordingUpsertInputsKeepsReturnedIDsUnique(t *testing.T) {
+	t.Parallel()
+
+	items := []model.TelemarketingRecordingUpsertInput{
+		{
+			ID:       "same-id",
+			CCNumber: "cc-001",
+		},
+		{
+			ID:       "same-id",
+			CCNumber: "cc-002",
+		},
+	}
+
+	got := dedupeTelemarketingRecordingUpsertInputs(items)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 items after dedupe, got %d", len(got))
+	}
+	if got[0].ID != "same-id" {
+		t.Fatalf("expected first item to keep upstream id, got %q", got[0].ID)
+	}
+	if got[1].ID != "cc-002" {
+		t.Fatalf("expected duplicate upstream id to fall back to cc_number, got %q", got[1].ID)
+	}
+	if got[0].ID == got[1].ID {
+		t.Fatalf("expected telemarketing recording ids to be unique, got duplicate %q", got[0].ID)
+	}
+}
+
+func TestDedupeTelemarketingRecordingUpsertInputsUsesFallbackWhenIDIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	items := []model.TelemarketingRecordingUpsertInput{
+		{
+			ID:       "",
+			CCNumber: "cc-003",
+		},
+	}
+
+	got := dedupeTelemarketingRecordingUpsertInputs(items)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 item after dedupe, got %d", len(got))
+	}
+	if got[0].ID != "cc-003" {
+		t.Fatalf("expected empty upstream id to fall back to cc_number, got %q", got[0].ID)
+	}
+}

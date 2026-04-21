@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { HTMLAttributes } from "vue";
 import { computed, nextTick, ref } from "vue";
 import { CalendarDate, getLocalTimeZone } from "@internationalized/date";
 import { CalendarIcon, X } from "lucide-vue-next";
@@ -19,6 +20,8 @@ interface Props {
   id?: string;
   contentAlign?: "start" | "center" | "end";
   dateOnly?: boolean;
+  maxDate?: string;
+  triggerClass?: HTMLAttributes["class"];
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -27,6 +30,8 @@ const props = withDefaults(defineProps<Props>(), {
   id: undefined,
   contentAlign: "start",
   dateOnly: false,
+  maxDate: undefined,
+  triggerClass: undefined,
 });
 
 const emit = defineEmits<{
@@ -81,6 +86,11 @@ const toCalendarDate = (date: Date) => {
 };
 
 const selectedDate = computed(() => parseDateTime(props.modelValue));
+const maxCalendarDate = computed(() => {
+  const date = parseDateTime(props.maxDate);
+  if (!date) return undefined;
+  return toCalendarDate(date);
+});
 
 const syncTempFromModel = () => {
   const base = selectedDate.value ?? new Date();
@@ -168,7 +178,7 @@ const displayText = computed(() => {
       <Button
         :id="id"
         variant="outline"
-        :class="cn('w-full justify-start text-left font-normal border-input hover:bg-accent hover:text-accent-foreground', !modelValue && 'text-muted-foreground')"
+        :class="cn('w-full justify-start text-left font-normal border-input hover:bg-accent hover:text-accent-foreground', !modelValue && 'text-muted-foreground', props.triggerClass)"
         :disabled="disabled"
       >
         <CalendarIcon class="mr-2 h-4 w-4" />
@@ -193,6 +203,7 @@ const displayText = computed(() => {
             <Calendar
               mode="single"
               :model-value="tempDate"
+              :max-value="maxCalendarDate"
               @update:model-value="handleDateSelect"
               initial-focus
             />

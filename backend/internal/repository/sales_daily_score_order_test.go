@@ -265,6 +265,158 @@ func TestSalesDailyScoreRepositoryListRankingLeaderboardUsesTelemarketingScores(
 	if items[0].RoleName != "电销员工" {
 		t.Fatalf("expected first role name 电销员工, got %q", items[0].RoleName)
 	}
+	if items[0].IdentityKey != "w:A001" {
+		t.Fatalf("expected first identity key w:A001, got %q", items[0].IdentityKey)
+	}
+}
+
+func TestSalesDailyScoreRepositoryRankingLeaderboardPreferDurationBeforeScoreDays(t *testing.T) {
+	t.Parallel()
+
+	db := openSalesDailyScoreRepositoryTestDB(t)
+	repo := NewGormSalesDailyScoreRepository(db)
+
+	rows := []spxxjjTelemarketingDailyScoreRow{
+		{
+			ScoreDate:          "2026-04-01",
+			SeatWorkNumber:     "A001",
+			SeatName:           "坐席A",
+			MatchedUserName:    "电销A",
+			GroupName:          "一组",
+			RoleName:           "电销",
+			CallNum:            5,
+			AnsweredCallCount:  2,
+			CallDurationSecond: 100,
+			NewCustomerCount:   1,
+			InvitationCount:    1,
+			CallScore:          35,
+			TotalScore:         35,
+		},
+		{
+			ScoreDate:          "2026-04-02",
+			SeatWorkNumber:     "A001",
+			SeatName:           "坐席A",
+			MatchedUserName:    "电销A",
+			GroupName:          "一组",
+			RoleName:           "电销",
+			CallNum:            5,
+			AnsweredCallCount:  3,
+			CallDurationSecond: 100,
+			NewCustomerCount:   0,
+			InvitationCount:    1,
+			CallScore:          35,
+			TotalScore:         35,
+		},
+		{
+			ScoreDate:          "2026-04-01",
+			SeatWorkNumber:     "B002",
+			SeatName:           "坐席B",
+			MatchedUserName:    "电销B",
+			GroupName:          "二组",
+			RoleName:           "电销",
+			CallNum:            10,
+			AnsweredCallCount:  5,
+			CallDurationSecond: 250,
+			NewCustomerCount:   1,
+			InvitationCount:    2,
+			CallScore:          70,
+			TotalScore:         70,
+		},
+	}
+	for idx := range rows {
+		if err := db.Table("spxxjj_telemarketing_daily_scores").Create(&rows[idx]).Error; err != nil {
+			t.Fatalf("create leaderboard duration row failed: %v", err)
+		}
+	}
+
+	items, err := repo.ListRankingLeaderboard(t.Context(), "2026-04-01", "2026-04-30")
+	if err != nil {
+		t.Fatalf("ListRankingLeaderboard returned error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 leaderboard items, got %d", len(items))
+	}
+
+	if items[0].SeatWorkNumber != "B002" {
+		t.Fatalf("expected longer duration seat B002 ranked first, got %q", items[0].SeatWorkNumber)
+	}
+	if items[1].SeatWorkNumber != "A001" {
+		t.Fatalf("expected more score days seat A001 ranked second, got %q", items[1].SeatWorkNumber)
+	}
+	if items[0].IdentityKey != "w:B002" {
+		t.Fatalf("expected first identity key w:B002, got %q", items[0].IdentityKey)
+	}
+	if items[1].IdentityKey != "w:A001" {
+		t.Fatalf("expected second identity key w:A001, got %q", items[1].IdentityKey)
+	}
+}
+
+func TestSalesDailyScoreRepositoryTelemarketingRankingsPreferDurationBeforeReachedAt(t *testing.T) {
+	t.Parallel()
+
+	db := openSalesDailyScoreRepositoryTestDB(t)
+	repo := NewGormSalesDailyScoreRepository(db)
+	scoreDate := "2026-04-21"
+	loc := time.FixedZone("CST", 8*3600)
+
+	rows := []spxxjjTelemarketingDailyScoreRow{
+		{
+			ScoreDate:          scoreDate,
+			SeatWorkNumber:     "A001",
+			SeatName:           "坐席A",
+			MatchedUserName:    "电销A",
+			GroupName:          "一组",
+			RoleName:           "电销",
+			CallNum:            10,
+			AnsweredCallCount:  5,
+			CallDurationSecond: 120,
+			NewCustomerCount:   1,
+			InvitationCount:    2,
+			CallScore:          70,
+			InvitationScore:    0,
+			NewCustomerScore:   0,
+			TotalScore:         70,
+			ScoreReachedAt:     timePtr(time.Date(2026, 4, 21, 9, 0, 0, 0, loc).UTC()),
+		},
+		{
+			ScoreDate:          scoreDate,
+			SeatWorkNumber:     "B002",
+			SeatName:           "坐席B",
+			MatchedUserName:    "电销B",
+			GroupName:          "二组",
+			RoleName:           "电销",
+			CallNum:            10,
+			AnsweredCallCount:  5,
+			CallDurationSecond: 240,
+			NewCustomerCount:   1,
+			InvitationCount:    2,
+			CallScore:          70,
+			InvitationScore:    0,
+			NewCustomerScore:   0,
+			TotalScore:         70,
+			ScoreReachedAt:     timePtr(time.Date(2026, 4, 21, 10, 0, 0, 0, loc).UTC()),
+		},
+	}
+	for idx := range rows {
+		if err := db.Table("spxxjj_telemarketing_daily_scores").Create(&rows[idx]).Error; err != nil {
+			t.Fatalf("create telemarketing ranking row failed: %v", err)
+		}
+	}
+
+	items, err := repo.SpxxjjListTelemarketingDailyScoresByDate(t.Context(), scoreDate)
+	if err != nil {
+		t.Fatalf("SpxxjjListTelemarketingDailyScoresByDate returned error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 telemarketing ranking items, got %d", len(items))
+	}
+
+	if items[0].SeatWorkNumber != "B002" {
+		t.Fatalf("expected longer duration seat B002 ranked first, got %q", items[0].SeatWorkNumber)
+	}
+	if items[1].SeatWorkNumber != "A001" {
+		t.Fatalf("expected shorter duration seat A001 ranked second, got %q", items[1].SeatWorkNumber)
+	}
 }
 
 func openSalesDailyScoreRepositoryTestDB(t *testing.T) *gorm.DB {

@@ -23,6 +23,9 @@ const defaultMiHuaPageSize = 100
 var (
 	ErrSalesDailyScoreNotFound          = errors.New("sales daily score not found")
 	ErrTelemarketingDailyScoreNotFound  = errors.New("telemarketing daily score not found")
+	ErrRankingLeaderboardNotFound       = errors.New("ranking leaderboard detail not found")
+	ErrRankingLeaderboardInvalidPeriod  = errors.New("ranking leaderboard invalid period")
+	ErrRankingLeaderboardInvalidRange   = errors.New("ranking leaderboard invalid range")
 	ErrMiHuaTelemarketingConfigRequired = errors.New("mihua telemarketing config required")
 	ErrMiHuaTelemarketingRequestFailed  = errors.New("mihua telemarketing request failed")
 )
@@ -45,7 +48,8 @@ type SalesDailyScoreService interface {
 	GetDailyScoreDetail(ctx context.Context, scoreDate string, userID int64, actorUserID int64, actorRole string) (model.SalesDailyScoreDetail, error)
 	ListTelemarketingDailyRankings(ctx context.Context, scoreDate string) (model.TelemarketingDailyScoreRankingListResult, error)
 	GetTelemarketingDailyScoreDetail(ctx context.Context, scoreDate string, seatWorkNumber string) (model.TelemarketingDailyScoreDetail, error)
-	ListRankingLeaderboard(ctx context.Context, period string) (model.RankingLeaderboardResult, error)
+	ListRankingLeaderboard(ctx context.Context, period, startDate, endDate string) (model.RankingLeaderboardResult, error)
+	GetRankingLeaderboardDetail(ctx context.Context, period, startDate, endDate, identityKey string) (model.RankingLeaderboardDetail, error)
 	SyncTelemarketingDailyScores(ctx context.Context) (SyncTelemarketingDailyScoreResult, error)
 }
 
@@ -351,32 +355,31 @@ func (s *salesDailyScoreService) SyncTelemarketingDailyScores(
 func (s *salesDailyScoreService) ListRankingLeaderboard(
 	ctx context.Context,
 	period string,
+	startDate string,
+	endDate string,
 ) (model.RankingLeaderboardResult, error) {
-	now := time.Now().In(time.Local)
-	var startDate, endDate string
-	normalizedPeriod := strings.TrimSpace(period)
-
-	switch normalizedPeriod {
-	case "week":
-		weekday := int(now.Weekday())
-		if weekday == 0 {
-			weekday = 7
-		}
-		monday := now.AddDate(0, 0, -(weekday - 1))
-		startDate = monday.Format("2006-01-02")
-		endDate = now.Format("2006-01-02")
-	case "month":
-		startDate = now.Format("2006-01") + "-01"
-		endDate = now.Format("2006-01-02")
-	case "all", "":
-		normalizedPeriod = "all"
-		startDate = "1970-01-01"
-		endDate = now.Format("2006-01-02")
-	default:
-		return model.RankingLeaderboardResult{}, fmt.Errorf("invalid period: %s", normalizedPeriod)
+	normalizedPeriod, normalizedStartDate, normalizedEndDate, shouldSyncDaily, err := resolveRankingLeaderboardRange(
+		period,
+		startDate,
+		endDate,
+		time.Now().In(time.Local),
+	)
+	if err != nil {
+		return model.RankingLeaderboardResult{}, err
 	}
 
-	items, err := s.repo.ListRankingLeaderboard(ctx, startDate, endDate)
+	if shouldSyncDaily {
+		syncedScoreDate, syncErr := s.spxxjjSyncTelemarketingDailyScores(ctx)
+		if syncErr != nil {
+			return model.RankingLeaderboardResult{}, syncErr
+		}
+		if strings.TrimSpace(syncedScoreDate) != "" {
+			normalizedStartDate = syncedScoreDate
+			normalizedEndDate = syncedScoreDate
+		}
+	}
+
+	items, err := s.repo.ListRankingLeaderboard(ctx, normalizedStartDate, normalizedEndDate)
 	if err != nil {
 		return model.RankingLeaderboardResult{}, err
 	}
@@ -388,10 +391,43 @@ func (s *salesDailyScoreService) ListRankingLeaderboard(
 	}
 
 	return model.RankingLeaderboardResult{
-		Period: normalizedPeriod,
-		Total:  len(rankItems),
-		Items:  rankItems,
+		Period:    normalizedPeriod,
+		StartDate: normalizedStartDate,
+		EndDate:   normalizedEndDate,
+		Total:     len(rankItems),
+		Items:     rankItems,
 	}, nil
+}
+
+func (s *salesDailyScoreService) GetRankingLeaderboardDetail(
+	ctx context.Context,
+	period string,
+	startDate string,
+	endDate string,
+	identityKey string,
+) (model.RankingLeaderboardDetail, error) {
+	result, err := s.ListRankingLeaderboard(ctx, period, startDate, endDate)
+	if err != nil {
+		return model.RankingLeaderboardDetail{}, err
+	}
+
+	targetIdentityKey := strings.TrimSpace(identityKey)
+	for _, item := range result.Items {
+		if strings.TrimSpace(item.IdentityKey) != targetIdentityKey {
+			continue
+		}
+		return model.RankingLeaderboardDetail{
+			Period:     result.Period,
+			StartDate:  result.StartDate,
+			EndDate:    result.EndDate,
+			Rank:       item.Rank,
+			TotalUsers: result.Total,
+			HasData:    true,
+			Score:      item,
+		}, nil
+	}
+
+	return model.RankingLeaderboardDetail{}, ErrRankingLeaderboardNotFound
 }
 
 func (s *salesDailyScoreService) GetTelemarketingDailyScoreDetail(
@@ -752,6 +788,71 @@ func resolveSpxxjjScoreDate(statTimestamp, updatedAt time.Time) string {
 	default:
 		return time.Now().In(time.Local).Format("2006-01-02")
 	}
+}
+
+func resolveRankingLeaderboardRange(
+	period string,
+	startDate string,
+	endDate string,
+	now time.Time,
+) (string, string, string, bool, error) {
+	normalizedPeriod := strings.ToLower(strings.TrimSpace(period))
+	if normalizedPeriod == "" {
+		normalizedPeriod = "month"
+	}
+
+	now = now.In(time.Local)
+	defaultStartDate := ""
+	defaultEndDate := now.Format("2006-01-02")
+
+	switch normalizedPeriod {
+	case "day":
+		defaultStartDate = defaultEndDate
+	case "week":
+		weekday := int(now.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		defaultStartDate = now.AddDate(0, 0, -(weekday - 1)).Format("2006-01-02")
+	case "month":
+		defaultStartDate = now.Format("2006-01") + "-01"
+	case "all":
+		defaultStartDate = "1970-01-01"
+	default:
+		return "", "", "", false, fmt.Errorf("%w: %s", ErrRankingLeaderboardInvalidPeriod, normalizedPeriod)
+	}
+
+	start := strings.TrimSpace(startDate)
+	end := strings.TrimSpace(endDate)
+	if start == "" && end == "" {
+		start = defaultStartDate
+		end = defaultEndDate
+	} else {
+		if start == "" {
+			start = end
+		}
+		if end == "" {
+			end = start
+		}
+	}
+
+	normalizedStartDate, _, _, err := normalizeSalesScoreDate(start)
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("%w: %v", ErrRankingLeaderboardInvalidRange, err)
+	}
+	normalizedEndDate, _, _, err := normalizeSalesScoreDate(end)
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("%w: %v", ErrRankingLeaderboardInvalidRange, err)
+	}
+	if normalizedStartDate > normalizedEndDate {
+		return "", "", "", false, fmt.Errorf("%w: startDate must be earlier than or equal to endDate", ErrRankingLeaderboardInvalidRange)
+	}
+
+	shouldSyncDaily := normalizedPeriod == "day" &&
+		normalizedStartDate == normalizedEndDate &&
+		isTodayScoreDate(normalizedStartDate)
+
+	return normalizedPeriod, normalizedStartDate, normalizedEndDate, shouldSyncDaily, nil
 }
 
 func rawJSONText(raw json.RawMessage, fallback string) string {

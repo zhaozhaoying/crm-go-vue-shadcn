@@ -199,6 +199,7 @@ type SpxxjjTelemarketingDailyScoreUpsertInput struct {
 }
 
 type RankingLeaderboardItem struct {
+	IdentityKey        string  `json:"identityKey" gorm:"column:aggregate_key"`
 	Rank               int     `json:"rank" gorm:"-"`
 	SeatWorkNumber     string  `json:"seatWorkNumber" gorm:"column:seat_work_number"`
 	SeatName           string  `json:"seatName" gorm:"column:seat_name"`
@@ -220,9 +221,21 @@ type RankingLeaderboardItem struct {
 }
 
 type RankingLeaderboardResult struct {
-	Period string                   `json:"period" gorm:"-"`
-	Total  int                      `json:"total" gorm:"-"`
-	Items  []RankingLeaderboardItem `json:"items" gorm:"-"`
+	Period    string                   `json:"period" gorm:"-"`
+	StartDate string                   `json:"startDate" gorm:"-"`
+	EndDate   string                   `json:"endDate" gorm:"-"`
+	Total     int                      `json:"total" gorm:"-"`
+	Items     []RankingLeaderboardItem `json:"items" gorm:"-"`
+}
+
+type RankingLeaderboardDetail struct {
+	Period     string                 `json:"period" gorm:"-"`
+	StartDate  string                 `json:"startDate" gorm:"-"`
+	EndDate    string                 `json:"endDate" gorm:"-"`
+	Rank       int                    `json:"rank" gorm:"-"`
+	TotalUsers int                    `json:"totalUsers" gorm:"-"`
+	HasData    bool                   `json:"hasData" gorm:"-"`
+	Score      RankingLeaderboardItem `json:"score" gorm:"-"`
 }
 
 func (SalesDailyScore) TableName() string { return "sales_daily_scores" }

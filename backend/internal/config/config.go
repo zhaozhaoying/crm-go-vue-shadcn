@@ -12,100 +12,106 @@ import (
 )
 
 type Config struct {
-	AppEnv                   string
-	AppPort                  string
-	FrontendOrigin           string
-	TrustedProxies           []string
-	DBDriver                 string
-	DBPath                   string
-	GormLogLevel             string
-	GormSlowThresholdMS      int
-	MySQLDSN                 string
-	MySQLHost                string
-	MySQLPort                string
-	MySQLUser                string
-	MySQLPassword            string
-	MySQLDB                  string
-	MySQLCharset             string
-	MySQLParseTime           string
-	MySQLLoc                 string
-	FeigeCallRecordingCookie string
-	MiHuaCallRecordListURL   string
-	MiHuaCallRecordToken     string
-	MiHuaCallRecordOrigin    string
-	JWTSecret                string
-	JWTExpiryHours           int
-	RefreshTokenExpiryHours  int
-	ScheduleTimezone         string
-	HanghangCRMCloudToken    string
-	BaiduMapAK               string
-	BaiduMapBaseURL          string
-	ReverseGeocodeBaseURL    string
-	ReverseGeocodeUserAgent  string
-	OSSEndpoint              string
-	OSSAccessKeyID           string
-	OSSAccessKeySecret       string
-	OSSBucketName            string
-	OSSBasePath              string
-	AlibabaSearchBaseURL     string
-	MadeInChinaBaseURL       string
-	MadeInChinaProxyURL      string
-	GoogleAPIKey             string
-	GoogleCX                 string
-	GoogleSearchNum          int
-	GoogleProxyURL           string
-	SearchWorkerCount        int
-	SearchPollIntervalMS     int
+	AppEnv                      string
+	AppPort                     string
+	FrontendOrigin              string
+	TrustedProxies              []string
+	DBDriver                    string
+	DBPath                      string
+	GormLogLevel                string
+	GormSlowThresholdMS         int
+	MySQLDSN                    string
+	MySQLHost                   string
+	MySQLPort                   string
+	MySQLUser                   string
+	MySQLPassword               string
+	MySQLDB                     string
+	MySQLCharset                string
+	MySQLParseTime              string
+	MySQLLoc                    string
+	FeigeCallRecordingCookie    string
+	MiHuaCallRecordListURL      string
+	MiHuaTeleRecordingListURL   string
+	MiHuaTeleRecordingDetailURL string
+	MiHuaCallRecordToken        string
+	MiHuaCallRecordOrigin       string
+	MiHuaProxyURL               string
+	JWTSecret                   string
+	JWTExpiryHours              int
+	RefreshTokenExpiryHours     int
+	ScheduleTimezone            string
+	HanghangCRMCloudToken       string
+	BaiduMapAK                  string
+	BaiduMapBaseURL             string
+	ReverseGeocodeBaseURL       string
+	ReverseGeocodeUserAgent     string
+	OSSEndpoint                 string
+	OSSAccessKeyID              string
+	OSSAccessKeySecret          string
+	OSSBucketName               string
+	OSSBasePath                 string
+	AlibabaSearchBaseURL        string
+	MadeInChinaBaseURL          string
+	MadeInChinaProxyURL         string
+	GoogleAPIKey                string
+	GoogleCX                    string
+	GoogleSearchNum             int
+	GoogleProxyURL              string
+	SearchWorkerCount           int
+	SearchPollIntervalMS        int
 }
 
 func Load() Config {
 	_ = godotenv.Load()
 
 	return Config{
-		AppEnv:                   getEnv("APP_ENV", "local"),
-		AppPort:                  getEnv("APP_PORT", "8080"),
-		FrontendOrigin:           getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
-		TrustedProxies:           getEnvCSV("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"}),
-		DBDriver:                 strings.ToLower(strings.TrimSpace(getEnv("DB_DRIVER", "sqlite"))),
-		DBPath:                   getEnv("DB_PATH", "data.db"),
-		GormLogLevel:             strings.ToLower(strings.TrimSpace(getEnv("GORM_LOG_LEVEL", "error"))),
-		GormSlowThresholdMS:      getEnvInt("GORM_SLOW_THRESHOLD_MS", 200),
-		MySQLDSN:                 getEnv("MYSQL_DSN", ""),
-		MySQLHost:                getEnv("MYSQL_HOST", "127.0.0.1"),
-		MySQLPort:                getEnv("MYSQL_PORT", "3306"),
-		MySQLUser:                getEnv("MYSQL_USER", ""),
-		MySQLPassword:            getEnv("MYSQL_PASSWORD", ""),
-		MySQLDB:                  getEnv("MYSQL_DB", ""),
-		MySQLCharset:             getEnv("MYSQL_CHARSET", "utf8mb4"),
-		MySQLParseTime:           getEnv("MYSQL_PARSE_TIME", "true"),
-		MySQLLoc:                 getEnv("MYSQL_LOC", "Local"),
-		FeigeCallRecordingCookie: strings.TrimSpace(getEnv("FEIGE_CALL_RECORDING_COOKIE", "")),
-		MiHuaCallRecordListURL:   strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_LIST_URL", "")),
-		MiHuaCallRecordToken:     strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_TOKEN", "")),
-		MiHuaCallRecordOrigin:    strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_SOURCE_ORIGIN", "")),
-		JWTSecret:                getEnv("JWT_SECRET", "change-me-in-production"),
-		JWTExpiryHours:           getEnvInt("JWT_EXPIRY_HOURS", 24),
-		RefreshTokenExpiryHours:  getEnvInt("REFRESH_TOKEN_EXPIRY_HOURS", 168),
-		ScheduleTimezone:         strings.TrimSpace(getEnv("SCHEDULE_TIMEZONE", "Asia/Shanghai")),
-		HanghangCRMCloudToken:    strings.TrimSpace(getEnv("HANGHANG_CRM_CLOUD_TOKEN", "")),
-		BaiduMapAK:               getEnv("BAIDU_MAP_AK", ""),
-		BaiduMapBaseURL:          getEnv("BAIDU_MAP_BASE_URL", "https://api.map.baidu.com"),
-		ReverseGeocodeBaseURL:    strings.TrimSpace(getEnv("REVERSE_GEOCODE_BASE_URL", "https://nominatim.openstreetmap.org")),
-		ReverseGeocodeUserAgent:  strings.TrimSpace(getEnv("REVERSE_GEOCODE_USER_AGENT", "crm-go-vue-shadcn/1.0")),
-		OSSEndpoint:              getEnv("OSS_ENDPOINT", ""),
-		OSSAccessKeyID:           getEnv("OSS_ACCESS_KEY_ID", ""),
-		OSSAccessKeySecret:       getEnv("OSS_ACCESS_KEY_SECRET", ""),
-		OSSBucketName:            getEnv("OSS_BUCKET_NAME", ""),
-		OSSBasePath:              getEnv("OSS_BASE_PATH", "avatars/"),
-		AlibabaSearchBaseURL:     getEnv("ALIBABA_SEARCH_BASE_URL", "https://www.alibaba.com/search/api/supplierTextSearch"),
-		MadeInChinaBaseURL:       getEnv("MADE_IN_CHINA_BASE_URL", "https://www.made-in-china.com"),
-		MadeInChinaProxyURL:      strings.TrimSpace(getEnv("MADE_IN_CHINA_PROXY_URL", "")),
-		GoogleAPIKey:             getEnv("GOOGLE_API_KEY", ""),
-		GoogleCX:                 getEnv("GOOGLE_CX", ""),
-		GoogleSearchNum:          getEnvInt("GOOGLE_SEARCH_NUM", 10),
-		GoogleProxyURL:           strings.TrimSpace(getEnv("GOOGLE_PROXY_URL", "")),
-		SearchWorkerCount:        getEnvInt("EXTERNAL_COMPANY_SEARCH_WORKER_COUNT", 2),
-		SearchPollIntervalMS:     getEnvInt("EXTERNAL_COMPANY_SEARCH_POLL_INTERVAL_MS", 1000),
+		AppEnv:                      getEnv("APP_ENV", "local"),
+		AppPort:                     getEnv("APP_PORT", "8080"),
+		FrontendOrigin:              getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
+		TrustedProxies:              getEnvCSV("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"}),
+		DBDriver:                    strings.ToLower(strings.TrimSpace(getEnv("DB_DRIVER", "sqlite"))),
+		DBPath:                      getEnv("DB_PATH", "data.db"),
+		GormLogLevel:                strings.ToLower(strings.TrimSpace(getEnv("GORM_LOG_LEVEL", "error"))),
+		GormSlowThresholdMS:         getEnvInt("GORM_SLOW_THRESHOLD_MS", 200),
+		MySQLDSN:                    getEnv("MYSQL_DSN", ""),
+		MySQLHost:                   getEnv("MYSQL_HOST", "127.0.0.1"),
+		MySQLPort:                   getEnv("MYSQL_PORT", "3306"),
+		MySQLUser:                   getEnv("MYSQL_USER", ""),
+		MySQLPassword:               getEnv("MYSQL_PASSWORD", ""),
+		MySQLDB:                     getEnv("MYSQL_DB", ""),
+		MySQLCharset:                getEnv("MYSQL_CHARSET", "utf8mb4"),
+		MySQLParseTime:              getEnv("MYSQL_PARSE_TIME", "true"),
+		MySQLLoc:                    getEnv("MYSQL_LOC", "Local"),
+		FeigeCallRecordingCookie:    strings.TrimSpace(getEnv("FEIGE_CALL_RECORDING_COOKIE", "")),
+		MiHuaCallRecordListURL:      strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_LIST_URL", "")),
+		MiHuaTeleRecordingListURL:   strings.TrimSpace(getEnv("MIHUA_TELEMARKETING_RECORDING_LIST_URL", "")),
+		MiHuaTeleRecordingDetailURL: strings.TrimSpace(getEnv("MIHUA_TELEMARKETING_RECORDING_DETAIL_URL", "")),
+		MiHuaCallRecordToken:        strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_TOKEN", "")),
+		MiHuaCallRecordOrigin:       strings.TrimSpace(getEnv("MIHUA_CALL_RECORD_SOURCE_ORIGIN", "")),
+		MiHuaProxyURL:               strings.TrimSpace(getEnv("MIHUA_PROXY_URL", "")),
+		JWTSecret:                   getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTExpiryHours:              getEnvInt("JWT_EXPIRY_HOURS", 24),
+		RefreshTokenExpiryHours:     getEnvInt("REFRESH_TOKEN_EXPIRY_HOURS", 168),
+		ScheduleTimezone:            strings.TrimSpace(getEnv("SCHEDULE_TIMEZONE", "Asia/Shanghai")),
+		HanghangCRMCloudToken:       strings.TrimSpace(getEnv("HANGHANG_CRM_CLOUD_TOKEN", "")),
+		BaiduMapAK:                  getEnv("BAIDU_MAP_AK", ""),
+		BaiduMapBaseURL:             getEnv("BAIDU_MAP_BASE_URL", "https://api.map.baidu.com"),
+		ReverseGeocodeBaseURL:       strings.TrimSpace(getEnv("REVERSE_GEOCODE_BASE_URL", "https://nominatim.openstreetmap.org")),
+		ReverseGeocodeUserAgent:     strings.TrimSpace(getEnv("REVERSE_GEOCODE_USER_AGENT", "crm-go-vue-shadcn/1.0")),
+		OSSEndpoint:                 getEnv("OSS_ENDPOINT", ""),
+		OSSAccessKeyID:              getEnv("OSS_ACCESS_KEY_ID", ""),
+		OSSAccessKeySecret:          getEnv("OSS_ACCESS_KEY_SECRET", ""),
+		OSSBucketName:               getEnv("OSS_BUCKET_NAME", ""),
+		OSSBasePath:                 getEnv("OSS_BASE_PATH", "avatars/"),
+		AlibabaSearchBaseURL:        getEnv("ALIBABA_SEARCH_BASE_URL", "https://www.alibaba.com/search/api/supplierTextSearch"),
+		MadeInChinaBaseURL:          getEnv("MADE_IN_CHINA_BASE_URL", "https://www.made-in-china.com"),
+		MadeInChinaProxyURL:         strings.TrimSpace(getEnv("MADE_IN_CHINA_PROXY_URL", "")),
+		GoogleAPIKey:                getEnv("GOOGLE_API_KEY", ""),
+		GoogleCX:                    getEnv("GOOGLE_CX", ""),
+		GoogleSearchNum:             getEnvInt("GOOGLE_SEARCH_NUM", 10),
+		GoogleProxyURL:              strings.TrimSpace(getEnv("GOOGLE_PROXY_URL", "")),
+		SearchWorkerCount:           getEnvInt("EXTERNAL_COMPANY_SEARCH_WORKER_COUNT", 2),
+		SearchPollIntervalMS:        getEnvInt("EXTERNAL_COMPANY_SEARCH_POLL_INTERVAL_MS", 1000),
 	}
 }
 
@@ -250,6 +256,12 @@ func (c Config) Validate() error {
 		parsed, err := url.Parse(c.MadeInChinaProxyURL)
 		if err != nil || strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
 			return fmt.Errorf("MADE_IN_CHINA_PROXY_URL must be a valid proxy URL")
+		}
+	}
+	if c.MiHuaProxyURL != "" {
+		parsed, err := url.Parse(c.MiHuaProxyURL)
+		if err != nil || strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
+			return fmt.Errorf("MIHUA_PROXY_URL must be a valid proxy URL")
 		}
 	}
 	return nil

@@ -50,8 +50,12 @@ const handleNavClick = (url: string) => {
     window.dispatchEvent(new Event("sales-daily-scores:refresh"))
     return
   }
-  if (url === "/telemarketing-daily-scores" && currentPath.value === "/telemarketing-daily-scores") {
-    window.dispatchEvent(new Event("telemarketing-daily-scores:refresh"))
+  if (url === "/ranking-leaderboard" && currentPath.value === "/ranking-leaderboard") {
+    window.dispatchEvent(new Event("ranking-leaderboard:refresh"))
+    return
+  }
+  if (url === "/telemarketing-recordings" && currentPath.value === "/telemarketing-recordings") {
+    window.dispatchEvent(new Event("telemarketing-recordings:refresh"))
   }
 }
 
@@ -83,7 +87,7 @@ const hasActiveChild = (items?: { title: string; url: string; allowedRoles?: str
                   <template v-for="subItem in mainItem.items" :key="subItem.url">
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton as-child :is-active="isActive(subItem.url)">
-                        <RouterLink :to="subItem.url">
+                        <RouterLink :to="subItem.url" @click="handleNavClick(subItem.url)">
                           <span>{{ subItem.title }}</span>
                         </RouterLink>
                       </SidebarMenuSubButton>

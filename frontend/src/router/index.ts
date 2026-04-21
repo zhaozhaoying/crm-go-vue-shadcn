@@ -22,9 +22,9 @@ import ResourcePoolView from "@/views/resource-pool/index.vue";
 import ResourceAcquisitionView from "@/views/resource-acquisition/index.vue";
 import CustomerVisitView from "@/views/customer/visit/index.vue";
 import SalesDailyScoreView from "@/views/sales-daily-score/index.vue";
-import TelemarketingDailyScoreView from "@/views/telemarketing-daily-score/index.vue";
 import RankingLeaderboardView from "@/views/ranking-leaderboard/index.vue";
 import CallRecordingView from "@/views/call-recording/index.vue";
+import TelemarketingRecordingView from "@/views/telemarketing-recording/index.vue";
 
 import { setupRouterGuards } from "./guards";
 
@@ -175,14 +175,45 @@ const router = createRouter({
         {
           path: "telemarketing-daily-scores",
           name: "telemarketing-daily-scores",
-          component: TelemarketingDailyScoreView,
-          meta: { title: "电销每日排名", requiresAuth: true },
+          redirect: (to) => ({
+            path: "/ranking-leaderboard",
+            query: to.query,
+          }),
         },
         {
           path: "ranking-leaderboard",
           name: "ranking-leaderboard",
           component: RankingLeaderboardView,
           meta: { title: "排名榜单", requiresAuth: true },
+        },
+        {
+          path: "telemarketing-recordings",
+          name: "telemarketing-recordings",
+          component: TelemarketingRecordingView,
+          meta: {
+            title: "录音库",
+            requiresAuth: true,
+            requiresRoles: [
+              "admin",
+              "finance_manager",
+              "finance",
+              "财务经理",
+              "财务",
+              "sales_director",
+              "销售总监",
+              "sales_manager",
+              "销售经理",
+              "sales_staff",
+              "销售员工",
+              "sales_inside",
+              "sale_inside",
+              "inside销售",
+              "电销员工",
+              "sales_outside",
+              "sale_outside",
+              "outside销售",
+            ],
+          },
         },
         {
           path: "call-recordings",

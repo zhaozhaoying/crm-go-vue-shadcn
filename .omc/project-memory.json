@@ -161,21 +161,21 @@
   },
   "hotPaths": [
     {
-      "path": "backend/main.go",
-      "accessCount": 9,
-      "lastAccessed": 1776679422806,
+      "path": "frontend/src/views/ranking-leaderboard/index.vue",
+      "accessCount": 29,
+      "lastAccessed": 1776752899531,
       "type": "file"
     },
     {
-      "path": "frontend/src/views/ranking-leaderboard/index.vue",
-      "accessCount": 6,
-      "lastAccessed": 1776678763914,
+      "path": "backend/main.go",
+      "accessCount": 12,
+      "lastAccessed": 1776732484152,
       "type": "file"
     },
     {
       "path": "backend",
-      "accessCount": 6,
-      "lastAccessed": 1776679340558,
+      "accessCount": 7,
+      "lastAccessed": 1776731897066,
       "type": "directory"
     },
     {
@@ -185,15 +185,21 @@
       "type": "file"
     },
     {
-      "path": "frontend",
-      "accessCount": 1,
-      "lastAccessed": 1776678489622,
-      "type": "directory"
+      "path": "backend/internal/config/config.go",
+      "accessCount": 4,
+      "lastAccessed": 1776732315506,
+      "type": "file"
     },
     {
       "path": "frontend/src/router/index.ts",
+      "accessCount": 2,
+      "lastAccessed": 1776751314177,
+      "type": "directory"
+    },
+    {
+      "path": "frontend",
       "accessCount": 1,
-      "lastAccessed": 1776678514394,
+      "lastAccessed": 1776678489622,
       "type": "directory"
     },
     {
@@ -275,9 +281,9 @@
       "type": "file"
     },
     {
-      "path": "backend/internal/config/config.go",
+      "path": "backend/production.env.sample",
       "accessCount": 1,
-      "lastAccessed": 1776680291083,
+      "lastAccessed": 1776731873945,
       "type": "file"
     }
   ],

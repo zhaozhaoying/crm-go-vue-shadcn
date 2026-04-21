@@ -154,6 +154,11 @@ func getSQLiteMigrations() []Migration {
 			Name:    "create_spxxjj_telemarketing_tables",
 			Up:      upCreateSpxxjjTelemarketingTables,
 		},
+		{
+			Version: 2026042101,
+			Name:    "create_mihua_call_recordings",
+			Up:      upCreateMiHuaCallRecordings,
+		},
 	}
 }
 
@@ -230,6 +235,73 @@ func upCreateSpxxjjTelemarketingTables(tx *gorm.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_spxxjj_telemarketing_daily_scores_date_work_number ON spxxjj_telemarketing_daily_scores(score_date, seat_work_number)`,
 		`CREATE INDEX IF NOT EXISTS idx_spxxjj_telemarketing_daily_scores_user_id ON spxxjj_telemarketing_daily_scores(matched_user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_spxxjj_telemarketing_daily_scores_rank ON spxxjj_telemarketing_daily_scores(score_date, total_score, answered_call_count, call_duration_second, seat_work_number)`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upCreateMiHuaCallRecordings(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS mihua_call_recordings (
+			id TEXT PRIMARY KEY,
+			cc_number TEXT NOT NULL DEFAULT '',
+			sid INTEGER NOT NULL DEFAULT 0,
+			seid INTEGER NOT NULL DEFAULT 0,
+			ccgeid INTEGER NOT NULL DEFAULT 0,
+			call_type INTEGER NOT NULL DEFAULT 0,
+			outline_number TEXT NOT NULL DEFAULT '',
+			encrypted_outline_number TEXT NOT NULL DEFAULT '',
+			switch_number TEXT NOT NULL DEFAULT '',
+			initiator TEXT NOT NULL DEFAULT '',
+			initiator_call_id TEXT NOT NULL DEFAULT '',
+			service_number TEXT NOT NULL DEFAULT '',
+			service_uid INTEGER NOT NULL DEFAULT 0,
+			service_seat_name TEXT NOT NULL DEFAULT '',
+			service_seat_worknumber TEXT NOT NULL DEFAULT '',
+			service_group_name TEXT NOT NULL DEFAULT '',
+			initiate_time INTEGER NOT NULL DEFAULT 0,
+			ring_time INTEGER NOT NULL DEFAULT 0,
+			confirm_time INTEGER NOT NULL DEFAULT 0,
+			disconnect_time INTEGER NOT NULL DEFAULT 0,
+			conversation_time INTEGER NOT NULL DEFAULT 0,
+			duration_second INTEGER NOT NULL DEFAULT 0,
+			duration_text TEXT NOT NULL DEFAULT '',
+			valid_duration_text TEXT NOT NULL DEFAULT '',
+			customer_ring_duration INTEGER NOT NULL DEFAULT 0,
+			seat_ring_duration INTEGER NOT NULL DEFAULT 0,
+			record_status INTEGER NOT NULL DEFAULT 0,
+			record_filename TEXT NOT NULL DEFAULT '',
+			record_res_token TEXT NOT NULL DEFAULT '',
+			evaluate_value TEXT NOT NULL DEFAULT '',
+			cm_result TEXT NOT NULL DEFAULT '',
+			cm_description TEXT NOT NULL DEFAULT '',
+			attribution TEXT NOT NULL DEFAULT '',
+			stop_reason INTEGER NOT NULL DEFAULT 0,
+			customer_fail_reason TEXT NOT NULL DEFAULT '',
+			customer_name TEXT NOT NULL DEFAULT '',
+			customer_company TEXT NOT NULL DEFAULT '',
+			group_names TEXT NOT NULL DEFAULT '',
+			seat_names TEXT NOT NULL DEFAULT '',
+			seat_numbers TEXT NOT NULL DEFAULT '',
+			seat_work_numbers TEXT NOT NULL DEFAULT '',
+			enterprise_name TEXT NOT NULL DEFAULT '',
+			district_name TEXT NOT NULL DEFAULT '',
+			service_device_number TEXT NOT NULL DEFAULT '',
+			call_answer_result INTEGER NOT NULL DEFAULT 0,
+			call_hangup_party INTEGER NOT NULL DEFAULT 0,
+			matched_user_id INTEGER NULL,
+			matched_user_name TEXT NOT NULL DEFAULT '',
+			role_name TEXT NOT NULL DEFAULT '',
+			remote_created_at DATETIME NULL,
+			remote_updated_at DATETIME NULL,
+			raw_payload TEXT NOT NULL DEFAULT '{}',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_mihua_call_recordings_cc_number ON mihua_call_recordings(cc_number)`,
+		`CREATE INDEX IF NOT EXISTS idx_mihua_call_recordings_initiate_time ON mihua_call_recordings(initiate_time)`,
+		`CREATE INDEX IF NOT EXISTS idx_mihua_call_recordings_seat_worknumber ON mihua_call_recordings(service_seat_worknumber)`,
+		`CREATE INDEX IF NOT EXISTS idx_mihua_call_recordings_outline_number ON mihua_call_recordings(outline_number)`,
+		`CREATE INDEX IF NOT EXISTS idx_mihua_call_recordings_matched_user_id ON mihua_call_recordings(matched_user_id)`,
 	}
 	return execStatements(tx, stmts)
 }

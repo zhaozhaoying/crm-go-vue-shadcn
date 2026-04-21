@@ -159,6 +159,11 @@ func getMySQLMigrations() []Migration {
 			Name:    "create_spxxjj_telemarketing_tables",
 			Up:      upCreateSpxxjjTelemarketingTablesMySQL,
 		},
+		{
+			Version: 2026042101,
+			Name:    "create_mihua_call_recordings",
+			Up:      upCreateMiHuaCallRecordingsMySQL,
+		},
 	}
 }
 
@@ -235,6 +240,73 @@ func upCreateSpxxjjTelemarketingTablesMySQL(tx *gorm.DB) error {
 			KEY idx_spxxjj_telemarketing_daily_scores_user_id (matched_user_id),
 			KEY idx_spxxjj_telemarketing_daily_scores_rank (score_date, total_score, answered_call_count, call_duration_second, seat_work_number)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='spxxjj 电销每日积分表'`,
+	}
+	return execStatements(tx, stmts)
+}
+
+func upCreateMiHuaCallRecordingsMySQL(tx *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS mihua_call_recordings (
+			id VARCHAR(64) PRIMARY KEY COMMENT '米话录音ID',
+			cc_number VARCHAR(128) NOT NULL DEFAULT '' COMMENT '通话唯一标识',
+			sid BIGINT NOT NULL DEFAULT 0 COMMENT 'sid',
+			seid BIGINT NOT NULL DEFAULT 0 COMMENT '企业ID',
+			ccgeid BIGINT NOT NULL DEFAULT 0 COMMENT '企业组ID',
+			call_type INT NOT NULL DEFAULT 0 COMMENT '通话类型',
+			outline_number VARCHAR(64) NOT NULL DEFAULT '' COMMENT '客户号码',
+			encrypted_outline_number VARCHAR(255) NOT NULL DEFAULT '' COMMENT '加密客户号码',
+			switch_number VARCHAR(64) NOT NULL DEFAULT '' COMMENT '交换机号码',
+			initiator VARCHAR(128) NOT NULL DEFAULT '' COMMENT '发起方',
+			initiator_call_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '发起 call id',
+			service_number VARCHAR(64) NOT NULL DEFAULT '' COMMENT '坐席分机号',
+			service_uid BIGINT NOT NULL DEFAULT 0 COMMENT '坐席远端 UID',
+			service_seat_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '坐席名称',
+			service_seat_worknumber VARCHAR(64) NOT NULL DEFAULT '' COMMENT '坐席工号',
+			service_group_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '坐席分组',
+			initiate_time BIGINT NOT NULL DEFAULT 0 COMMENT '发起时间（秒）',
+			ring_time BIGINT NOT NULL DEFAULT 0 COMMENT '振铃时间（秒）',
+			confirm_time BIGINT NOT NULL DEFAULT 0 COMMENT '接通时间（秒）',
+			disconnect_time BIGINT NOT NULL DEFAULT 0 COMMENT '挂断时间（秒）',
+			conversation_time BIGINT NOT NULL DEFAULT 0 COMMENT '通话开始时间（秒）',
+			duration_second INT NOT NULL DEFAULT 0 COMMENT '通话时长秒数',
+			duration_text VARCHAR(64) NOT NULL DEFAULT '' COMMENT '通话时长文本',
+			valid_duration_text VARCHAR(64) NOT NULL DEFAULT '' COMMENT '有效通话时长文本',
+			customer_ring_duration INT NOT NULL DEFAULT 0 COMMENT '客户振铃秒数',
+			seat_ring_duration INT NOT NULL DEFAULT 0 COMMENT '坐席振铃秒数',
+			record_status INT NOT NULL DEFAULT 0 COMMENT '录音状态',
+			record_filename VARCHAR(255) NOT NULL DEFAULT '' COMMENT '录音文件名',
+			record_res_token VARCHAR(255) NOT NULL DEFAULT '' COMMENT '录音 token',
+			evaluate_value VARCHAR(128) NOT NULL DEFAULT '' COMMENT '评价值',
+			cm_result VARCHAR(128) NOT NULL DEFAULT '' COMMENT '结果',
+			cm_description VARCHAR(255) NOT NULL DEFAULT '' COMMENT '结果说明',
+			attribution VARCHAR(128) NOT NULL DEFAULT '' COMMENT '归属地',
+			stop_reason INT NOT NULL DEFAULT 0 COMMENT '结束原因',
+			customer_fail_reason VARCHAR(255) NOT NULL DEFAULT '' COMMENT '客户失败原因',
+			customer_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '客户名称',
+			customer_company VARCHAR(255) NOT NULL DEFAULT '' COMMENT '客户公司',
+			group_names VARCHAR(255) NOT NULL DEFAULT '' COMMENT '分组名集合',
+			seat_names VARCHAR(255) NOT NULL DEFAULT '' COMMENT '坐席名集合',
+			seat_numbers VARCHAR(255) NOT NULL DEFAULT '' COMMENT '坐席分机集合',
+			seat_work_numbers VARCHAR(255) NOT NULL DEFAULT '' COMMENT '坐席工号集合',
+			enterprise_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT '企业名',
+			district_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '地区',
+			service_device_number VARCHAR(64) NOT NULL DEFAULT '' COMMENT '设备号',
+			call_answer_result INT NOT NULL DEFAULT 0 COMMENT '接通结果',
+			call_hangup_party INT NOT NULL DEFAULT 0 COMMENT '挂断方',
+			matched_user_id BIGINT NULL COMMENT '匹配本地用户 ID',
+			matched_user_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '匹配本地用户名',
+			role_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '角色名',
+			remote_created_at DATETIME NULL COMMENT '远端创建时间',
+			remote_updated_at DATETIME NULL COMMENT '远端更新时间',
+			raw_payload JSON NULL COMMENT '原始 JSON',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+			UNIQUE KEY uk_mihua_call_recordings_cc_number (cc_number),
+			KEY idx_mihua_call_recordings_initiate_time (initiate_time),
+			KEY idx_mihua_call_recordings_seat_worknumber (service_seat_worknumber),
+			KEY idx_mihua_call_recordings_outline_number (outline_number),
+			KEY idx_mihua_call_recordings_matched_user_id (matched_user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='米话电销录音库'`,
 	}
 	return execStatements(tx, stmts)
 }
