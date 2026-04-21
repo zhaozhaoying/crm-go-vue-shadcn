@@ -52,8 +52,8 @@ func (r *gormTelemarketingRecordingRepository) List(
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		query = query.Where(
-			`cc_number LIKE ? OR outline_number LIKE ? OR service_seat_name LIKE ? OR service_seat_worknumber LIKE ? OR service_group_name LIKE ? OR service_number LIKE ? OR matched_user_name LIKE ? OR attribution LIKE ?`,
-			like, like, like, like, like, like, like, like,
+			`cc_number LIKE ? OR outline_number LIKE ? OR service_seat_name LIKE ? OR service_seat_worknumber LIKE ? OR service_group_name LIKE ? OR service_number LIKE ? OR matched_user_name LIKE ? OR attribution LIKE ? OR record_filename LIKE ? OR customer_name LIKE ? OR customer_company LIKE ? OR enterprise_name LIKE ? OR district_name LIKE ? OR service_device_number LIKE ? OR seat_names LIKE ? OR seat_numbers LIKE ? OR seat_work_numbers LIKE ? OR role_name LIKE ?`,
+			like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like,
 		)
 	}
 	if filter.MinDuration > 0 {
