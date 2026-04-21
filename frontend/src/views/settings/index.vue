@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -33,6 +34,7 @@ import { getRequestErrorMessage } from "@/lib/http-error";
 
 const loading = ref(false);
 const savingRules = ref(false);
+const savingRankingParams = ref(false);
 const savingVisitPurposes = ref(false);
 const savingLevels = ref(false);
 const savingSources = ref(false);
@@ -51,6 +53,8 @@ const settings = ref<SystemSettings>({
   customerLimit: 100,
   showFullContact: true,
   contractNumberPrefix: "zzy_",
+  mihuaCallRecordToken: "",
+  hanghangCrmCloudToken: "",
   visitPurposes: getVisitPurposeOptions(),
   customerLevels: [],
   customerSources: [],
@@ -165,6 +169,26 @@ const saveRules = async () => {
     toast.error(getRequestErrorMessage(error, "保存失败"));
   } finally {
     savingRules.value = false;
+  }
+}
+
+const saveRankingParams = async () => {
+  const mihuaCallRecordToken = settings.value.mihuaCallRecordToken.trim();
+  const hanghangCrmCloudToken = settings.value.hanghangCrmCloudToken.trim();
+
+  savingRankingParams.value = true;
+  try {
+    await updateSystemSettings({
+      mihuaCallRecordToken,
+      hanghangCrmCloudToken,
+    });
+    settings.value.mihuaCallRecordToken = mihuaCallRecordToken;
+    settings.value.hanghangCrmCloudToken = hanghangCrmCloudToken;
+    toast.success("排名参数已保存");
+  } catch (error) {
+    toast.error(getRequestErrorMessage(error, "保存失败"));
+  } finally {
+    savingRankingParams.value = false;
   }
 }
 
@@ -413,6 +437,8 @@ onMounted(() => {
     <div v-else class="grid gap-6 lg:grid-cols-2">
       <!-- 左侧：系统规则 -->
       <div class="space-y-6">
+       
+
         <!-- 客户掉库规则 -->
         <Card>
           <CardHeader class="pb-4">
@@ -558,6 +584,47 @@ onMounted(() => {
                   <Trash2 class="h-4 w-4" />
                 </Button>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+         <!-- 排名参数 -->
+        <Card>
+          <CardHeader class="pb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <CardTitle class="text-base">排名参数</CardTitle>
+                <CardDescription class="text-xs mt-1">独立配置排名相关的 token 参数</CardDescription>
+              </div>
+              <Button @click="saveRankingParams" :disabled="savingRankingParams" size="sm" class="gap-1.5">
+                <Loader2 v-if="savingRankingParams" class="h-3.5 w-3.5 animate-spin" />
+                <Save v-else class="h-3.5 w-3.5" />
+                保存
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="space-y-2">
+              <Label for="mihuaCallRecordToken" class="text-sm">米话 token</Label>
+              <Textarea
+                id="mihuaCallRecordToken"
+                v-model="settings.mihuaCallRecordToken"
+                class="min-h-[72px] font-mono text-xs"
+                :rows="3"
+                autocomplete="off"
+                placeholder="请输入米话 token"
+              />
+            </div>
+
+            <div class="space-y-2">
+              <Label for="hanghangCrmCloudToken" class="text-sm">hanghang_crm token</Label>
+              <Textarea
+                id="hanghangCrmCloudToken"
+                v-model="settings.hanghangCrmCloudToken"
+                class="min-h-[72px] font-mono text-xs"
+                :rows="3"
+                autocomplete="off"
+                placeholder="请输入 hanghang_crm token"
+              />
             </div>
           </CardContent>
         </Card>

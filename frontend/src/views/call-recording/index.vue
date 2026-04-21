@@ -37,8 +37,8 @@ const pageIndex = ref(0)
 const pageSize = ref(20)
 const keyword = ref("")
 const activeKeyword = ref("")
-const minDuration = ref("")
-const maxDuration = ref("")
+const minDuration = ref<string | number>("")
+const maxDuration = ref<string | number>("")
 const activeMinDuration = ref<number | undefined>(undefined)
 const activeMaxDuration = ref<number | undefined>(undefined)
 
@@ -100,8 +100,8 @@ const pickDisplayText = (...values: Array<string | null | undefined>) => {
   return "-"
 }
 
-const normalizeDuration = (value: string) => {
-  const trimmed = value.trim()
+const normalizeDuration = (value: string | number) => {
+  const trimmed = String(value ?? "").trim()
   if (!trimmed) return undefined
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed)) return undefined

@@ -126,7 +126,7 @@ func (h *TelemarketingRecordingHandler) GetDetail(c *gin.Context) {
 		case errors.Is(err, service.ErrTelemarketingRecordingNotFound):
 			Error(c, http.StatusNotFound, 91235, "未找到对应的电销录音")
 		case errors.Is(err, service.ErrMiHuaTelemarketingRecordingConfigNeeded):
-			Error(c, http.StatusBadRequest, 91236, "缺少米话电销录音配置，请先在 backend/.env 中配置 MIHUA_TELEMARKETING_RECORDING_LIST_URL、MIHUA_CALL_RECORD_TOKEN 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
+			Error(c, http.StatusBadRequest, 91236, "缺少米话电销录音配置，请先在系统设置中配置 MIHUA_CALL_RECORD_TOKEN，并确认 backend/.env 中已配置 MIHUA_TELEMARKETING_RECORDING_LIST_URL 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
 		case errors.Is(err, service.ErrMiHuaTelemarketingRecordingRequestFail):
 			ErrorWithDetail(c, http.StatusBadGateway, 91237, "请求米话录音播放地址失败", err)
 		default:
@@ -171,7 +171,7 @@ func (h *TelemarketingRecordingHandler) Sync(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrMiHuaTelemarketingRecordingConfigNeeded):
-			Error(c, http.StatusBadRequest, 91241, "缺少米话电销录音配置，请先在 backend/.env 中配置 MIHUA_TELEMARKETING_RECORDING_LIST_URL、MIHUA_CALL_RECORD_TOKEN 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
+			Error(c, http.StatusBadRequest, 91241, "缺少米话电销录音配置，请先在系统设置中配置 MIHUA_CALL_RECORD_TOKEN，并确认 backend/.env 中已配置 MIHUA_TELEMARKETING_RECORDING_LIST_URL 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
 		case errors.Is(err, service.ErrMiHuaTelemarketingRecordingRequestFail):
 			ErrorWithDetail(c, http.StatusBadGateway, 91242, "请求米话电销录音列表失败", err)
 		default:

@@ -62,8 +62,10 @@ func main() {
 	}
 
 	scoreRepo := repository.NewGormSalesDailyScoreRepository(db)
+	systemSettingRepo := repository.NewSystemSettingRepository(db)
 	scoreService := service.NewSalesDailyScoreService(
 		scoreRepo,
+		service.WithSalesDailyScoreSystemSettingReader(systemSettingRepo),
 		service.WithMiHuaTelemarketingConfig(
 			cfg.MiHuaCallRecordListURL,
 			cfg.MiHuaCallRecordToken,

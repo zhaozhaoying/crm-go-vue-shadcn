@@ -2,6 +2,11 @@ package model
 
 import "time"
 
+const (
+	SystemSettingKeyMiHuaCallRecordToken  = "mihua_call_record_token"
+	SystemSettingKeyHanghangCRMCloudToken = "hanghang_crm_cloud_token"
+)
+
 type SystemSetting struct {
 	ID          int       `json:"id" gorm:"column:id;primaryKey;autoIncrement"`
 	Key         string    `json:"key" gorm:"column:key;size:128;not null;uniqueIndex"`
@@ -34,6 +39,8 @@ type SystemSettingsResponse struct {
 	CustomerLimit           int              `json:"customerLimit" gorm:"-"`
 	ShowFullContact         bool             `json:"showFullContact" gorm:"-"`
 	ContractNumberPrefix    string           `json:"contractNumberPrefix" gorm:"-"`
+	MihuaCallRecordToken    string           `json:"mihuaCallRecordToken" gorm:"-"`
+	HanghangCrmCloudToken   string           `json:"hanghangCrmCloudToken" gorm:"-"`
 	VisitPurposes           []string         `json:"visitPurposes" gorm:"-"`
 	CustomerLevels          []CustomerLevel  `json:"customerLevels" gorm:"-"`
 	CustomerSources         []CustomerSource `json:"customerSources" gorm:"-"`
@@ -49,6 +56,8 @@ type UpdateSystemSettingsRequest struct {
 	CustomerLimit           *int     `json:"customerLimit" gorm:"-"`
 	ShowFullContact         *bool    `json:"showFullContact" gorm:"-"`
 	ContractNumberPrefix    *string  `json:"contractNumberPrefix" gorm:"-"`
+	MihuaCallRecordToken    *string  `json:"mihuaCallRecordToken" gorm:"-"`
+	HanghangCrmCloudToken   *string  `json:"hanghangCrmCloudToken" gorm:"-"`
 	VisitPurposes           []string `json:"visitPurposes" gorm:"-"`
 }
 

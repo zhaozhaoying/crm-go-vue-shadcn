@@ -28,6 +28,8 @@ export interface SystemSettings {
   customerLimit: number;
   showFullContact: boolean;
   contractNumberPrefix: string;
+  mihuaCallRecordToken: string;
+  hanghangCrmCloudToken: string;
   visitPurposes: string[];
   customerLevels: CustomerLevel[];
   customerSources: CustomerSource[];
@@ -43,6 +45,8 @@ export interface UpdateSystemSettingsRequest {
   customerLimit?: number;
   showFullContact?: boolean;
   contractNumberPrefix?: string;
+  mihuaCallRecordToken?: string;
+  hanghangCrmCloudToken?: string;
   visitPurposes?: string[];
 }
 

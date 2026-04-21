@@ -111,7 +111,7 @@ func (h *CrontabHandler) RunHanghangCRMDailyUserCallStatSyncTask(c *gin.Context)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrHanghangCRMCloudTokenRequired):
-			Error(c, http.StatusBadRequest, 91002, "缺少航航CRM cloud-token，请先在 backend/.env 中配置 HANGHANG_CRM_CLOUD_TOKEN")
+			Error(c, http.StatusBadRequest, 91002, "缺少航航CRM cloud-token，请先在系统设置中配置 HANGHANG_CRM_CLOUD_TOKEN")
 		case errors.Is(err, service.ErrHanghangCRMRequestFailed):
 			ErrorWithDetail(c, http.StatusBadGateway, 91005, "请求航航CRM失败", err)
 		default:

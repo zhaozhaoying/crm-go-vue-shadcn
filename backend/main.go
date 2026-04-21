@@ -89,9 +89,14 @@ func main() {
 	)
 	contractService := service.NewContractService(contractRepo, systemSettingRepo, activityLogRepo)
 	dashboardService := service.NewDashboardService(dashboardRepo, scheduleLocation)
-	hanghangCRMDailyUserCallStatService := service.NewHanghangCRMDailyUserCallStatService(hanghangCRMDailyUserCallStatRepo, cfg.HanghangCRMCloudToken)
+	hanghangCRMDailyUserCallStatService := service.NewHanghangCRMDailyUserCallStatService(
+		hanghangCRMDailyUserCallStatRepo,
+		cfg.HanghangCRMCloudToken,
+		systemSettingRepo,
+	)
 	salesDailyScoreService := service.NewSalesDailyScoreService(
 		salesDailyScoreRepo,
+		service.WithSalesDailyScoreSystemSettingReader(systemSettingRepo),
 		service.WithMiHuaTelemarketingConfig(
 			cfg.MiHuaCallRecordListURL,
 			cfg.MiHuaCallRecordToken,
@@ -102,6 +107,7 @@ func main() {
 	callRecordingSyncService := service.NewCallRecordingSyncService(callRecordingService, cfg.FeigeCallRecordingCookie)
 	telemarketingRecordingService := service.NewTelemarketingRecordingService(
 		telemarketingRecordingRepo,
+		service.WithTelemarketingRecordingSystemSettingReader(systemSettingRepo),
 		service.WithMiHuaTelemarketingRecordingConfig(
 			cfg.MiHuaTeleRecordingListURL,
 			cfg.MiHuaTeleRecordingDetailURL,

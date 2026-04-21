@@ -52,6 +52,9 @@ func (h *NotificationHandler) ListActivityLogs(c *gin.Context) {
 
 	logs, err := h.activityLogRepo.ListRecent(c.Request.Context(), limit, userID, showAll)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 80001, "加载通知活动记录失败", err)
 		return
 	}
@@ -76,6 +79,9 @@ func (h *NotificationHandler) ListReadKeys(c *gin.Context) {
 
 	keys, err := h.notificationRepo.ListReadKeys(c.Request.Context(), userID)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 80002, "加载已读通知标记失败", err)
 		return
 	}
@@ -111,6 +117,9 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 	}
 
 	if err := h.notificationRepo.MarkAsRead(c.Request.Context(), userID, req.Keys); err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 80004, "标记通知已读失败", err)
 		return
 	}
@@ -142,6 +151,9 @@ func (h *NotificationHandler) CreateNotificationRead(c *gin.Context) {
 	}
 
 	if err := h.notificationRepo.MarkAsRead(c.Request.Context(), userID, []string{req.Key}); err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 80004, "标记通知已读失败", err)
 		return
 	}
@@ -168,12 +180,18 @@ func (h *NotificationHandler) UnreadCount(c *gin.Context) {
 
 	logs, err := h.activityLogRepo.ListRecent(c.Request.Context(), 200, userID, showAll)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 80001, "加载通知活动记录失败", err)
 		return
 	}
 
 	readKeys, err := h.notificationRepo.ListReadKeys(c.Request.Context(), userID)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		ErrorWithDetail(c, http.StatusInternalServerError, 80002, "加载已读通知标记失败", err)
 		return
 	}

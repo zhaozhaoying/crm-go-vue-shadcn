@@ -1,6 +1,9 @@
 package main
 
 import (
+	"backend/internal/database"
+	"backend/internal/model"
+	"backend/internal/repository"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -36,10 +39,31 @@ func main() {
 	flag.Parse()
 
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "配置无效: %v\n", err)
+		os.Exit(1)
+	}
+
+	db := database.Open(cfg)
+	sqlDB, err := db.DB()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "获取数据库连接失败: %v\n", err)
+		os.Exit(1)
+	}
+	defer sqlDB.Close()
+
+	systemSettingRepo := repository.NewSystemSettingRepository(db)
+	token := strings.TrimSpace(cfg.MiHuaCallRecordToken)
+	if setting, err := systemSettingRepo.GetSetting(model.SystemSettingKeyMiHuaCallRecordToken); err == nil && setting != nil {
+		if resolved := strings.TrimSpace(setting.Value); resolved != "" {
+			token = resolved
+		}
+	}
+
 	if strings.TrimSpace(cfg.MiHuaCallRecordListURL) == "" ||
-		strings.TrimSpace(cfg.MiHuaCallRecordToken) == "" ||
+		token == "" ||
 		strings.TrimSpace(cfg.MiHuaCallRecordOrigin) == "" {
-		fmt.Fprintln(os.Stderr, "缺少米话配置：MIHUA_CALL_RECORD_LIST_URL / MIHUA_CALL_RECORD_TOKEN / MIHUA_CALL_RECORD_SOURCE_ORIGIN")
+		fmt.Fprintln(os.Stderr, "缺少米话配置：MIHUA_CALL_RECORD_LIST_URL / 系统设置 MIHUA_CALL_RECORD_TOKEN / MIHUA_CALL_RECORD_SOURCE_ORIGIN")
 		os.Exit(1)
 	}
 
@@ -68,7 +92,7 @@ func main() {
 		context.Background(),
 		client,
 		&requestURL,
-		cfg.MiHuaCallRecordToken,
+		token,
 		origin,
 		referer,
 	)

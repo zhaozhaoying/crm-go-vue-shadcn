@@ -20,6 +20,10 @@ var defaultVisitPurposeOptions = []string{
 	"其他",
 }
 
+type systemSettingValueReader interface {
+	GetSetting(key string) (*model.SystemSetting, error)
+}
+
 type SystemSettingService struct {
 	repo *repository.SystemSettingRepository
 }
@@ -38,6 +42,8 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 	customerLimit := s.getIntSetting("customer_limit", 100)
 	showFullContact := s.getBoolSetting("show_full_contact", true)
 	contractNumberPrefix := s.getStringSetting("contract_number_prefix", "zzy_")
+	mihuaCallRecordToken := s.getStringSetting(model.SystemSettingKeyMiHuaCallRecordToken, "")
+	hanghangCrmCloudToken := s.getStringSetting(model.SystemSettingKeyHanghangCRMCloudToken, "")
 	visitPurposes := s.getStringListSetting("customer_visit_purposes", defaultVisitPurposeOptions)
 
 	levels, err := s.repo.GetAllCustomerLevels()
@@ -60,6 +66,8 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 		CustomerLimit:           customerLimit,
 		ShowFullContact:         showFullContact,
 		ContractNumberPrefix:    contractNumberPrefix,
+		MihuaCallRecordToken:    mihuaCallRecordToken,
+		HanghangCrmCloudToken:   hanghangCrmCloudToken,
 		VisitPurposes:           visitPurposes,
 		CustomerLevels:          levels,
 		CustomerSources:         sources,
@@ -132,6 +140,24 @@ func (s *SystemSettingService) UpdateSettings(req *model.UpdateSystemSettingsReq
 			return err
 		}
 	}
+	if req.MihuaCallRecordToken != nil {
+		if err := s.repo.UpsertSetting(
+			model.SystemSettingKeyMiHuaCallRecordToken,
+			strings.TrimSpace(*req.MihuaCallRecordToken),
+			"米话通话记录 token",
+		); err != nil {
+			return err
+		}
+	}
+	if req.HanghangCrmCloudToken != nil {
+		if err := s.repo.UpsertSetting(
+			model.SystemSettingKeyHanghangCRMCloudToken,
+			strings.TrimSpace(*req.HanghangCrmCloudToken),
+			"航航 CRM cloud-token",
+		); err != nil {
+			return err
+		}
+	}
 	if req.VisitPurposes != nil {
 		purposes := normalizeStringList(req.VisitPurposes)
 		if len(purposes) == 0 {
@@ -179,6 +205,19 @@ func (s *SystemSettingService) getStringSetting(key string, defaultVal string) s
 		return defaultVal
 	}
 	return value
+}
+
+func getTrimmedSystemSettingValue(reader systemSettingValueReader, key string) string {
+	if reader == nil {
+		return ""
+	}
+
+	setting, err := reader.GetSetting(key)
+	if err != nil || setting == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(setting.Value)
 }
 
 func (s *SystemSettingService) getStringListSetting(key string, defaultVal []string) []string {

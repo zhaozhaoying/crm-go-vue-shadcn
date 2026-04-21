@@ -57,6 +57,7 @@ type SalesDailyScoreServiceOption func(*salesDailyScoreService)
 
 type salesDailyScoreService struct {
 	repo                      repository.SalesDailyScoreRepository
+	systemSettingReader       systemSettingValueReader
 	miHuaSeatStatisticsURL    string
 	miHuaSeatStatisticsToken  string
 	miHuaSeatStatisticsOrigin string
@@ -124,6 +125,12 @@ func WithSalesDailyScoreHTTPClient(client *http.Client) SalesDailyScoreServiceOp
 		if client != nil {
 			s.miHuaHTTPClient = client
 		}
+	}
+}
+
+func WithSalesDailyScoreSystemSettingReader(reader systemSettingValueReader) SalesDailyScoreServiceOption {
+	return func(s *salesDailyScoreService) {
+		s.systemSettingReader = reader
 	}
 }
 
@@ -642,8 +649,11 @@ func (s *salesDailyScoreService) spxxjjSyncTelemarketingDailyScores(ctx context.
 func (s *salesDailyScoreService) spxxjjFetchMiHuaSeatStatistics(
 	ctx context.Context,
 ) ([]spxxjjMiHuaSeatStatisticRecord, string, error) {
+	token, err := s.resolveMiHuaSeatStatisticsToken()
+	if err != nil {
+		return nil, "", err
+	}
 	if strings.TrimSpace(s.miHuaSeatStatisticsURL) == "" ||
-		strings.TrimSpace(s.miHuaSeatStatisticsToken) == "" ||
 		strings.TrimSpace(s.miHuaSeatStatisticsOrigin) == "" {
 		return nil, "", ErrMiHuaTelemarketingConfigRequired
 	}
@@ -673,7 +683,7 @@ func (s *salesDailyScoreService) spxxjjFetchMiHuaSeatStatistics(
 		if err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrMiHuaTelemarketingRequestFailed, err)
 		}
-		req.Header.Set("token", s.miHuaSeatStatisticsToken)
+		req.Header.Set("token", token)
 		req.Header.Set("accept", "application/json, text/plain, */*")
 		req.Header.Set("origin", origin)
 		req.Header.Set("referer", referer)
@@ -756,6 +766,16 @@ func (s *salesDailyScoreService) spxxjjFetchMiHuaSeatStatistics(
 	return allRecords, scoreDate, nil
 }
 
+func (s *salesDailyScoreService) resolveMiHuaSeatStatisticsToken() (string, error) {
+	if token := getTrimmedSystemSettingValue(s.systemSettingReader, model.SystemSettingKeyMiHuaCallRecordToken); token != "" {
+		return token, nil
+	}
+	if token := strings.TrimSpace(s.miHuaSeatStatisticsToken); token != "" {
+		return token, nil
+	}
+	return "", ErrMiHuaTelemarketingConfigRequired
+}
+
 func generateMiHuaRequestNonce() string {
 	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {
@@ -798,7 +818,7 @@ func resolveRankingLeaderboardRange(
 ) (string, string, string, bool, error) {
 	normalizedPeriod := strings.ToLower(strings.TrimSpace(period))
 	if normalizedPeriod == "" {
-		normalizedPeriod = "month"
+		normalizedPeriod = "day"
 	}
 
 	now = now.In(time.Local)

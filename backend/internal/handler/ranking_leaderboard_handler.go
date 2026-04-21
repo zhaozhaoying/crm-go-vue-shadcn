@@ -35,7 +35,7 @@ func (h *RankingLeaderboardHandler) ListRankingLeaderboard(c *gin.Context) {
 
 	period := strings.TrimSpace(c.Query("period"))
 	if period == "" {
-		period = "month"
+		period = "day"
 	}
 
 	result, err := h.service.ListRankingLeaderboard(
@@ -49,7 +49,7 @@ func (h *RankingLeaderboardHandler) ListRankingLeaderboard(c *gin.Context) {
 		case errors.Is(err, service.ErrRankingLeaderboardInvalidPeriod), errors.Is(err, service.ErrRankingLeaderboardInvalidRange):
 			ErrorWithDetail(c, http.StatusBadRequest, 91116, "排名榜单查询参数无效", err)
 		case errors.Is(err, service.ErrMiHuaTelemarketingConfigRequired):
-			Error(c, http.StatusBadRequest, 91117, "缺少米话电销排名配置，请先在 backend/.env 中配置 MIHUA_CALL_RECORD_LIST_URL、MIHUA_CALL_RECORD_TOKEN 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
+			Error(c, http.StatusBadRequest, 91117, "缺少米话电销排名配置，请先在系统设置中配置 MIHUA_CALL_RECORD_TOKEN，并确认 backend/.env 中已配置 MIHUA_CALL_RECORD_LIST_URL 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
 		case errors.Is(err, service.ErrMiHuaTelemarketingRequestFailed):
 			ErrorWithDetail(c, http.StatusBadGateway, 91118, "请求米话电销坐席统计失败", err)
 		default:
@@ -85,7 +85,7 @@ func (h *RankingLeaderboardHandler) GetRankingLeaderboardDetail(c *gin.Context) 
 
 	period := strings.TrimSpace(c.Query("period"))
 	if period == "" {
-		period = "month"
+		period = "day"
 	}
 
 	result, err := h.service.GetRankingLeaderboardDetail(
@@ -102,7 +102,7 @@ func (h *RankingLeaderboardHandler) GetRankingLeaderboardDetail(c *gin.Context) 
 		case errors.Is(err, service.ErrRankingLeaderboardInvalidPeriod), errors.Is(err, service.ErrRankingLeaderboardInvalidRange):
 			ErrorWithDetail(c, http.StatusBadRequest, 91122, "榜单详情查询参数无效", err)
 		case errors.Is(err, service.ErrMiHuaTelemarketingConfigRequired):
-			Error(c, http.StatusBadRequest, 91123, "缺少米话电销排名配置，请先在 backend/.env 中配置 MIHUA_CALL_RECORD_LIST_URL、MIHUA_CALL_RECORD_TOKEN 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
+			Error(c, http.StatusBadRequest, 91123, "缺少米话电销排名配置，请先在系统设置中配置 MIHUA_CALL_RECORD_TOKEN，并确认 backend/.env 中已配置 MIHUA_CALL_RECORD_LIST_URL 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
 		case errors.Is(err, service.ErrMiHuaTelemarketingRequestFailed):
 			ErrorWithDetail(c, http.StatusBadGateway, 91124, "请求米话电销坐席统计失败", err)
 		default:

@@ -46,12 +46,13 @@ type SyncTelemarketingRecordingsResult struct {
 }
 
 type TelemarketingRecordingService struct {
-	repo       telemarketingRecordingRepository
-	listURL    string
-	detailURL  string
-	token      string
-	origin     string
-	httpClient *http.Client
+	repo          telemarketingRecordingRepository
+	settingReader systemSettingValueReader
+	listURL       string
+	detailURL     string
+	token         string
+	origin        string
+	httpClient    *http.Client
 }
 
 type TelemarketingRecordingServiceOption func(*TelemarketingRecordingService)
@@ -167,6 +168,12 @@ func WithTelemarketingRecordingHTTPClient(client *http.Client) TelemarketingReco
 	}
 }
 
+func WithTelemarketingRecordingSystemSettingReader(reader systemSettingValueReader) TelemarketingRecordingServiceOption {
+	return func(s *TelemarketingRecordingService) {
+		s.settingReader = reader
+	}
+}
+
 func NewTelemarketingRecordingService(
 	repo telemarketingRecordingRepository,
 	options ...TelemarketingRecordingServiceOption,
@@ -233,8 +240,11 @@ func (s *TelemarketingRecordingService) Sync(
 	ctx context.Context,
 	input SyncTelemarketingRecordingsInput,
 ) (SyncTelemarketingRecordingsResult, error) {
+	token, err := s.resolveMiHuaRecordingToken()
+	if err != nil {
+		return SyncTelemarketingRecordingsResult{}, err
+	}
 	if strings.TrimSpace(s.listURL) == "" ||
-		strings.TrimSpace(s.token) == "" ||
 		strings.TrimSpace(s.origin) == "" {
 		return SyncTelemarketingRecordingsResult{}, ErrMiHuaTelemarketingRecordingConfigNeeded
 	}
@@ -282,7 +292,7 @@ func (s *TelemarketingRecordingService) Sync(
 		if err != nil {
 			return SyncTelemarketingRecordingsResult{}, fmt.Errorf("%w: %v", ErrMiHuaTelemarketingRecordingRequestFail, err)
 		}
-		req.Header.Set("token", s.token)
+		req.Header.Set("token", token)
 		req.Header.Set("accept", "application/json, text/plain, */*")
 		req.Header.Set("origin", origin)
 		req.Header.Set("referer", referer)
@@ -454,6 +464,11 @@ func (s *TelemarketingRecordingService) fetchPlaybackURL(
 		return "", "", 0, nil
 	}
 
+	token, err := s.resolveMiHuaRecordingToken()
+	if err != nil {
+		return "", "", 0, err
+	}
+
 	playbackURL, err := s.resolvePlaybackEndpoint()
 	if err != nil {
 		return "", "", 0, err
@@ -473,7 +488,7 @@ func (s *TelemarketingRecordingService) fetchPlaybackURL(
 	if err != nil {
 		return "", "", 0, fmt.Errorf("%w: %v", ErrMiHuaTelemarketingRecordingRequestFail, err)
 	}
-	req.Header.Set("token", s.token)
+	req.Header.Set("token", token)
 	req.Header.Set("accept", "application/json, text/plain, */*")
 	req.Header.Set("origin", origin)
 	req.Header.Set("referer", referer)
@@ -516,7 +531,6 @@ func (s *TelemarketingRecordingService) fetchPlaybackURL(
 
 func (s *TelemarketingRecordingService) resolvePlaybackEndpoint() (*url.URL, error) {
 	if strings.TrimSpace(s.listURL) == "" ||
-		strings.TrimSpace(s.token) == "" ||
 		strings.TrimSpace(s.origin) == "" {
 		return nil, ErrMiHuaTelemarketingRecordingConfigNeeded
 	}
@@ -537,6 +551,16 @@ func (s *TelemarketingRecordingService) resolvePlaybackEndpoint() (*url.URL, err
 		return nil, fmt.Errorf("%w: invalid detail url: %v", ErrMiHuaTelemarketingRecordingRequestFail, err)
 	}
 	return playbackURL, nil
+}
+
+func (s *TelemarketingRecordingService) resolveMiHuaRecordingToken() (string, error) {
+	if token := getTrimmedSystemSettingValue(s.settingReader, model.SystemSettingKeyMiHuaCallRecordToken); token != "" {
+		return token, nil
+	}
+	if token := strings.TrimSpace(s.token); token != "" {
+		return token, nil
+	}
+	return "", ErrMiHuaTelemarketingRecordingConfigNeeded
 }
 
 func parseMiHuaDurationText(value string) int {

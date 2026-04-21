@@ -30,6 +30,10 @@ func (h *SystemSettingHandler) GetSettings(c *gin.Context) {
 		ErrorWithDetail(c, http.StatusInternalServerError, 10100, "加载系统设置失败", err)
 		return
 	}
+	if !canManageSystemSettings(currentUserRole(c)) {
+		settings.MihuaCallRecordToken = ""
+		settings.HanghangCrmCloudToken = ""
+	}
 	Success(c, settings)
 }
 
@@ -43,6 +47,10 @@ func (h *SystemSettingHandler) GetSettings(c *gin.Context) {
 // @Success 200 {object} map[string]string
 // @Router /api/v1/settings [put]
 func (h *SystemSettingHandler) UpdateSettings(c *gin.Context) {
+	if !ensureManageSystemSettings(c) {
+		return
+	}
+
 	var req model.UpdateSystemSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		ErrorWithDetail(c, http.StatusBadRequest, 10101, "请求参数错误", err)
@@ -83,6 +91,10 @@ func (h *SystemSettingHandler) GetCustomerLevels(c *gin.Context) {
 // @Success 201 {object} model.CustomerLevel
 // @Router /api/v1/settings/customer-levels [post]
 func (h *SystemSettingHandler) CreateCustomerLevel(c *gin.Context) {
+	if !ensureManageSystemSettings(c) {
+		return
+	}
+
 	var req model.CustomerLevelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		ErrorWithDetail(c, http.StatusBadRequest, 10104, "请求参数错误", err)
@@ -109,6 +121,10 @@ func (h *SystemSettingHandler) CreateCustomerLevel(c *gin.Context) {
 // @Success 200 {object} map[string]string
 // @Router /api/v1/settings/customer-levels/{id} [put]
 func (h *SystemSettingHandler) UpdateCustomerLevel(c *gin.Context) {
+	if !ensureManageSystemSettings(c) {
+		return
+	}
+
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		Error(c, http.StatusBadRequest, 10106, "无效的客户级别ID")
@@ -137,6 +153,10 @@ func (h *SystemSettingHandler) UpdateCustomerLevel(c *gin.Context) {
 // @Success 200 {object} map[string]string
 // @Router /api/v1/settings/customer-levels/{id} [delete]
 func (h *SystemSettingHandler) DeleteCustomerLevel(c *gin.Context) {
+	if !ensureManageSystemSettings(c) {
+		return
+	}
+
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		Error(c, http.StatusBadRequest, 10109, "无效的客户级别ID")
@@ -177,6 +197,10 @@ func (h *SystemSettingHandler) GetCustomerSources(c *gin.Context) {
 // @Success 201 {object} model.CustomerSource
 // @Router /api/v1/settings/customer-sources [post]
 func (h *SystemSettingHandler) CreateCustomerSource(c *gin.Context) {
+	if !ensureManageSystemSettings(c) {
+		return
+	}
+
 	var req model.CustomerSourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		ErrorWithDetail(c, http.StatusBadRequest, 10112, "请求参数错误", err)
@@ -203,6 +227,10 @@ func (h *SystemSettingHandler) CreateCustomerSource(c *gin.Context) {
 // @Success 200 {object} map[string]string
 // @Router /api/v1/settings/customer-sources/{id} [put]
 func (h *SystemSettingHandler) UpdateCustomerSource(c *gin.Context) {
+	if !ensureManageSystemSettings(c) {
+		return
+	}
+
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		Error(c, http.StatusBadRequest, 10114, "无效的客户来源ID")
@@ -231,6 +259,10 @@ func (h *SystemSettingHandler) UpdateCustomerSource(c *gin.Context) {
 // @Success 200 {object} map[string]string
 // @Router /api/v1/settings/customer-sources/{id} [delete]
 func (h *SystemSettingHandler) DeleteCustomerSource(c *gin.Context) {
+	if !ensureManageSystemSettings(c) {
+		return
+	}
+
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		Error(c, http.StatusBadRequest, 10117, "无效的客户来源ID")
@@ -243,4 +275,21 @@ func (h *SystemSettingHandler) DeleteCustomerSource(c *gin.Context) {
 	}
 
 	Success(c, gin.H{"message": "删除成功"})
+}
+
+func ensureManageSystemSettings(c *gin.Context) bool {
+	if canManageSystemSettings(currentUserRole(c)) {
+		return true
+	}
+	Error(c, http.StatusForbidden, 10119, "仅管理员可以管理系统设置")
+	return false
+}
+
+func canManageSystemSettings(role string) bool {
+	switch role {
+	case "admin", "管理员":
+		return true
+	default:
+		return false
+	}
 }

@@ -2,10 +2,15 @@ package handler
 
 import (
 	"backend/internal/errmsg"
+	"context"
+	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
+
+const statusClientClosedRequest = 499
 
 type APIResponse struct {
 	Code    int         `json:"code"`
@@ -42,6 +47,23 @@ func ErrorWithDetail(c *gin.Context, statusCode int, code int, message string, e
 	}
 
 	Error(c, statusCode, code, message+": "+detail)
+}
+
+func handleRequestContextError(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+
+	switch {
+	case errors.Is(err, context.Canceled):
+		c.AbortWithStatus(statusClientClosedRequest)
+		return true
+	case errors.Is(err, context.DeadlineExceeded):
+		c.AbortWithStatus(http.StatusGatewayTimeout)
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeErrorDetail(detail string) string {

@@ -181,7 +181,7 @@ function normalizeFilters(period: Period) {
 
 function resolveFiltersFromRoute(): RankingFilters {
   const routePeriod = String(route.query.period || "").trim() as Period;
-  const period = validPeriods.includes(routePeriod) ? routePeriod : "month";
+  const period = validPeriods.includes(routePeriod) ? routePeriod : "day";
   return normalizeFilters(period);
 }
 

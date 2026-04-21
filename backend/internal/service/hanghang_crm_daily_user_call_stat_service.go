@@ -54,10 +54,11 @@ type HanghangCRMDailyUserCallStatService interface {
 }
 
 type hanghangCRMDailyUserCallStatService struct {
-	repo       repository.HanghangCRMDailyUserCallStatRepository
-	cloudToken string
-	client     *http.Client
-	endpoint   string
+	repo          repository.HanghangCRMDailyUserCallStatRepository
+	settingReader systemSettingValueReader
+	cloudToken    string
+	client        *http.Client
+	endpoint      string
 }
 
 type hanghangCRMCallStatsPageRequest struct {
@@ -102,10 +103,16 @@ type hanghangCRMCallStatsRemoteRecord struct {
 func NewHanghangCRMDailyUserCallStatService(
 	repo repository.HanghangCRMDailyUserCallStatRepository,
 	cloudToken string,
+	readers ...systemSettingValueReader,
 ) HanghangCRMDailyUserCallStatService {
+	var settingReader systemSettingValueReader
+	if len(readers) > 0 {
+		settingReader = readers[0]
+	}
 	return &hanghangCRMDailyUserCallStatService{
-		repo:       repo,
-		cloudToken: strings.TrimSpace(cloudToken),
+		repo:          repo,
+		settingReader: settingReader,
+		cloudToken:    strings.TrimSpace(cloudToken),
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -274,10 +281,13 @@ func (s *hanghangCRMDailyUserCallStatService) resolveCloudToken(raw string) (str
 	if token := strings.TrimSpace(raw); token != "" {
 		return token, nil
 	}
-	if strings.TrimSpace(s.cloudToken) == "" {
-		return "", ErrHanghangCRMCloudTokenRequired
+	if token := getTrimmedSystemSettingValue(s.settingReader, model.SystemSettingKeyHanghangCRMCloudToken); token != "" {
+		return token, nil
 	}
-	return strings.TrimSpace(s.cloudToken), nil
+	if token := strings.TrimSpace(s.cloudToken); token != "" {
+		return token, nil
+	}
+	return "", ErrHanghangCRMCloudTokenRequired
 }
 
 func (s *hanghangCRMDailyUserCallStatService) resolveMatchedUserID(

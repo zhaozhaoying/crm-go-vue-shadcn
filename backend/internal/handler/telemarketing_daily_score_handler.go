@@ -38,7 +38,7 @@ func (h *TelemarketingDailyScoreHandler) ListTelemarketingDailyRankings(c *gin.C
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrMiHuaTelemarketingConfigRequired):
-			Error(c, http.StatusBadRequest, 91108, "缺少米话电销排名配置，请先在 backend/.env 中配置 MIHUA_CALL_RECORD_LIST_URL、MIHUA_CALL_RECORD_TOKEN 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
+			Error(c, http.StatusBadRequest, 91108, "缺少米话电销排名配置，请先在系统设置中配置 MIHUA_CALL_RECORD_TOKEN，并确认 backend/.env 中已配置 MIHUA_CALL_RECORD_LIST_URL 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
 		case errors.Is(err, service.ErrMiHuaTelemarketingRequestFailed):
 			ErrorWithDetail(c, http.StatusBadGateway, 91109, "请求米话电销坐席统计失败", err)
 		default:
@@ -80,7 +80,7 @@ func (h *TelemarketingDailyScoreHandler) GetTelemarketingDailyScoreDetail(c *gin
 		case errors.Is(err, service.ErrTelemarketingDailyScoreNotFound):
 			Error(c, http.StatusNotFound, 91112, "未找到对应工号的电销积分详情")
 		case errors.Is(err, service.ErrMiHuaTelemarketingConfigRequired):
-			Error(c, http.StatusBadRequest, 91113, "缺少米话电销排名配置，请先在 backend/.env 中配置 MIHUA_CALL_RECORD_LIST_URL、MIHUA_CALL_RECORD_TOKEN 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
+			Error(c, http.StatusBadRequest, 91113, "缺少米话电销排名配置，请先在系统设置中配置 MIHUA_CALL_RECORD_TOKEN，并确认 backend/.env 中已配置 MIHUA_CALL_RECORD_LIST_URL 和 MIHUA_CALL_RECORD_SOURCE_ORIGIN")
 		case errors.Is(err, service.ErrMiHuaTelemarketingRequestFailed):
 			ErrorWithDetail(c, http.StatusBadGateway, 91114, "请求米话电销坐席统计失败", err)
 		default:
