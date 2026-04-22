@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1776677317191,
+  "lastScanned": 1776819337010,
   "projectRoot": "/Users/zhangyang/dev/zhaozhaoying/crm-go-vue-shadcn",
   "techStack": {
     "languages": [],
@@ -38,7 +38,7 @@
       "path": "backend",
       "purpose": null,
       "fileCount": 10,
-      "lastAccessed": 1776677317170,
+      "lastAccessed": 1776819336988,
       "keyFiles": [
         "README.md",
         "data.db",
@@ -51,7 +51,7 @@
       "path": "check-in",
       "purpose": null,
       "fileCount": 10,
-      "lastAccessed": 1776677317170,
+      "lastAccessed": 1776819336992,
       "keyFiles": [
         "App.vue",
         "index.html",
@@ -64,7 +64,7 @@
       "path": "frontend",
       "purpose": null,
       "fileCount": 15,
-      "lastAccessed": 1776677317178,
+      "lastAccessed": 1776819336992,
       "keyFiles": [
         "components.json",
         "index.html",
@@ -77,7 +77,7 @@
       "path": "release",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1776677317182,
+      "lastAccessed": 1776819336993,
       "keyFiles": [
         "overseas_linux"
       ]
@@ -86,7 +86,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 2,
-      "lastAccessed": 1776677317182,
+      "lastAccessed": 1776819336993,
       "keyFiles": [
         "deploy-overseas.sh",
         "package-release.sh"
@@ -96,14 +96,14 @@
       "path": "tmp",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1776677317183,
+      "lastAccessed": 1776819336994,
       "keyFiles": []
     },
     "backend/docs": {
       "path": "backend/docs",
       "purpose": "Documentation",
       "fileCount": 4,
-      "lastAccessed": 1776677317183,
+      "lastAccessed": 1776819336996,
       "keyFiles": [
         "docs.go",
         "google-search-setup.md",
@@ -114,7 +114,7 @@
       "path": "check-in/api",
       "purpose": "API routes",
       "fileCount": 1,
-      "lastAccessed": 1776677317184,
+      "lastAccessed": 1776819336998,
       "keyFiles": [
         "index.js"
       ]
@@ -123,21 +123,21 @@
       "path": "check-in/node_modules",
       "purpose": "Dependencies",
       "fileCount": 1,
-      "lastAccessed": 1776677317184,
+      "lastAccessed": 1776819336999,
       "keyFiles": []
     },
     "check-in/pages": {
       "path": "check-in/pages",
       "purpose": "Page components",
       "fileCount": 0,
-      "lastAccessed": 1776677317184,
+      "lastAccessed": 1776819337001,
       "keyFiles": []
     },
     "frontend/dist": {
       "path": "frontend/dist",
       "purpose": "Distribution/build output",
       "fileCount": 1,
-      "lastAccessed": 1776677317186,
+      "lastAccessed": 1776819337002,
       "keyFiles": [
         "index.html"
       ]
@@ -146,146 +146,19 @@
       "path": "frontend/node_modules",
       "purpose": "Dependencies",
       "fileCount": 3,
-      "lastAccessed": 1776677317189,
+      "lastAccessed": 1776819337009,
       "keyFiles": []
     },
     "release/dist": {
       "path": "release/dist",
       "purpose": "Distribution/build output",
       "fileCount": 1,
-      "lastAccessed": 1776677317190,
+      "lastAccessed": 1776819337010,
       "keyFiles": [
         "index.html"
       ]
     }
   },
-  "hotPaths": [
-    {
-      "path": "frontend/src/views/ranking-leaderboard/index.vue",
-      "accessCount": 29,
-      "lastAccessed": 1776752899531,
-      "type": "file"
-    },
-    {
-      "path": "backend/main.go",
-      "accessCount": 12,
-      "lastAccessed": 1776732484152,
-      "type": "file"
-    },
-    {
-      "path": "backend",
-      "accessCount": 7,
-      "lastAccessed": 1776731897066,
-      "type": "directory"
-    },
-    {
-      "path": "backend/internal/service/sales_daily_score_service.go",
-      "accessCount": 6,
-      "lastAccessed": 1776680291029,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/config/config.go",
-      "accessCount": 4,
-      "lastAccessed": 1776732315506,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/router/index.ts",
-      "accessCount": 2,
-      "lastAccessed": 1776751314177,
-      "type": "directory"
-    },
-    {
-      "path": "frontend",
-      "accessCount": 1,
-      "lastAccessed": 1776678489622,
-      "type": "directory"
-    },
-    {
-      "path": "frontend/src/components/custom/AppBreadcrumb.vue",
-      "accessCount": 1,
-      "lastAccessed": 1776678514473,
-      "type": "directory"
-    },
-    {
-      "path": "frontend/src/components/custom/AppSidebar.vue",
-      "accessCount": 1,
-      "lastAccessed": 1776678514647,
-      "type": "directory"
-    },
-    {
-      "path": "frontend/src/components/custom/AppCommand.vue",
-      "accessCount": 1,
-      "lastAccessed": 1776678514682,
-      "type": "directory"
-    },
-    {
-      "path": "backend/internal/scoring/sales_daily_score.go",
-      "accessCount": 1,
-      "lastAccessed": 1776678909401,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/handler/telemarketing_daily_score_handler.go",
-      "accessCount": 1,
-      "lastAccessed": 1776678909434,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/handler/crontab_handler.go",
-      "accessCount": 1,
-      "lastAccessed": 1776678909475,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/router/router.go",
-      "accessCount": 1,
-      "lastAccessed": 1776678934818,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/service/hanghang_crm_daily_score_runtime.go",
-      "accessCount": 1,
-      "lastAccessed": 1776678947260,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/service",
-      "accessCount": 1,
-      "lastAccessed": 1776678947289,
-      "type": "directory"
-    },
-    {
-      "path": "backend/internal/service/customer_auto_drop_runtime.go",
-      "accessCount": 1,
-      "lastAccessed": 1776678970035,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/database/migrations_sqlite.go",
-      "accessCount": 1,
-      "lastAccessed": 1776678970303,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/database/migrations_mysql.go",
-      "accessCount": 1,
-      "lastAccessed": 1776678971639,
-      "type": "file"
-    },
-    {
-      "path": "backend/internal/service/telemarketing_daily_score_runtime.go",
-      "accessCount": 1,
-      "lastAccessed": 1776679280468,
-      "type": "file"
-    },
-    {
-      "path": "backend/production.env.sample",
-      "accessCount": 1,
-      "lastAccessed": 1776731873945,
-      "type": "file"
-    }
-  ],
+  "hotPaths": [],
   "userDirectives": []
 }
