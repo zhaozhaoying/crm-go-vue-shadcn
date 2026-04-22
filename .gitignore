@@ -2,6 +2,7 @@
 .idea
 .vscode
 .claude
+.omc
 
 # cache files
 *.log
@@ -14,27 +15,27 @@
 *.seed
 /.gocache
 /.gomodcache
-/backend/.gocache
-/backend/.gomodcache
 
-# Backend
-/backend/bin
-/backend/tmp
-/backend/.cache
-/backend/main
-/backend/backend
-/backend/app
-/backend/test_*
+# Backend / Go
+/main
+/app
+/test_*
 *.db
 
-# Frontend
-/frontend/node_modules
-/frontend/dist
+# Web / apps
+/web/node_modules
+/web/dist
+/apps/checkin-h5/node_modules
+/apps/checkin-h5/unpackage
+/apps/mihua-token-service/.venv
+
+# Local build artifacts
+/build
+/tmp
 
 # Env files
 .env
 .env.*
+!.env.example
+!.env.local.example
 
-# Release bundle (standalone repo)
-/release
-电销录音.txt

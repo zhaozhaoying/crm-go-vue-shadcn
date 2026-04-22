@@ -2,10 +2,18 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_DIR="${ROOT_DIR}/${RELEASE_DIR:-release}"
+OUT_DIR="${ROOT_DIR}/${RELEASE_DIR:-build/release}"
 BACKEND_BIN_NAME="${BACKEND_BIN_NAME:-crm-backend}"
-CHECKIN_WEB_SRC_DIR="${ROOT_DIR}/check-in/unpackage/dist/build/web"
-CHECKIN_WEB_OUT_DIR="${OUT_DIR}/check-in"
+WEB_DIST_SRC_DIR="${ROOT_DIR}/web/dist"
+WEB_DIST_OUT_DIR="${OUT_DIR}/dist"
+ATTENDANCE_H5_SRC_DIR="${ROOT_DIR}/apps/attendance-h5/unpackage/dist/build/web"
+ATTENDANCE_H5_OUT_DIR="${OUT_DIR}/check-in"
+MIHUA_TOKEN_SRC_DIR="${ROOT_DIR}/apps/mihua-token-service"
+MIHUA_TOKEN_OUT_DIR="${OUT_DIR}/mihua-token-fetcher"
+INCLUDE_BACKEND="${INCLUDE_BACKEND:-1}"
+INCLUDE_WEB="${INCLUDE_WEB:-1}"
+INCLUDE_ATTENDANCE_H5="${INCLUDE_ATTENDANCE_H5:-1}"
+INCLUDE_MIHUA_TOKEN="${INCLUDE_MIHUA_TOKEN:-1}"
 GOOS_TARGET="${GOOS_TARGET:-linux}"
 GOARCH_TARGET="${GOARCH_TARGET:-amd64}"
 CGO_ENABLED_TARGET="${CGO_ENABLED_TARGET:-1}"
@@ -15,84 +23,129 @@ GIT_COMMIT="${GIT_COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/nul
 BUILD_TIME="${BUILD_TIME:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 LDFLAGS="-X main.version=$APP_VERSION -X main.gitCommit=$GIT_COMMIT -X main.buildTime=$BUILD_TIME"
 
-cleanup_release_artifacts() {
-  local target_dir="$1"
-  if [ ! -d "$target_dir" ]; then
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "缺少必要命令: $1" >&2
+    exit 1
+  fi
+}
+
+sync_dir() {
+  local src_dir="$1"
+  local dst_dir="$2"
+
+  mkdir -p "$dst_dir"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$src_dir/" "$dst_dir/"
+  else
+    rm -rf "$dst_dir"
+    mkdir -p "$dst_dir"
+    cp -R "$src_dir"/. "$dst_dir"/
+  fi
+}
+
+cleanup_release_dir() {
+  mkdir -p "$OUT_DIR"
+  find "$OUT_DIR" -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
+}
+
+cleanup_python_caches() {
+  if [ ! -d "$OUT_DIR" ]; then
     return 0
   fi
 
-  find "$target_dir" \
-    -path "$target_dir/.git" -prune -o \
-    -type f \( \
-      -name "*.sh" -o \
-      -name "*_test.go" -o \
-      -name "*.test" -o \
-      -name "go-test.out" -o \
-      -name "coverage*.out" \
-    \) -print -delete
-
-  find "$target_dir" \
-    -path "$target_dir/.git" -prune -o \
-    -type d \( \
-      -name "__tests__" -o \
-      -name "tests" \
-    \) -prune -print | while IFS= read -r path; do
-      rm -rf "$path"
-    done
+  find "$OUT_DIR" -type d \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".mypy_cache" \) -prune -exec rm -rf {} +
+  find "$OUT_DIR" -type f \( -name "*.pyc" -o -name ".DS_Store" \) -delete
 }
 
-# Keep existing .git if this is a standalone release repo
-mkdir -p "$OUT_DIR"
-find "$OUT_DIR" -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
-
-# Build backend
-(
-  cd "$ROOT_DIR/backend"
-  # clean-build 模式会先清理本机 Go 构建缓存，确保后端重新编译。
-  # 这里不清 modcache，避免每次都重新下载依赖。
+build_backend() {
+  echo "==> 打包后端二进制"
   if [ "$CLEAN_BUILD_TARGET" = "1" ]; then
-    echo "==> Cleaning Go build cache"
+    echo "==> 清理 Go 构建缓存"
     go clean -cache -testcache
   fi
+
   GOOS="$GOOS_TARGET" GOARCH="$GOARCH_TARGET" CGO_ENABLED="$CGO_ENABLED_TARGET" \
     go build -ldflags "$LDFLAGS" -o "$OUT_DIR/$BACKEND_BIN_NAME" ./
-)
+}
 
-# Build frontend
-if command -v pnpm >/dev/null 2>&1; then
-  (cd "$ROOT_DIR/frontend" && pnpm build)
-elif command -v npm >/dev/null 2>&1; then
-  (cd "$ROOT_DIR/frontend" && npm run build)
-else
-  echo "pnpm or npm is required to build frontend" >&2
+build_web() {
+  echo "==> 构建主前端 Web"
+  if command -v pnpm >/dev/null 2>&1; then
+    (cd "$ROOT_DIR/web" && pnpm build)
+  elif command -v npm >/dev/null 2>&1; then
+    (cd "$ROOT_DIR/web" && npm run build)
+  else
+    echo "缺少前端构建命令: pnpm 或 npm" >&2
+    exit 1
+  fi
+
+  if [ ! -d "$WEB_DIST_SRC_DIR" ]; then
+    echo "主前端构建产物不存在: $WEB_DIST_SRC_DIR" >&2
+    exit 1
+  fi
+
+  sync_dir "$WEB_DIST_SRC_DIR" "$WEB_DIST_OUT_DIR"
+}
+
+copy_attendance_h5() {
+  echo "==> 收敛 attendance-h5 静态文件"
+  if [ ! -d "$ATTENDANCE_H5_SRC_DIR" ]; then
+    echo "attendance-h5 H5 静态产物不存在: $ATTENDANCE_H5_SRC_DIR" >&2
+    echo "请先生成 uni-app H5 产物后再执行发布脚本。" >&2
+    exit 1
+  fi
+
+  sync_dir "$ATTENDANCE_H5_SRC_DIR" "$ATTENDANCE_H5_OUT_DIR"
+}
+
+copy_mihua_token_service() {
+  echo "==> 收敛 mihua-token-service"
+  if [ ! -d "$MIHUA_TOKEN_SRC_DIR" ]; then
+    echo "mihua-token-service 目录不存在: $MIHUA_TOKEN_SRC_DIR" >&2
+    exit 1
+  fi
+
+  sync_dir "$MIHUA_TOKEN_SRC_DIR" "$MIHUA_TOKEN_OUT_DIR"
+}
+
+require_command bash
+
+if [ "$INCLUDE_BACKEND" != "1" ] && [ "$INCLUDE_WEB" != "1" ] && [ "$INCLUDE_ATTENDANCE_H5" != "1" ] && [ "$INCLUDE_MIHUA_TOKEN" != "1" ]; then
+  echo "没有需要纳入 release 的产物" >&2
   exit 1
 fi
 
-# Copy frontend dist
-if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete "$ROOT_DIR/frontend/dist/" "$OUT_DIR/dist/"
-else
-  rm -rf "$OUT_DIR/dist"
-  cp -R "$ROOT_DIR/frontend/dist" "$OUT_DIR/dist"
+if [ "$INCLUDE_BACKEND" = "1" ]; then
+  require_command go
 fi
 
-# Copy check-in web build
-if [ -d "$CHECKIN_WEB_SRC_DIR" ]; then
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "$CHECKIN_WEB_SRC_DIR/" "$CHECKIN_WEB_OUT_DIR/"
-  else
-    rm -rf "$CHECKIN_WEB_OUT_DIR"
-    cp -R "$CHECKIN_WEB_SRC_DIR" "$CHECKIN_WEB_OUT_DIR"
-  fi
-else
-  echo "warning: check-in web build not found, skipped: $CHECKIN_WEB_SRC_DIR" >&2
+cleanup_release_dir
+
+if [ "$INCLUDE_BACKEND" = "1" ]; then
+  build_backend
 fi
 
-# 清理发布目录里不需要上线的测试文件和脚本。
-cleanup_release_artifacts "$OUT_DIR"
+if [ "$INCLUDE_WEB" = "1" ]; then
+  build_web
+fi
+
+if [ "$INCLUDE_ATTENDANCE_H5" = "1" ]; then
+  copy_attendance_h5
+fi
+
+if [ "$INCLUDE_MIHUA_TOKEN" = "1" ]; then
+  copy_mihua_token_service
+fi
+
+cleanup_python_caches
 
 echo "version=$APP_VERSION"
 echo "git_commit=$GIT_COMMIT"
 echo "build_time=$BUILD_TIME"
 echo "clean_build=$CLEAN_BUILD_TARGET"
-echo "Release prepared at: $OUT_DIR"
+echo "include_backend=$INCLUDE_BACKEND"
+echo "include_web=$INCLUDE_WEB"
+echo "include_attendance_h5=$INCLUDE_ATTENDANCE_H5"
+echo "include_mihua_token=$INCLUDE_MIHUA_TOKEN"
+echo "release_dir=$OUT_DIR"
