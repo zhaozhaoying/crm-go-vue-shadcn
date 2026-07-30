@@ -372,7 +372,7 @@ func (r *gormContractRepository) ExistsUser(ctx context.Context, id int64) (bool
 		return false, nil
 	}
 	var count int64
-	if err := r.db.WithContext(ctx).Table("users").Where("id = ?", id).Count(&count).Error; err != nil {
+	if err := r.db.WithContext(ctx).Table("users").Where("id = ?", id).Where("deleted_at IS NULL").Count(&count).Error; err != nil {
 		return false, err
 	}
 	return count > 0, nil

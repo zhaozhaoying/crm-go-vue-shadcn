@@ -71,6 +71,7 @@ func New(
 			protected.POST("/notifications/mark-read", notificationHandler.MarkAsRead)
 			protected.GET("/auth/me", authHandler.Me)
 			protected.POST("/auth/logout", authHandler.Logout)
+			protected.GET("/announcement", systemSettingHandler.GetAssessmentAnnouncement)
 			protected.GET("/customers", customerHandler.List)
 			protected.GET("/customers/my", customerHandler.ListMy)
 			protected.GET("/customers/pool", customerHandler.ListPool)
@@ -87,6 +88,7 @@ func New(
 			protected.POST("/customers/:id/release", customerHandler.Release)
 			protected.POST("/customers/:id/transfer", customerHandler.Transfer)
 			protected.POST("/customers/reassign-by-ranking", customerHandler.BatchRankedReassign)
+			protected.POST("/customers/reassign-to-parent", customerHandler.BatchReassignToParent)
 
 			// Phone management
 			protected.POST("/customers/:id/phones", customerHandler.AddPhone)

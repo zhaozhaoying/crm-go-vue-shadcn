@@ -691,6 +691,7 @@ func (r *gormCustomerRepository) GetUserDisplayName(ctx context.Context, userID 
 		Table("users").
 		Select("COALESCE(NULLIF(nickname, ''), NULLIF(username, ''), '')").
 		Where("id = ?", userID).
+		Where("deleted_at IS NULL").
 		Limit(1).
 		Scan(&displayName).Error
 	if err != nil {
@@ -715,6 +716,7 @@ func (r *gormCustomerRepository) FindEnabledUserIDByNickname(ctx context.Context
 		Select("id").
 		Where("nickname = ?", trimmed).
 		Where("status = ?", model.UserStatusEnabled).
+		Where("deleted_at IS NULL").
 		Order("id ASC").
 		Limit(1).
 		Scan(&row).Error
@@ -755,6 +757,7 @@ func (r *gormCustomerRepository) ResolveDepartmentAnchorUserID(ctx context.Conte
 			Table("users").
 			Select("parent_id").
 			Where("id = ?", currentID).
+			Where("deleted_at IS NULL").
 			Take(&row).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return 0, nil
@@ -785,6 +788,7 @@ func (r *gormCustomerRepository) GetParentUserID(ctx context.Context, userID int
 		Table("users").
 		Select("parent_id").
 		Where("id = ?", userID).
+		Where("deleted_at IS NULL").
 		Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return 0, nil

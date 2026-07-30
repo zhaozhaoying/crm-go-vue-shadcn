@@ -10,6 +10,9 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@internationalized/date": "^3.12.1",
+    "@tiptap/starter-kit": "^3.29.2",
+    "@tiptap/vue-3": "^3.29.2",
     "@unovis/ts": "^1.6.4",
     "@unovis/vue": "^1.6.4",
     "@vee-validate/zod": "4.13.2",
@@ -29,6 +32,7 @@
     "zod": "3.23.8"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.20",
     "@types/node": "^22.19.11",
     "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.20",

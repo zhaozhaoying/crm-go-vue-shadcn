@@ -81,11 +81,14 @@ export const getDealDropCountdown = (
   useSalesAssignDealRule = false,
 ): CountdownDisplay => {
   if (useSalesAssignDealRule) {
-    const assignBaseMs = parseTimeMs(customer.assignTime);
-    if (assignBaseMs === null) {
-      return createEmptyCountdown();
-    }
-    return buildCountdownDisplay(assignBaseMs, salesAssignDealDropDays, 7 * DAY_MS, nowMs);
+    const assignBaseMs =
+      parseTimeMs(customer.assignTime) ?? parseTimeMs(customer.collectTime);
+    return buildCountdownDisplay(
+      assignBaseMs,
+      salesAssignDealDropDays,
+      7 * DAY_MS,
+      nowMs,
+    );
   }
 
   const baseMs = parseTimeMs(customer.collectTime);

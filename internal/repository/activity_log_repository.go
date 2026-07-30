@@ -88,6 +88,7 @@ func (r *ActivityLogRepository) fillMissingUserNames(ctx context.Context, logs [
 		Table("users").
 		Select("id, COALESCE(NULLIF(nickname, ''), NULLIF(username, ''), '') AS user_name").
 		Where("id IN ?", missingUserIDs).
+		Where("deleted_at IS NULL").
 		Scan(&rows).Error; err != nil {
 		return err
 	}

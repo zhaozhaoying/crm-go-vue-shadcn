@@ -200,6 +200,7 @@ func (r *gormHanghangCRMDailyUserCallStatRepository) findEnabledUserIDByLegacyHa
 		Table("users").
 		Select("id").
 		Where("status = ?", model.UserStatusEnabled).
+		Where("deleted_at IS NULL").
 		Where("hanghang_crm_mobile = ?", hanghangCRMMobile).
 		Order("id ASC").
 		Take(&row).Error
@@ -224,6 +225,7 @@ func (r *gormHanghangCRMDailyUserCallStatRepository) findEnabledUserIDByNickname
 		Table("users").
 		Select("id").
 		Where("status = ?", model.UserStatusEnabled).
+		Where("deleted_at IS NULL").
 		Where("nickname = ?", nickname)
 	if hanghangCRMMobile != "" {
 		query = query.Where("hanghang_crm_mobile = ?", hanghangCRMMobile)

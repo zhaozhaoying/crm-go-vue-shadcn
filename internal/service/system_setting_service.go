@@ -56,6 +56,8 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 		return nil, err
 	}
 
+	assessmentAnnouncement := s.getStringSetting("assessment_announcement", "")
+
 	return &model.SystemSettingsResponse{
 		CustomerAutoDropEnabled: customerAutoDropEnabled,
 		FollowUpDropDays:        followUpDays,
@@ -68,9 +70,10 @@ func (s *SystemSettingService) GetAllSettings() (*model.SystemSettingsResponse, 
 		ContractNumberPrefix:    contractNumberPrefix,
 		MihuaCallRecordToken:    mihuaCallRecordToken,
 		HanghangCrmCloudToken:   hanghangCrmCloudToken,
-		VisitPurposes:           visitPurposes,
-		CustomerLevels:          levels,
-		CustomerSources:         sources,
+		VisitPurposes:            visitPurposes,
+		CustomerLevels:           levels,
+		CustomerSources:          sources,
+		AssessmentAnnouncement:   assessmentAnnouncement,
 	}, nil
 }
 
@@ -172,6 +175,15 @@ func (s *SystemSettingService) UpdateSettings(req *model.UpdateSystemSettingsReq
 			return err
 		}
 	}
+		if req.AssessmentAnnouncement != nil {
+			if err := s.repo.UpsertSetting(
+				"assessment_announcement",
+				*req.AssessmentAnnouncement,
+				"考核公告内容",
+			); err != nil {
+				return err
+			}
+		}
 	return nil
 }
 

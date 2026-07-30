@@ -531,6 +531,7 @@ func (r *gormDashboardRepository) getParentUserID(ctx context.Context, userID in
 		Table("users").
 		Select("parent_id").
 		Where("id = ?", userID).
+		Where("deleted_at IS NULL").
 		Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return 0, nil
@@ -918,6 +919,7 @@ func (r *gormDashboardRepository) listAllDescendantUserIDs(ctx context.Context, 
 		if err := r.db.WithContext(ctx).
 			Table("users").
 			Where("parent_id IN ?", queue).
+			Where("deleted_at IS NULL").
 			Order("id ASC").
 			Pluck("id", &nextLevel).Error; err != nil {
 			return nil, err

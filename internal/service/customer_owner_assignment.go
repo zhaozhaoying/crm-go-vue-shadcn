@@ -35,6 +35,11 @@ type customerOwnerAssignmentRepo interface {
 }
 
 func pickBalancedSalesOwnerUserID(ctx context.Context, repo customerOwnerAssignmentRepo, operatorUserID int64) (int64, error) {
+	if operatorUserID <= 0 {
+		return 0, ErrCustomerNoOutsideSalesAvailable
+	}
+
+	// 【原逻辑：按排名分配】
 	directorUserID, err := resolveSalesDirectorUserID(ctx, repo, operatorUserID)
 	if err != nil {
 		return 0, err

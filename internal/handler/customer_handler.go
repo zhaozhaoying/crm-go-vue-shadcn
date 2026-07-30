@@ -270,6 +270,46 @@ func (h *CustomerHandler) BatchRankedReassign(c *gin.Context) {
 	Success(c, result)
 }
 
+// BatchReassignToParent godoc
+// @Summary     批量分配客户给上级
+// @Description 电销人员将选中的客户批量分配给自己的上级
+// @Tags        customers
+// @Accept      json
+// @Produce     json
+// @Param       body body BatchRankedReassignCustomersRequest true "客户ID列表"
+// @Success     200 {object} APIResponse{data=model.CustomerBatchRankedReassignResult}
+// @Router      /api/v1/customers/reassign-to-parent [post]
+func (h *CustomerHandler) BatchReassignToParent(c *gin.Context) {
+	operatorUserID, ok := currentUserID(c)
+	if !ok {
+		Error(c, http.StatusUnauthorized, 30004, "登录信息无效")
+		return
+	}
+	role := strings.TrimSpace(strings.ToLower(currentUserRole(c)))
+
+	if role != "admin" && role != "管理员" && role != "sale_inside" && role != "电销员工" {
+		Error(c, http.StatusForbidden, 10031, "仅管理员和电销人员可以分配客户给上级")
+		return
+	}
+
+	var req BatchRankedReassignCustomersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ErrorWithDetail(c, http.StatusBadRequest, 40001, "请求参数错误", err)
+		return
+	}
+
+	result, err := h.service.ReassignCustomersToParent(c.Request.Context(), model.CustomerBatchRankedReassignInput{
+		CustomerIDs:    req.CustomerIDs,
+		OperatorUserID: operatorUserID,
+	})
+	if err != nil {
+		ErrorWithDetail(c, http.StatusInternalServerError, 40002, "批量分配客户给上级失败", err)
+		return
+	}
+
+	Success(c, result)
+}
+
 func (h *CustomerHandler) listByCategory(c *gin.Context, category string) {
 	viewerID, hasViewer := currentUserID(c)
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

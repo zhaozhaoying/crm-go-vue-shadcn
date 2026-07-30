@@ -151,6 +151,15 @@ export const batchReassignCustomersByRanking = (customerIds: number[]) => {
   })
 }
 
+// 批量分配客户给上级
+export const batchReassignCustomersToParent = (customerIds: number[]) => {
+  return request<BatchRankedReassignCustomersResponse>({
+    method: "POST",
+    url: "/v1/customers/reassign-to-parent",
+    data: { customerIds }
+  })
+}
+
 // Phone management APIs
 export const addPhone = (customerId: number, data: AddPhoneRequest) => {
   return request<CustomerPhone>({

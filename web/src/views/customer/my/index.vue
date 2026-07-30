@@ -9,6 +9,7 @@ import {
   watch,
 } from "vue";
 import {
+  ArrowUpCircle,
   ClipboardList,
   FileText,
   Loader2,
@@ -23,6 +24,7 @@ import { toast } from "vue-sonner";
 import {
   listMyCustomers,
   batchReassignCustomersByRanking,
+  batchReassignCustomersToParent,
   type BatchRankedReassignCustomersResponseItem,
   convertCustomer,
   createCustomer,
@@ -221,6 +223,7 @@ const totalPages = computed(() =>
 const isAdmin = computed(() => isAdminUser(authStore.user));
 const isInsideSales = computed(() => isInsideSalesUser(authStore.user));
 const canBatchReassign = computed(() => isAdmin.value);
+const canReassignToParent = computed(() => isAdmin.value || isInsideSales.value);
 const currentUserId = computed(() => Number(authStore.user?.id || 0));
 const followUpDropDays = ref(30);
 const dealDropDays = ref(90);
@@ -703,6 +706,48 @@ const handleBatchReassign = async () => {
   }
 };
 
+const handleBatchReassignToParent = async () => {
+  if (selectedCustomers.value.length === 0) return;
+
+  const total = selectedCustomers.value.length;
+  const previewNames = selectedCustomers.value
+    .slice(0, 3)
+    .map((item) => `「${item.name}」`)
+    .join("、");
+  const description =
+    total > 3
+      ? `确定要将${previewNames}等 ${total} 个客户分配给您的上级吗？`
+      : `确定要将${previewNames || `${total} 个客户`}分配给您的上级吗？`;
+
+  const confirmed = await confirmDialog.value?.open({
+    title: "批量分配客户给上级",
+    description,
+    confirmText: "确认分配",
+  });
+  if (!confirmed) return;
+
+  batchReassigning.value = true;
+  try {
+    const result = await batchReassignCustomersToParent(
+      selectedCustomers.value.map((customer) => customer.id),
+    );
+    reassignResultItems.value = result.items;
+    if (result.successCount > 0) {
+      toast.success(`已完成 ${result.successCount} 个客户的分配`);
+    }
+    reassignResultOpen.value = true;
+    if (result.failedCount > 0) {
+      toast.error(`有 ${result.failedCount} 个客户分配失败，请查看明细`);
+    }
+    selectedIds.value = [];
+    await fetchCustomers();
+  } catch (err) {
+    toast.error(getRequestErrorMessage(err, "批量分配失败"));
+  } finally {
+    batchReassigning.value = false;
+  }
+};
+
 const refreshList = () => {
   fetchCustomers();
 };
@@ -1074,6 +1119,28 @@ onUnmounted(() => {
                 batchReassigning
                   ? "重新分配中"
                   : `重新分配${selectedIds.length ? `(${selectedIds.length})` : ""}`
+              }}</span>
+            </Button>
+            <Button
+              v-if="canReassignToParent"
+              size="sm"
+              variant="outline"
+              class="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600"
+              :disabled="
+                loading ||
+                batchReassigning ||
+                batchDiscarding ||
+                selectedCustomers.length === 0 ||
+                discardingId !== null
+              "
+              @click="handleBatchReassignToParent"
+            >
+              <Loader2 v-if="batchReassigning" class="h-4 w-4 animate-spin" />
+              <ArrowUpCircle v-else class="h-4 w-4" />
+              <span>{{
+                batchReassigning
+                  ? "分配中"
+                  : `分配给上级${selectedIds.length ? `(${selectedIds.length})` : ""}`
               }}</span>
             </Button>
             <Button

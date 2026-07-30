@@ -5,6 +5,7 @@ import (
 	"backend/internal/repository"
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -68,6 +69,7 @@ type CustomerService interface {
 	ReleaseCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 	TransferCustomer(ctx context.Context, input model.CustomerTransferInput) (*model.Customer, error)
 	ReassignCustomersByYesterdayRanking(ctx context.Context, input model.CustomerBatchRankedReassignInput) (model.CustomerBatchRankedReassignResult, error)
+	ReassignCustomersToParent(ctx context.Context, input model.CustomerBatchRankedReassignInput) (model.CustomerBatchRankedReassignResult, error)
 	ConvertCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error)
 
 	// Phone management
@@ -423,7 +425,6 @@ func (s *customerService) CreateCustomer(ctx context.Context, input model.Custom
 	if err != nil {
 		return nil, err
 	}
-
 	result, err := s.repo.CheckUnique(ctx, uniqueInput)
 	if err != nil {
 		return nil, err
@@ -440,7 +441,7 @@ func (s *customerService) CreateCustomer(ctx context.Context, input model.Custom
 	if err := s.validateCustomerLimit(ctx, normalized); err != nil {
 		return nil, err
 	}
-
+	fmt.Print("分配的用户", normalized.OperatorUserID)
 	customer, err := s.repo.Create(ctx, normalized)
 	if err != nil {
 		return nil, err
@@ -486,7 +487,7 @@ func (s *customerService) applyCreateOwnershipPolicy(ctx context.Context, input 
 		ownerUserID := input.OperatorUserID
 		input.OwnerUserID = &ownerUserID
 	}
-
+	fmt.Print(input.OwnerUserID)
 	return input, nil
 }
 
@@ -879,6 +880,134 @@ func (s *customerService) ReassignCustomersByYesterdayRanking(
 	return result, nil
 }
 
+// ReassignCustomersToParent 将客户批量分配给创建该客户记录的用户的上级
+func (s *customerService) ReassignCustomersToParent(
+	ctx context.Context,
+	input model.CustomerBatchRankedReassignInput,
+) (model.CustomerBatchRankedReassignResult, error) {
+	customerIDs := uniquePositiveInt64(input.CustomerIDs)
+	result := model.CustomerBatchRankedReassignResult{
+		Total: len(customerIDs),
+		Items: make([]model.CustomerBatchRankedReassignItem, 0, len(customerIDs)),
+	}
+	if len(customerIDs) == 0 {
+		return result, nil
+	}
+
+	for _, customerID := range customerIDs {
+		customer, err := s.repo.FindByID(ctx, customerID)
+		if err != nil {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID: customerID,
+				Success:    false,
+				Message:    "客户不存在或已被删除",
+			})
+			result.FailedCount++
+			continue
+		}
+
+		// 获取创建该客户记录的用户ID
+		createUserID := customer.CreateUserID
+		if createUserID <= 0 {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID:      customer.ID,
+				CustomerName:    customer.Name,
+				FromOwnerUserID: customer.OwnerUserID,
+				Success:         false,
+				Message:         "该客户没有记录创建人",
+			})
+			result.FailedCount++
+			continue
+		}
+
+		// 获取创建人的上级用户ID
+		parentUserID, err := s.repo.GetParentUserID(ctx, createUserID)
+		if err != nil {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID:      customer.ID,
+				CustomerName:    customer.Name,
+				FromOwnerUserID: customer.OwnerUserID,
+				Success:         false,
+				Message:         "获取创建人上级失败: " + err.Error(),
+			})
+			result.FailedCount++
+			continue
+		}
+		if parentUserID <= 0 {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID:      customer.ID,
+				CustomerName:    customer.Name,
+				FromOwnerUserID: customer.OwnerUserID,
+				Success:         false,
+				Message:         "创建人没有上级，无法分配",
+			})
+			result.FailedCount++
+			continue
+		}
+
+		// 验证上级是否是可分配的销售负责人
+		parentRole, err := s.repo.GetUserRoleName(ctx, parentUserID)
+		if err != nil {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID:      customer.ID,
+				CustomerName:    customer.Name,
+				FromOwnerUserID: customer.OwnerUserID,
+				Success:         false,
+				Message:         "获取上级角色失败: " + err.Error(),
+			})
+			result.FailedCount++
+			continue
+		}
+		if !isRole(parentRole, assignableSalesOwnerRoleNames...) {
+			result.Items = append(result.Items, model.CustomerBatchRankedReassignItem{
+				CustomerID:      customer.ID,
+				CustomerName:    customer.Name,
+				FromOwnerUserID: customer.OwnerUserID,
+				Success:         false,
+				Message:         "上级用户不是可分配的销售负责人",
+			})
+			result.FailedCount++
+			continue
+		}
+
+		item := model.CustomerBatchRankedReassignItem{
+			CustomerID:      customer.ID,
+			CustomerName:    customer.Name,
+			FromOwnerUserID: customer.OwnerUserID,
+			ToOwnerUserID:   &parentUserID,
+			Success:         true,
+			Message:         "已分配给创建人的上级",
+		}
+
+		if customer.OwnerUserID != nil && *customer.OwnerUserID == parentUserID {
+			result.Items = append(result.Items, item)
+			result.SuccessCount++
+			continue
+		}
+
+		_, err = s.TransferCustomer(ctx, model.CustomerTransferInput{
+			CustomerID:     customer.ID,
+			ToOwnerUserID:  parentUserID,
+			OperatorUserID: input.OperatorUserID,
+			Note:           "分配给创建人的上级",
+			AllowAnyOwner:  true,
+		})
+		if err != nil {
+			item.Success = false
+			item.Message = err.Error()
+			item.ToOwnerUserID = nil
+			result.Items = append(result.Items, item)
+			result.FailedCount++
+			continue
+		}
+
+		result.Items = append(result.Items, item)
+		result.SuccessCount++
+	}
+
+	return result, nil
+}
+
 func (s *customerService) ConvertCustomer(ctx context.Context, customerID, operatorUserID int64) (*model.Customer, error) {
 	customer, err := s.repo.FindByID(ctx, customerID)
 	if err != nil {
@@ -1197,6 +1326,15 @@ func (s *customerService) resolveConvertedCustomerOwnerUserID(ctx context.Contex
 
 	switch {
 	case isInsideSalesRole(assignmentRole):
+		// 电销人员创建客户时，自动分配给创建人的上级
+		parentUserID, err := s.repo.GetParentUserID(ctx, assignmentUserID)
+		if err != nil {
+			return 0, err
+		}
+		if parentUserID > 0 {
+			return parentUserID, nil
+		}
+		// 如果没有上级，则按原有的排名分配逻辑
 		return pickBalancedSalesOwnerUserID(ctx, s.repo, assignmentUserID)
 	case isOutsideSalesRole(assignmentRole):
 		return assignmentUserID, nil

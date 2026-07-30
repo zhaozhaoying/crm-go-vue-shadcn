@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 const (
 	UserStatusEnabled  = "enabled"
@@ -22,9 +26,10 @@ type User struct {
 	ParentID           *int64    `json:"parentId" gorm:"column:parent_id"`
 	SalesType          string    `json:"salesType" gorm:"column:sales_type;size:32;not null;default:''"`
 	MihuaWorkNumber    string    `json:"mihuaWorkNumber" gorm:"column:mihua_work_number;size:64;not null;default:''"`
-	Status             string    `json:"status" gorm:"column:status;size:32;not null;default:'enabled';index"`
-	CreatedAt          time.Time `json:"createdAt" gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt          time.Time `json:"updatedAt" gorm:"column:updated_at;autoUpdateTime"`
+	Status             string         `json:"status" gorm:"column:status;size:32;not null;default:'enabled';index"`
+	DeletedAt          gorm.DeletedAt `json:"-" gorm:"column:deleted_at;index"`
+	CreatedAt          time.Time      `json:"createdAt" gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt          time.Time      `json:"updatedAt" gorm:"column:updated_at;autoUpdateTime"`
 
 	Role *Role `json:"-" gorm:"foreignKey:RoleID;references:ID"`
 }

@@ -293,3 +293,19 @@ func canManageSystemSettings(role string) bool {
 		return false
 	}
 }
+
+// GetAssessmentAnnouncement godoc
+// @Summary 获取考核公告
+// @Tags 考核公告
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /api/v1/announcement [get]
+func (h *SystemSettingHandler) GetAssessmentAnnouncement(c *gin.Context) {
+	settings, err := h.service.GetAllSettings()
+	if err != nil {
+		ErrorWithDetail(c, 500, 10120, "加载考核公告失败", err)
+		return
+	}
+	Success(c, gin.H{"assessmentAnnouncement": settings.AssessmentAnnouncement})
+}

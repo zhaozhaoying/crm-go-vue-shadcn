@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import type { AcceptableValue } from "reka-ui"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -46,6 +47,8 @@ const hasSelectionSummary = computed(
   () => props.showSelection && props.selectedCount !== undefined && props.totalCount !== undefined
 )
 
+const jumpPageInput = ref("")
+
 const goToFirstPage = () => {
   emit("update:currentPage", 0)
 }
@@ -64,6 +67,17 @@ const goToNextPage = () => {
 
 const goToLastPage = () => {
   emit("update:currentPage", props.totalPages - 1)
+}
+
+const handlePageJump = () => {
+  const page = parseInt(jumpPageInput.value, 10)
+  if (isNaN(page) || page < 1) {
+    jumpPageInput.value = ""
+    return
+  }
+  const targetPage = Math.min(Math.max(page - 1, 0), props.totalPages - 1)
+  emit("update:currentPage", targetPage)
+  jumpPageInput.value = ""
 }
 
 const updatePageSize = (value: AcceptableValue) => {
@@ -93,8 +107,23 @@ const updatePageSize = (value: AcceptableValue) => {
           </SelectContent>
         </Select>
       </div>
-      <div class="flex w-fit items-center justify-center text-sm font-medium whitespace-nowrap">
-        第 {{ currentPage + 1 }} / {{ totalPages }} 页
+      <div class="flex items-center gap-2">
+        <span class="text-sm font-medium whitespace-nowrap">第 {{ currentPage + 1 }} / {{ totalPages }} 页</span>
+        <div class="hidden items-center lg:flex">
+          <div class="flex items-center rounded-md border border-input bg-background ring-offset-background focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+            <span class="pl-2 text-sm text-muted-foreground">跳至</span>
+            <Input
+              v-model="jumpPageInput"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              class="h-8 w-12 border-0 bg-transparent text-center text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              placeholder=""
+              @keydown.enter="handlePageJump"
+            />
+            <span class="pr-2 text-sm text-muted-foreground">页</span>
+          </div>
+        </div>
       </div>
       <div class="flex items-center gap-2" :class="hasSelectionSummary ? 'ml-auto lg:ml-0' : ''">
         <Button variant="outline" size="icon" class="hidden h-8 w-8 lg:flex" :disabled="isFirstPage" @click="goToFirstPage">

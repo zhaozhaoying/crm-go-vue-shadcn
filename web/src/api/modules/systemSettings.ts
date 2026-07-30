@@ -33,6 +33,7 @@ export interface SystemSettings {
   visitPurposes: string[];
   customerLevels: CustomerLevel[];
   customerSources: CustomerSource[];
+  assessmentAnnouncement: string;
 }
 
 export interface UpdateSystemSettingsRequest {
@@ -48,6 +49,7 @@ export interface UpdateSystemSettingsRequest {
   mihuaCallRecordToken?: string;
   hanghangCrmCloudToken?: string;
   visitPurposes?: string[];
+  assessmentAnnouncement?: string;
 }
 
 export const getSystemSettings = () => {
@@ -114,5 +116,12 @@ export const deleteFollowMethod = (id: number) => {
   return request<null>({
     method: "DELETE",
     url: `/v1/follow-methods/${id}`,
+  });
+};
+
+export const getAssessmentAnnouncement = () => {
+  return request<{ assessmentAnnouncement: string }>({
+    method: "GET",
+    url: "/v1/announcement",
   });
 };

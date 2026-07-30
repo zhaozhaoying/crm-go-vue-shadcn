@@ -42,8 +42,9 @@ type SystemSettingsResponse struct {
 	MihuaCallRecordToken    string           `json:"mihuaCallRecordToken" gorm:"-"`
 	HanghangCrmCloudToken   string           `json:"hanghangCrmCloudToken" gorm:"-"`
 	VisitPurposes           []string         `json:"visitPurposes" gorm:"-"`
-	CustomerLevels          []CustomerLevel  `json:"customerLevels" gorm:"-"`
-	CustomerSources         []CustomerSource `json:"customerSources" gorm:"-"`
+	CustomerLevels           []CustomerLevel  `json:"customerLevels" gorm:"-"`
+	CustomerSources          []CustomerSource `json:"customerSources" gorm:"-"`
+	AssessmentAnnouncement   string           `json:"assessmentAnnouncement" gorm:"-"`
 }
 
 type UpdateSystemSettingsRequest struct {
@@ -59,6 +60,7 @@ type UpdateSystemSettingsRequest struct {
 	MihuaCallRecordToken    *string  `json:"mihuaCallRecordToken" gorm:"-"`
 	HanghangCrmCloudToken   *string  `json:"hanghangCrmCloudToken" gorm:"-"`
 	VisitPurposes           []string `json:"visitPurposes" gorm:"-"`
+	AssessmentAnnouncement  *string  `json:"assessmentAnnouncement" gorm:"-"`
 }
 
 type CustomerLevelRequest struct {

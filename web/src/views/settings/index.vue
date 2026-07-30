@@ -12,7 +12,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Plus, Trash2, Loader2, Save } from "lucide-vue-next";
+import {
+  Plus,
+  Trash2,
+  Loader2,
+  Save,
+  Bold,
+  Italic,
+  Strikethrough,
+  List,
+  ListOrdered,
+  Heading2,
+  Undo,
+  Redo,
+} from "lucide-vue-next";
+import { useEditor, EditorContent } from "@tiptap/vue-3";
+import StarterKit from "@tiptap/starter-kit";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableCell } from "@tiptap/extension-table-cell";
 import { toast } from "vue-sonner";
 import {
   createCustomerLevel,
@@ -42,6 +61,50 @@ const savingMethods = ref(false);
 const removingLevel = ref(false);
 const removingSource = ref(false);
 const removingMethod = ref(false);
+const savingAnnouncement = ref(false);
+
+const announcementEditor = useEditor({
+  content: "",
+  extensions: [
+    StarterKit,
+    Table.configure({ resizable: true }),
+    TableRow,
+    TableHeader,
+    TableCell,
+  ],
+  editorProps: {
+    attributes: {
+      class:
+        "prose prose-sm max-w-none min-h-[200px] px-4 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+    },
+  },
+});
+
+const loadAnnouncementToEditor = () => {
+  if (announcementEditor.value) {
+    announcementEditor.value.commands.setContent(
+      settings.value.assessmentAnnouncement || "",
+    );
+  }
+};
+
+const saveAnnouncement = async () => {
+  if (!announcementEditor.value) return;
+  const html = announcementEditor.value.getHTML();
+
+  savingAnnouncement.value = true;
+  try {
+    await updateSystemSettings({
+      assessmentAnnouncement: html,
+    });
+    settings.value.assessmentAnnouncement = html;
+    toast.success("考核公告已保存");
+  } catch (error) {
+    toast.error(getRequestErrorMessage(error, "保存考核公告失败"));
+  } finally {
+    savingAnnouncement.value = false;
+  }
+};
 
 const settings = ref<SystemSettings>({
   customerAutoDropEnabled: true,
@@ -58,6 +121,7 @@ const settings = ref<SystemSettings>({
   visitPurposes: getVisitPurposeOptions(),
   customerLevels: [],
   customerSources: [],
+  assessmentAnnouncement: "",
 });
 
 const followMethods = ref<FollowMethod[]>([]);
@@ -126,6 +190,7 @@ const loadSettings = async () => {
       customerLevels: levelResult.unique,
       customerSources: sourceResult.unique,
     };
+    loadAnnouncementToEditor();
   } catch (error) {
     toast.error(getRequestErrorMessage(error, "加载系统设置失败"));
   }
@@ -747,6 +812,144 @@ onMounted(() => {
                 </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <!-- 考核公告 -->
+        <Card>
+          <CardHeader class="pb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <CardTitle class="text-base">考核公告</CardTitle>
+                <CardDescription class="text-xs mt-1"
+                  >设置考核公告内容，所有用户可在顶部栏查看</CardDescription
+                >
+              </div>
+              <Button
+                @click="saveAnnouncement"
+                :disabled="savingAnnouncement"
+                size="sm"
+                class="gap-1.5"
+              >
+                <Loader2
+                  v-if="savingAnnouncement"
+                  class="h-3.5 w-3.5 animate-spin"
+                />
+                <Save v-else class="h-3.5 w-3.5" />
+                保存
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent class="space-y-3">
+            <div
+              v-if="announcementEditor"
+              class="flex flex-wrap items-center gap-1 rounded-md border p-1"
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7"
+                :class="{
+                  'bg-accent text-accent-foreground':
+                    announcementEditor.isActive('bold'),
+                }"
+                @click="announcementEditor.chain().focus().toggleBold().run()"
+              >
+                <Bold class="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7"
+                :class="{
+                  'bg-accent text-accent-foreground':
+                    announcementEditor.isActive('italic'),
+                }"
+                @click="announcementEditor.chain().focus().toggleItalic().run()"
+              >
+                <Italic class="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7"
+                :class="{
+                  'bg-accent text-accent-foreground':
+                    announcementEditor.isActive('strike'),
+                }"
+                @click="announcementEditor.chain().focus().toggleStrike().run()"
+              >
+                <Strikethrough class="h-3.5 w-3.5" />
+              </Button>
+              <div class="w-px h-5 bg-border mx-0.5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7"
+                :class="{
+                  'bg-accent text-accent-foreground': announcementEditor.isActive(
+                    'heading',
+                    { level: 2 },
+                  ),
+                }"
+                @click="
+                  announcementEditor
+                    .chain()
+                    .focus()
+                    .toggleHeading({ level: 2 })
+                    .run()
+                "
+              >
+                <Heading2 class="h-3.5 w-3.5" />
+              </Button>
+              <div class="w-px h-5 bg-border mx-0.5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7"
+                :class="{
+                  'bg-accent text-accent-foreground':
+                    announcementEditor.isActive('bulletList'),
+                }"
+                @click="
+                  announcementEditor.chain().focus().toggleBulletList().run()
+                "
+              >
+                <List class="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7"
+                :class="{
+                  'bg-accent text-accent-foreground':
+                    announcementEditor.isActive('orderedList'),
+                }"
+                @click="
+                  announcementEditor.chain().focus().toggleOrderedList().run()
+                "
+              >
+                <ListOrdered class="h-3.5 w-3.5" />
+              </Button>
+              <div class="w-px h-5 bg-border mx-0.5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7"
+                @click="announcementEditor.chain().focus().undo().run()"
+              >
+                <Undo class="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7"
+                @click="announcementEditor.chain().focus().redo().run()"
+              >
+                <Redo class="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <EditorContent :editor="announcementEditor" />
           </CardContent>
         </Card>
       </div>

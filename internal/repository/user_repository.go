@@ -212,6 +212,7 @@ func (r *gormUserRepository) FindByID(ctx context.Context, id int64) (*model.Use
 		Table("users").
 		Select("id", "username", "password", "salt", "nickname", "email", "mobile", "hanghang_crm_mobile", "mihua_work_number", "avatar", "role_id", "parent_id", "status", "created_at", "updated_at").
 		Where("id = ?", id).
+		Where("deleted_at IS NULL").
 		Take(u).Error
 	if err != nil {
 		return nil, err
@@ -225,6 +226,7 @@ func (r *gormUserRepository) FindByUsername(ctx context.Context, username string
 		Table("users").
 		Select("id", "username", "password", "salt", "nickname", "email", "mobile", "hanghang_crm_mobile", "avatar", "role_id", "parent_id", "status", "created_at", "updated_at").
 		Where("username = ?", username).
+		Where("deleted_at IS NULL").
 		Take(u).Error
 	if err != nil {
 		return nil, err
@@ -242,6 +244,7 @@ func (r *gormUserRepository) ListWithRole(ctx context.Context) ([]model.UserWith
 			"COALESCE(r.name, '') AS role_name", "COALESCE(r.label, '') AS role_label",
 		).
 		Joins("LEFT JOIN roles r ON u.role_id = r.id").
+		Where("u.deleted_at IS NULL").
 		Order("u.id").
 		Scan(&list).Error
 	if err != nil {
@@ -264,6 +267,7 @@ func (r *gormUserRepository) SearchWithRole(ctx context.Context, keyword string)
 			"COALESCE(r.name, '') AS role_name", "COALESCE(r.label, '') AS role_label",
 		).
 		Joins("LEFT JOIN roles r ON u.role_id = r.id").
+		Where("u.deleted_at IS NULL").
 		Where(
 			`u.username LIKE ? OR u.nickname LIKE ? OR u.email LIKE ? OR u.mobile LIKE ? OR u.hanghang_crm_mobile LIKE ?`,
 			searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
@@ -290,6 +294,7 @@ func (r *gormUserRepository) ListEnabledTelemarketingUsers(ctx context.Context) 
 		).
 		Joins("LEFT JOIN roles r ON u.role_id = r.id").
 		Where("u.status = ?", model.UserStatusEnabled).
+		Where("u.deleted_at IS NULL").
 		Where("(r.name IN ? OR r.label IN ?)", telemarketingRoleNames, telemarketingRoleLabels).
 		Order("u.id").
 		Scan(&list).Error
@@ -342,16 +347,5 @@ func (r *gormUserRepository) BatchUpdateStatus(ctx context.Context, ids []int64,
 }
 
 func (r *gormUserRepository) Delete(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.WithContext(ctx).
-			Table("user_hanghang_crm_mobiles").
-			Where("user_id = ?", id).
-			Delete(nil).Error; err != nil {
-			return err
-		}
-		return tx.WithContext(ctx).
-			Table("users").
-			Where("id = ?", id).
-			Delete(nil).Error
-	})
+	return r.db.WithContext(ctx).Delete(&model.User{}, id).Error
 }
