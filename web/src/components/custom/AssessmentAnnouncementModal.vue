@@ -2,9 +2,11 @@
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { getAssessmentAnnouncement } from "@/api/modules/systemSettings";
 import { Loader2 } from "lucide-vue-next";
 import { ref, watch } from "vue";
@@ -43,11 +45,11 @@ const onOpenChange = (val: boolean) => {
 
 <template>
   <Dialog :open="open" @update:open="onOpenChange">
-    <DialogContent class="max-w-[75vw] max-h-[85vh] overflow-y-auto">
+    <DialogContent class="max-w-[75vw] max-h-[85vh] flex flex-col">
       <DialogHeader>
         <DialogTitle class="text-lg">考核公告</DialogTitle>
       </DialogHeader>
-      <div class="py-4">
+      <div class="flex-1 overflow-y-auto py-4">
         <div v-if="loading" class="flex justify-center py-8">
           <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -60,6 +62,10 @@ const onOpenChange = (val: boolean) => {
           暂无考核公告
         </p>
       </div>
+      <DialogFooter class="shrink-0 border-t pt-4">
+        <Button variant="outline" @click="onOpenChange(false)">取消</Button>
+        <Button @click="onOpenChange(false)">确认</Button>
+      </DialogFooter>
     </DialogContent>
   </Dialog>
 </template>

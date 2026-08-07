@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import AppBreadcrumb from '@/components/custom/AppBreadcrumb.vue'
 import AppCommand from '@/components/custom/AppCommand.vue'
 import AppSidebar from '@/components/custom/AppSidebar.vue'
@@ -14,6 +14,13 @@ import {
 import { Megaphone } from 'lucide-vue-next'
 
 const announcementOpen = ref(false)
+
+onMounted(() => {
+  if (!sessionStorage.getItem('crm_announcement_shown')) {
+    announcementOpen.value = true
+    sessionStorage.setItem('crm_announcement_shown', '1')
+  }
+})
 </script>
 
 <template>
